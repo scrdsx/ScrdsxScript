@@ -5,6 +5,7 @@ local Vehicle = __import("vehicle")
 local Fly = __import("fly")
 local Player = __import("player")
 local Anti = __import("anticrash")
+local AntiFlat = __import("antiflat")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -44,6 +45,14 @@ Anti.Changed = function()
 	lAntiState:Set(Anti.Info); lAntiBlocked:Set(Anti.Blocked); lAntiLast:Set(Anti.Last)
 end
 
+local mFlat = tVeh:Module({ Name = "Anti Flat Tires", Default = false, Callback = function(on) AntiFlat.SetEnabled(on) end })
+local lFlatState = mFlat:Label({ Name = "Status", Value = AntiFlat.Info })
+local lFlatBlocked = mFlat:Label({ Name = "Hit reports blocked", Value = 0 })
+mFlat:Toggle({ Name = "Block blockade hit reports", Default = AntiFlat.BlockReports, Callback = function(v) AntiFlat.BlockReports = v; AntiFlat.Refresh() end })
+mFlat:Toggle({ Name = "No touch on blockade parts", Default = AntiFlat.NoTouch, Callback = function(v) AntiFlat.NoTouch = v; AntiFlat.Refresh() end })
+mFlat:Toggle({ Name = "Ghost spike strips (no collision)", Default = AntiFlat.GhostSpikes, Callback = function(v) AntiFlat.GhostSpikes = v; AntiFlat.Refresh() end })
+AntiFlat.Changed = function() lFlatState:Set(AntiFlat.Info); lFlatBlocked:Set(AntiFlat.Blocked) end
+
 local mFly = tVeh:Module({ Name = "Vehicle Fly", Default = false, Callback = function(on)
 	Fly.SetEnabled(on)
 	win:Notify(on and "Vehicle fly on (W/S/A/D, Space up, Ctrl down, Shift boost)" or "Vehicle fly off")
@@ -82,6 +91,7 @@ local function unload()
 	Player.Changed = nil
 	Player.Destroy()
 	Anti.Destroy()
+	AntiFlat.Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
