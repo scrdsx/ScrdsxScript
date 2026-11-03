@@ -277,6 +277,7 @@ function UI:SetVisible(v)
 		self.root.Visible = true
 		tween(self.root, .3, { GroupTransparency = 0 }); tween(self.scale, .35, { Scale = self.baseScale }, Enum.EasingStyle.Back)
 	else
+		pcall(function() self.searchBox:ReleaseFocus() end) -- a focused (hidden) search box would swallow the game's keys
 		tween(self.root, .2, { GroupTransparency = 1 }); tween(self.scale, .2, { Scale = self.baseScale * .93 })
 		task.delay(.22, function() if not self.visible then self.root.Visible = false end end)
 	end

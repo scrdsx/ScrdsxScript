@@ -9,6 +9,7 @@ local Anti = {
 	Enabled = false, BlockReports = true, NoTouch = true, GhostSpikes = true,
 	Blocked = 0, Parts = 0, Info = "off", Hooked = false,
 }
+local GetAttribute, IsDescendantOf, FindFirstChild = game.GetAttribute, game.IsDescendantOf, game.FindFirstChild
 local saved = {} -- [part] = { CanTouch, CanCollide }
 local addConn
 
@@ -55,17 +56,21 @@ local function install()
 	local ok = pcall(function()
 		local old
 		old = hookmetamethod(game, "__namecall", (newcclosure or function(f) return f end)(function(self, ...)
-			if Anti.Enabled and Anti.BlockReports and getnamecallmethod() == "FireServer"
-				and typeof(self) == "Instance" and self:IsA("RemoteEvent") then
+			-- no `obj:Method()` in here: a nested namecall would replace the remembered method (see anticrash.lua)
+			local m = getnamecallmethod()
+			if Anti.Enabled and Anti.BlockReports and m == "FireServer"
+				and typeof(self) == "Instance" and self.ClassName == "RemoteEvent" then
 				local a, b = ...
-				local f = folder()
-				if f and typeof(a) == "Instance" and a:IsA("Model") and a:GetAttribute("currentHealth") ~= nil
-					and typeof(b) == "Instance" and b:IsDescendantOf(f) then
-					Anti.Blocked = Anti.Blocked + 1
-					notify()
-					return nil
+				if typeof(a) == "Instance" and a.ClassName == "Model" and typeof(b) == "Instance" then
+					local f = FindFirstChild(workspace, "PoliceBlockades")
+					if f and GetAttribute(a, "currentHealth") ~= nil and IsDescendantOf(b, f) then
+						Anti.Blocked = Anti.Blocked + 1
+						notify()
+						return nil
+					end
 				end
 			end
+			if setnamecallmethod then setnamecallmethod(m) end
 			return old(self, ...)
 		end))
 	end)

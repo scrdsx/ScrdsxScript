@@ -7,6 +7,7 @@ local Player = __import("player")
 local Anti = __import("anticrash")
 local AntiFlat = __import("antiflat")
 local Speed = __import("speed")
+local Tele = __import("teleport")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -91,7 +92,27 @@ Player.Start()
 
 -- Teleports tab
 local tTele = win:Tab("Teleports")
-tTele:Label({ Name = "Status", Value = "No teleports yet" })
+local lTele = tTele:Label({ Name = "Status", Value = Tele.Info })
+Tele.Notify = function(m) win:Notify(m) end
+Tele.Changed = function() lTele:Set(Tele.Info) end
+tTele:Button({ Name = "Go to my vehicle (get in)", Callback = function() Tele.GoToCar() end })
+tTele:Toggle({ Name = "Get in my car first", Default = Tele.GetIn, Callback = function(v) Tele.GetIn = v end })
+tTele:Toggle({ Name = "Face the location when I arrive", Default = Tele.Face, Callback = function(v) Tele.Face = v end })
+tTele:Slider({ Name = "Travel speed", Min = 100, Max = 2000, Step = 50, Default = Tele.Speed, Suffix = " st/s", Callback = function(v) Tele.Speed = v end })
+tTele:Slider({ Name = "Cruise height", Min = 20, Max = 250, Step = 10, Default = Tele.Height, Suffix = " st", Callback = function(v) Tele.Height = v end })
+local shownLoc = {}
+local function addLocations(list)
+	for _, loc in ipairs(list) do
+		if not shownLoc[loc.name] then
+			shownLoc[loc.name] = true
+			tTele:Button({ Name = loc.name, Callback = function() Tele.GoTo(loc) end })
+		end
+	end
+	Tele.Info = #list .. " locations found"
+	lTele:Set(Tele.Info)
+end
+tTele:Button({ Name = "Rescan locations", Callback = function() Tele.Scan(addLocations) end })
+Tele.Scan(addLocations)
 
 -- Settings tab
 local tSet = win:Tab("Settings")
@@ -111,6 +132,7 @@ local function unload()
 	Anti.Destroy()
 	AntiFlat.Destroy()
 	Speed.Destroy()
+	Tele.Notify, Tele.Changed = nil, nil
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
@@ -127,7 +149,7 @@ if getgenv then getgenv().__ScrdsxScript = unload end
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 	if i.KeyCode == Enum.KeyCode.RightShift then
 		win:Toggle()
-	elseif not gp and i.KeyCode == Enum.KeyCode.Slash then
+	elseif not gp and win.visible and i.KeyCode == Enum.KeyCode.Slash then -- only while the window is open (chat uses / too)
 		win.searchBox:CaptureFocus()
 		task.defer(function() win.searchBox.Text = "" end)
 	end
