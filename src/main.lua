@@ -4,6 +4,7 @@ local Loading = __import("loading")
 local Vehicle = __import("vehicle")
 local Fly = __import("fly")
 local Player = __import("player")
+local Anti = __import("anticrash")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -28,6 +29,20 @@ mSusp:Toggle({ Name = "Set game's suspensionHeight", Default = true, Callback = 
 mSusp:Toggle({ Name = "Also raise springs", Default = false, Callback = function(v) Vehicle.UseSprings = v end })
 Vehicle.Changed = function() lCar:Set(Vehicle.Info) end
 Vehicle.Start()
+
+local mAnti = tVeh:Module({ Name = "Anti Crash Damage", Default = false, Callback = function(on)
+	if not Anti.SetEnabled(on) then
+		mAnti:Set(false, true)
+		win:Notify("Anti Crash: " .. Anti.Info)
+	end
+end })
+local lAntiState = mAnti:Label({ Name = "Status", Value = Anti.Info })
+local lAntiBlocked = mAnti:Label({ Name = "Crash reports blocked", Value = 0 })
+local lAntiLast = mAnti:Label({ Name = "Last impact value", Value = "-" })
+mAnti:Slider({ Name = "Block impacts above", Min = 1, Max = 2000, Step = 1, Default = Anti.MinImpact, Callback = function(v) Anti.MinImpact = v end })
+Anti.Changed = function()
+	lAntiState:Set(Anti.Info); lAntiBlocked:Set(Anti.Blocked); lAntiLast:Set(Anti.Last)
+end
 
 local mFly = tVeh:Module({ Name = "Vehicle Fly", Default = false, Callback = function(on)
 	Fly.SetEnabled(on)
@@ -66,6 +81,7 @@ local function unload()
 	Fly.Destroy()
 	Player.Changed = nil
 	Player.Destroy()
+	Anti.Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
