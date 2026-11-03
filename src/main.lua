@@ -4,7 +4,9 @@ local Loading = __import("loading")
 local Vehicle = __import("vehicle")
 local Fly = __import("fly")
 
-local TITLE, SUBTITLE = "Scrdsx Solutions", "Script" -- TODO: set the script name
+local TITLE = "Scrdsx Solutions"
+local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
+print("[Scrdsx] running " .. SUBTITLE)
 
 -- re-run safe: tear down a previous instance
 if getgenv then
