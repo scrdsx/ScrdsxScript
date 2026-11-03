@@ -12,6 +12,9 @@ local Fly = {
 	Accel = 0.25,      -- 0.05 (floaty) .. 1 (instant)
 	Stabilize = true,  -- kill spin so the car does not tumble
 	Boost = 2,         -- speed multiplier while LeftShift is held
+	SteerMode = true,  -- A/D turn the car and W/S follow its heading (off: camera flight, A/D strafe)
+	TurnSpeed = 2.5,   -- rad/s while A or D is held
+	ReverseHeading = false, -- flip if W flies the car backwards
 }
 local lp = Players.LocalPlayer
 local conn, vel
@@ -36,13 +39,22 @@ function Fly.Start()
 		local root = s.AssemblyRootPart or s
 		vel = vel or root.AssemblyLinearVelocity
 
-		local want = Vector3.zero
+		local want, turn = Vector3.zero, 0
 		if not UIS:GetFocusedTextBox() then
-			local look, right = cam.CFrame.LookVector, cam.CFrame.RightVector
 			local f = (UIS:IsKeyDown(Enum.KeyCode.W) and 1 or 0) - (UIS:IsKeyDown(Enum.KeyCode.S) and 1 or 0)
 			local r = (UIS:IsKeyDown(Enum.KeyCode.D) and 1 or 0) - (UIS:IsKeyDown(Enum.KeyCode.A) and 1 or 0)
 			local u = (UIS:IsKeyDown(Enum.KeyCode.Space) and 1 or 0) - (UIS:IsKeyDown(Enum.KeyCode.LeftControl) and 1 or 0)
-			local horiz = look * f + right * r
+			local horiz
+			if Fly.SteerMode then
+				-- A/D turn the car; W/S go along its heading
+				turn = -r * Fly.TurnSpeed
+				local fwd = s.CFrame.LookVector * (Fly.ReverseHeading and -1 or 1)
+				fwd = Vector3.new(fwd.X, 0, fwd.Z)
+				horiz = fwd.Magnitude > 0.01 and fwd.Unit * f or Vector3.zero
+			else
+				-- camera mode: W/S along the camera, A/D strafe
+				horiz = cam.CFrame.LookVector * f + cam.CFrame.RightVector * r
+			end
 			if horiz.Magnitude > 0 then want = horiz.Unit * Fly.Speed end
 			want += Vector3.new(0, u * Fly.VSpeed, 0)
 			if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then want *= Fly.Boost end
@@ -51,7 +63,12 @@ function Fly.Start()
 		local a = 1 - (1 - math.clamp(Fly.Accel, 0.01, 1)) ^ (dt * 60)
 		vel = vel:Lerp(want, a)
 		root.AssemblyLinearVelocity = vel -- includes cancelling gravity: no input = hover
-		if Fly.Stabilize then root.AssemblyAngularVelocity = Vector3.zero end
+		if turn ~= 0 then
+			local av = root.AssemblyAngularVelocity
+			root.AssemblyAngularVelocity = Fly.Stabilize and Vector3.new(0, turn, 0) or Vector3.new(av.X, turn, av.Z)
+		elseif Fly.Stabilize then
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
 	end)
 end
 
