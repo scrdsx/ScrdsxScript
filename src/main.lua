@@ -43,6 +43,10 @@ mFly:Toggle({ Name = "Reverse heading (if W goes backwards)", Default = Fly.Reve
 mFly:Toggle({ Name = "Stabilize (no spin)", Default = Fly.Stabilize, Callback = function(v) Fly.Stabilize = v end })
 Fly.Start()
 
+-- Player tab
+local tPlayer = win:Tab("Player")
+tPlayer:Label({ Name = "Status", Value = "No modules yet" })
+
 -- Settings tab
 local tSet = win:Tab("Settings")
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
