@@ -108,10 +108,14 @@ local function addLocations(list)
 			tTele:Button({ Name = loc.name, Callback = function() Tele.GoTo(loc) end })
 		end
 	end
-	Tele.Info = #list .. " locations found"
+	Tele.Info = #list .. " locations" .. (#(Tele.Missing or {}) > 0 and (" | not loaded yet: " .. table.concat(Tele.Missing, ", ")) or "")
 	lTele:Set(Tele.Info)
 end
 tTele:Button({ Name = "Rescan locations", Callback = function() Tele.Scan(addLocations) end })
+tTele:Button({ Name = "Save my position as a spot", Callback = function()
+	local loc = Tele.SaveHere()
+	if loc then addLocations({ loc }) end
+end })
 Tele.Scan(addLocations)
 
 -- Settings tab

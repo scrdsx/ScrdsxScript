@@ -17,6 +17,36 @@ local Tele = {
 }
 local lp = Players.LocalPlayer
 
+-- coordinates read by tools/robbery_probe.lua (used when the shop is not streamed in near you)
+local KNOWN = {
+	["Bank"] = Vector3.new(-1239, 10, 3120),
+	["JewelleryStore"] = Vector3.new(-412, 12, 3582),
+	["Gas-N-Go Fuel Station"] = Vector3.new(-1541, 9, 3771),
+	["Club"] = Vector3.new(-1744, 11, 3009),
+}
+
+-- your own saved spots, kept in the executor workspace if it has file functions
+local SAVE_FILE = "ScrdsxScript_spots.json"
+Tele.Saved = {}
+local function loadSaved()
+	if not (isfile and readfile and isfile(SAVE_FILE)) then return end
+	local ok, data = pcall(function() return game:GetService("HttpService"):JSONDecode(readfile(SAVE_FILE)) end)
+	if ok and type(data) == "table" then
+		for _, s in ipairs(data) do
+			if type(s.name) == "string" and type(s.x) == "number" then
+				Tele.Saved[#Tele.Saved + 1] = { name = s.name, pos = Vector3.new(s.x, s.y, s.z) }
+			end
+		end
+	end
+end
+local function persistSaved()
+	if not writefile then return end
+	local data = {}
+	for _, s in ipairs(Tele.Saved) do data[#data + 1] = { name = s.name, x = s.pos.X, y = s.pos.Y, z = s.pos.Z } end
+	pcall(function() writefile(SAVE_FILE, game:GetService("HttpService"):JSONEncode(data)) end)
+end
+loadSaved()
+
 local function say(msg)
 	Tele.Info = msg
 	if Tele.Notify then Tele.Notify(msg) end
@@ -48,9 +78,17 @@ function Tele.Scan(done)
 			list[#list + 1] = { name = final, pos = pos }
 		end
 		local rob = workspace:FindFirstChild("Robberies")
+		Tele.Missing = {}
 		if rob then
-			for _, c in ipairs(rob:GetChildren()) do add(c.Name, posOf(c)) end
+			for _, c in ipairs(rob:GetChildren()) do
+				local nm = (c.Name:gsub(" Robbery$", ""):gsub("Robbery$", ""))
+				local p = posOf(c) or KNOWN[nm]
+				if p then add(nm, p)
+				elseif nm ~= "VendingMachines" and nm ~= "ContainerRobberies" then Tele.Missing[#Tele.Missing + 1] = nm end -- not streamed in yet
+			end
 		end
+		for nm, p in pairs(KNOWN) do if not names[nm] then add(nm, p) end end
+		for _, s in ipairs(Tele.Saved) do add(s.name, s.pos) end
 		local iter = 0
 		for _, d in ipairs(workspace:GetDescendants()) do
 			iter = iter + 1
@@ -142,6 +180,26 @@ local function along(pts, lens, d)
 	return pts[#pts]
 end
 
+-- remember where you are standing (or driving) as a named spot; returns the new location
+function Tele.SaveHere()
+	local c = lp.Character
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	if not hrp then say("No character"); return nil end
+	local n = 1
+	while true do
+		local taken = false
+		for _, s in ipairs(Tele.Saved) do if s.name == "Spot " .. n then taken = true break end end
+		if not taken then break end
+		n = n + 1
+	end
+	local loc = { name = "Spot " .. n, pos = hrp.Position }
+	Tele.Saved[#Tele.Saved + 1] = loc
+	persistSaved()
+	table.insert(Tele.Locations, loc)
+	say("Saved " .. loc.name)
+	return loc
+end
+
 function Tele.GoToCar()
 	if Tele.Busy then return end
 	local car, seat = myCar()
@@ -170,7 +228,7 @@ function Tele.GoTo(loc)
 			local ignore = { car, c }
 			-- how high the seat rides above the ground, so the car lands level
 			local g = groundRay(seat.Position.X, seat.Position.Z, seat.Position.Y + 2, ignore)
-			local seatH = g and math.clamp(seat.Position.Y - g.Position.Y, 1.5, 8) or 4
+			local seatH = (g and math.clamp(seat.Position.Y - g.Position.Y, 0.8, 8) or 3) + 0.3 -- seat rode 1.18 above asphalt in the dump
 
 			local startCF = seat.CFrame
 			local dest = approachPoint(loc.pos, startCF.Position, ignore)
