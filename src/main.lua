@@ -89,6 +89,10 @@ local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
 Player.Start()
 
+-- Teleports tab
+local tTele = win:Tab("Teleports")
+tTele:Label({ Name = "Status", Value = "No teleports yet" })
+
 -- Settings tab
 local tSet = win:Tab("Settings")
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
