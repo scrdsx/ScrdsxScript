@@ -6,6 +6,7 @@ local lp = Players.LocalPlayer
 local WATCH = tonumber((getgenv and getgenv().ProbeSeconds) or 25)
 local out = {}
 local function log(s) out[#out + 1] = s end
+print("[stamina] started")
 local function short(v)
 	local t = typeof(v)
 	if t == "Instance" then return v:GetFullName() end
@@ -68,9 +69,17 @@ local function dumpTable(t, depth, prefix)
 end
 
 if inst then
-	local ok, mod = pcall(require, inst)
+	print("[stamina] requiring module...")
+	local done, ok, mod = false, false, nil
+	task.spawn(function() ok, mod = pcall(require, inst); done = true end)
+	local tw = os.clock()
+	while not done and os.clock() - tw < 6 do task.wait(0.1) end
+	if not done then log("require TIMED OUT after 6s (module yields or is blocked)") end
 	log("require: " .. tostring(ok) .. " -> " .. typeof(mod))
-	if ok and type(mod) == "table" then dumpTable(mod, 0, "mod.")
+	print("[stamina] require done: " .. tostring(ok))
+	if ok and type(mod) == "table" then
+		local okd, err = pcall(dumpTable, mod, 0, "mod.")
+		if not okd then log("dump error: " .. tostring(err)) end
 	elseif ok and type(mod) == "function" then
 		log("module returned a function")
 		dumpTable({ fn = mod }, 0, "mod.")
@@ -79,8 +88,12 @@ end
 
 -- heap scan: small tables with a stamina-looking numeric field (the live state is usually one of these)
 if getgc then
-	local found = 0
-	for _, t in ipairs(getgc(true)) do
+	print("[stamina] scanning heap...")
+	local found, iter = 0, 0
+	local okgc, heap = pcall(getgc, true)
+	for _, t in ipairs(okgc and heap or {}) do
+		iter = iter + 1
+		if iter % 3000 == 0 then task.wait() end
 		if type(t) == "table" and found < 25 and not seen[t] then
 			local hit
 			local count = 0
@@ -104,7 +117,7 @@ end
 
 -- live sampling while you sprint
 log(("-- LIVE: sampling %d numeric fields for %ds. SPRINT now --"):format(#candidates, WATCH))
-print(("[stamina] sprint now for %ds (%d fields tracked)"):format(WATCH, #candidates))
+print(("[stamina] SPRINT NOW for %ds (%d fields tracked)"):format(WATCH, #candidates))
 local last, changes, t0 = {}, {}, os.clock()
 for i, c in ipairs(candidates) do last[i] = c[2][c[3]] end
 while os.clock() - t0 < WATCH do
