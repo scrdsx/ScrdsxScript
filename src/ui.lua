@@ -301,7 +301,7 @@ local function row(tab, name, height)
 	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = tab.page }, { corner(9), stroke(T.stroke) })
 	f.MouseEnter:Connect(function() tween(f, .15, { BackgroundColor3 = T.hover }) end)
 	f.MouseLeave:Connect(function() tween(f, .15, { BackgroundColor3 = T.elem }) end)
-	table.insert(tab.win.rows, { frame = f, name = name:lower(), tab = tab })
+	table.insert(tab.win.rows, { frame = f, name = name:lower(), tab = tab.realTab or tab })
 	return f
 end
 
@@ -341,6 +341,51 @@ function M:Toggle(o)
 	local hit = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", Parent = f })
 	hit.MouseButton1Click:Connect(function() apply(not state) end)
 	apply(o.Default == true, true)
+	obj.frame, obj.hit = f, hit
+	return obj
+end
+
+-- A module: a toggle (left-click) whose settings drop down when you right-click it.
+-- local m = tab:Module({ Name = "Suspension", Default = false, Callback = function(on) end })
+-- m:Slider({...}) / m:Toggle({...}) / m:Keybind({...}) / m:Button({...}) / m:Label({...}) add rows to its dropdown.
+function M:Module(o)
+	local win = self.win
+	local cont = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0, Parent = self.page })
+	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = cont })
+
+	local obj = M.Toggle({ page = cont, win = win, realTab = self.realTab or self }, o)
+	win.rows[#win.rows].frame = cont -- search shows/hides the whole module, settings included
+	obj.frame.LayoutOrder = 0
+
+	local chev = label("›", 20, T.sub, T.bold, Enum.TextXAlignment.Center)
+	chev.AnchorPoint = Vector2.new(.5, .5); chev.Position = UDim2.new(1, -66, .5, -1); chev.Size = UDim2.fromOffset(16, 20); chev.Parent = obj.frame
+
+	local sf = new("CanvasGroup", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0,
+		Visible = false, GroupTransparency = 1, LayoutOrder = 1, Parent = cont,
+	})
+	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = sf })
+	new("UIPadding", { PaddingLeft = UDim.new(0, 14), Parent = sf })
+	local sub = { page = sf, win = win, realTab = self.realTab or self }
+	setmetatable(sub, { __index = M })
+
+	local open = false
+	function obj:SetOpen(v)
+		open = v
+		if v then
+			sf.Visible = true
+			tween(sf, .2, { GroupTransparency = 0 })
+		else
+			tween(sf, .15, { GroupTransparency = 1 })
+			task.delay(.16, function() if not open then sf.Visible = false end end)
+		end
+		tween(chev, .2, { Rotation = v and 90 or 0, TextColor3 = v and T.text or T.sub })
+	end
+	obj.hit.MouseButton2Click:Connect(function() obj:SetOpen(not open) end)
+
+	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label" }) do
+		obj[k] = function(_, opts) return M[k](sub, opts) end
+	end
 	return obj
 end
 

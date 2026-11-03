@@ -18,10 +18,11 @@ local win = UI.new({ Title = TITLE, Subtitle = SUBTITLE })
 -- Vehicle Mods tab
 local tVeh = win:Tab("Vehicle Mods")
 local lCar = tVeh:Label({ Name = "Car", Value = Vehicle.Info })
-tVeh:Slider({ Name = "Suspension height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, Default = 0, Suffix = " st", Callback = function(v) Vehicle.SetHeight(v) end })
-tVeh:Toggle({ Name = "Set game's suspensionHeight", Default = true, Callback = function(v) Vehicle.UseAttribute = v end })
-tVeh:Toggle({ Name = "Also raise springs", Default = false, Callback = function(v) Vehicle.UseSprings = v end })
-tVeh:Button({ Name = "Reset suspension", Callback = function() Vehicle.SetHeight(0); win:Notify("Suspension reset (move the slider to re-apply)") end })
+tVeh:Label({ Name = "Tip", Value = "right-click a module" })
+local mSusp = tVeh:Module({ Name = "Suspension", Default = false, Callback = function(on) Vehicle.SetEnabled(on) end })
+mSusp:Slider({ Name = "Height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, Default = 0, Suffix = " st", Callback = function(v) Vehicle.SetHeight(v) end })
+mSusp:Toggle({ Name = "Set game's suspensionHeight", Default = true, Callback = function(v) Vehicle.UseAttribute = v end })
+mSusp:Toggle({ Name = "Also raise springs", Default = false, Callback = function(v) Vehicle.UseSprings = v end })
 Vehicle.Changed = function() lCar:Set(Vehicle.Info) end
 Vehicle.Start()
 
