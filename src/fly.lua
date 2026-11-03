@@ -12,7 +12,10 @@ local Fly = {
 	Accel = 0.25,      -- 0.05 (floaty) .. 1 (instant)
 	Stabilize = true,  -- kill spin so the car does not tumble
 	Boost = 2,         -- speed multiplier while LeftShift is held
-	SteerMode = true,  -- A/D turn the car and W/S follow its heading (off: camera flight, A/D strafe)
+	SteerMode = false, -- true: old car-style (A/D turn, W/S along heading). false: free flight toward the camera
+	FaceCamera = true, -- free flight: the car turns to face where the camera looks, like a real aircraft
+	Tilt = false,      -- also pitch the nose up/down with the camera
+	TurnSmooth = 0.2,  -- how fast the car turns to face the camera (0.02 slow .. 1 instant)
 	TurnSpeed = 2.5,   -- rad/s while A or D is held
 	ReverseHeading = false, -- flip if W flies the car backwards
 }
@@ -63,7 +66,19 @@ function Fly.Start()
 		local a = 1 - (1 - math.clamp(Fly.Accel, 0.01, 1)) ^ (dt * 60)
 		vel = vel:Lerp(want, a)
 		root.AssemblyLinearVelocity = vel -- includes cancelling gravity: no input = hover
-		if turn ~= 0 then
+		if Fly.FaceCamera and not Fly.SteerMode then
+			-- aim the car's nose where the camera looks (rotate about the seat so it does not drift)
+			local look = cam.CFrame.LookVector
+			local aim = Fly.Tilt and look or Vector3.new(look.X, 0, look.Z)
+			if aim.Magnitude > 0.05 then
+				aim = aim.Unit * (Fly.ReverseHeading and -1 or 1)
+				local cur = s.CFrame
+				local target = CFrame.lookAt(cur.Position, cur.Position + aim, Vector3.yAxis)
+				local k = 1 - (1 - math.clamp(Fly.TurnSmooth, 0.02, 1)) ^ (dt * 60)
+				root.CFrame = (cur:Lerp(target, k) * cur:Inverse()) * root.CFrame
+				root.AssemblyAngularVelocity = Vector3.zero
+			end
+		elseif turn ~= 0 then
 			local av = root.AssemblyAngularVelocity
 			root.AssemblyAngularVelocity = Fly.Stabilize and Vector3.new(0, turn, 0) or Vector3.new(av.X, turn, av.Z)
 		elseif Fly.Stabilize then
