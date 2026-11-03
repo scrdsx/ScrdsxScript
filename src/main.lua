@@ -48,9 +48,9 @@ end
 
 local mSpeed = tVeh:Module({ Name = "Speed", Default = false, Callback = function(on) Speed.SetEnabled(on) end })
 local lSpeed = mSpeed:Label({ Name = "Status", Value = Speed.Info })
-mSpeed:Slider({ Name = "Engine level", Min = 0, Max = 100, Step = 1, Default = 0, Callback = function(v) Speed.Engine = v end })
-mSpeed:Slider({ Name = "Brakes level", Min = 0, Max = 100, Step = 1, Default = 0, Callback = function(v) Speed.Brakes = v end })
-mSpeed:Slider({ Name = "Armor level", Min = 0, Max = 20, Step = 1, Default = 0, Callback = function(v) Speed.Armor = v end })
+mSpeed:Slider({ Name = "Engine level", Min = 0, Max = 6, Step = 1, Default = 0, Callback = function(v) Speed.Engine = v end })
+mSpeed:Slider({ Name = "Brakes level", Min = 0, Max = 6, Step = 1, Default = 0, Callback = function(v) Speed.Brakes = v end })
+mSpeed:Slider({ Name = "Armor level", Min = 0, Max = 6, Step = 1, Default = 0, Callback = function(v) Speed.Armor = v end })
 mSpeed:Slider({ Name = "Acceleration multiplier", Min = 1, Max = 10, Step = 0.5, Default = 1, Suffix = "x", Callback = function(v) Speed.AccelMult = v end })
 mSpeed:Slider({ Name = "Top speed multiplier", Min = 1, Max = 5, Step = 0.25, Default = 1, Suffix = "x", Callback = function(v) Speed.TopMult = v end })
 Speed.Changed = function() lSpeed:Set(Speed.Info) end
