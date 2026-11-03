@@ -26,7 +26,11 @@ local function isPos(v) local t = typeof(v) return t == "Vector3" or t == "CFram
 print("[shops] started")
 
 log("== streaming ==")
-log(("StreamingEnabled=%s MinRadius=%s TargetRadius=%s"):format(tostring(workspace.StreamingEnabled), tostring(workspace.StreamingMinRadius), tostring(workspace.StreamingTargetRadius)))
+local function prop(name)
+	local ok, v = pcall(function() return workspace[name] end)
+	return ok and tostring(v) or "unreadable"
+end
+log(("StreamingEnabled=%s MinRadius=%s TargetRadius=%s"):format(prop("StreamingEnabled"), prop("StreamingMinRadius"), prop("StreamingTargetRadius")))
 local pr = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 log("you are at " .. (pr and fmt(pr.Position) or "?"))
 
