@@ -1,6 +1,7 @@
 local UIS = game:GetService("UserInputService")
 local UI = __import("ui")
 local Loading = __import("loading")
+local Vehicle = __import("vehicle")
 
 local TITLE, SUBTITLE = "Scrdsx Solutions", "Script" -- TODO: set the script name
 
@@ -14,9 +15,13 @@ Loading.run(TITLE, SUBTITLE)
 
 local win = UI.new({ Title = TITLE, Subtitle = SUBTITLE })
 
--- feature tabs go here
-local tMain = win:Tab("Main")
-tMain:Label({ Name = "Status", Value = "No features yet" })
+-- Vehicle Mods tab
+local tVeh = win:Tab("Vehicle Mods")
+local lCar = tVeh:Label({ Name = "Car", Value = Vehicle.Info })
+tVeh:Slider({ Name = "Suspension height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, Default = 0, Suffix = " st", Callback = function(v) Vehicle.SetHeight(v) end })
+tVeh:Button({ Name = "Reset suspension", Callback = function() Vehicle.SetHeight(0); win:Notify("Suspension reset (move the slider to re-apply)") end })
+Vehicle.Changed = function() lCar:Set(Vehicle.Info) end
+Vehicle.Start()
 
 -- Settings tab
 local tSet = win:Tab("Settings")
@@ -28,6 +33,8 @@ local env = getgenv and getgenv() or _G
 local alive = true
 local function unload()
 	alive = false
+	Vehicle.Changed = nil
+	Vehicle.Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
