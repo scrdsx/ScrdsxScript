@@ -1,4 +1,4 @@
-﻿-- Scrdsx Solutions loader: fetches each module from src/ and runs them. No bundle needed.
+-- Scrdsx Solutions loader: fetches each module from src/ and runs them. No bundle needed.
 -- Set getgenv().ScrdsxBase to the folder URL (ending in /) that holds loader.lua and src/.
 -- Set getgenv().ScrdsxLocal = "ScrdsxScript/" to read from the executor workspace instead.
 local env = getgenv and getgenv() or _G
