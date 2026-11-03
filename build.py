@@ -1,8 +1,8 @@
-﻿"""Bundle src/*.lua into dist/ScrdsxScript.lua (one pasteable/loadstring-able file)."""
+"""Bundle src/*.lua into dist/ScrdsxScript.lua (one pasteable/loadstring-able file)."""
 from pathlib import Path
 
 root = Path(__file__).parent
-order = ["ui", "loading", "vehicle"]  # dependencies first; main runs last
+order = ["ui", "loading", "vehicle", "fly"]  # dependencies first; main runs last
 
 out = ["local __mods, __cache = {}, {}",
        "local function __import(n)",

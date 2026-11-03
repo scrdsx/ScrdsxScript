@@ -2,6 +2,7 @@ local UIS = game:GetService("UserInputService")
 local UI = __import("ui")
 local Loading = __import("loading")
 local Vehicle = __import("vehicle")
+local Fly = __import("fly")
 
 local TITLE, SUBTITLE = "Scrdsx Solutions", "Script" -- TODO: set the script name
 
@@ -18,13 +19,24 @@ local win = UI.new({ Title = TITLE, Subtitle = SUBTITLE })
 -- Vehicle Mods tab
 local tVeh = win:Tab("Vehicle Mods")
 local lCar = tVeh:Label({ Name = "Car", Value = Vehicle.Info })
-tVeh:Label({ Name = "Tip", Value = "right-click a module" })
 local mSusp = tVeh:Module({ Name = "Suspension", Default = false, Callback = function(on) Vehicle.SetEnabled(on) end })
 mSusp:Slider({ Name = "Height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, Default = 0, Suffix = " st", Callback = function(v) Vehicle.SetHeight(v) end })
 mSusp:Toggle({ Name = "Set game's suspensionHeight", Default = true, Callback = function(v) Vehicle.UseAttribute = v end })
 mSusp:Toggle({ Name = "Also raise springs", Default = false, Callback = function(v) Vehicle.UseSprings = v end })
 Vehicle.Changed = function() lCar:Set(Vehicle.Info) end
 Vehicle.Start()
+
+local mFly = tVeh:Module({ Name = "Vehicle Fly", Default = false, Callback = function(on)
+	Fly.SetEnabled(on)
+	win:Notify(on and "Vehicle fly on (W/S/A/D, Space up, Ctrl down, Shift boost)" or "Vehicle fly off")
+end })
+local flyKey = mFly:Keybind({ Name = "Toggle key", Default = Enum.KeyCode.F })
+mFly:Slider({ Name = "Speed", Min = 10, Max = 400, Step = 5, Default = Fly.Speed, Suffix = " st/s", Callback = function(v) Fly.Speed = v end })
+mFly:Slider({ Name = "Vertical speed", Min = 10, Max = 300, Step = 5, Default = Fly.VSpeed, Suffix = " st/s", Callback = function(v) Fly.VSpeed = v end })
+mFly:Slider({ Name = "Boost multiplier (Shift)", Min = 1, Max = 5, Step = 0.25, Default = Fly.Boost, Suffix = "x", Callback = function(v) Fly.Boost = v end })
+mFly:Slider({ Name = "Acceleration", Min = 0.05, Max = 1, Step = 0.05, Default = Fly.Accel, Callback = function(v) Fly.Accel = v end })
+mFly:Toggle({ Name = "Stabilize (no spin)", Default = Fly.Stabilize, Callback = function(v) Fly.Stabilize = v end })
+Fly.Start()
 
 -- Settings tab
 local tSet = win:Tab("Settings")
@@ -38,6 +50,7 @@ local function unload()
 	alive = false
 	Vehicle.Changed = nil
 	Vehicle.Destroy()
+	Fly.Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
@@ -58,6 +71,12 @@ table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 		win.searchBox:CaptureFocus()
 		task.defer(function() win.searchBox.Text = "" end)
 	end
+end))
+
+-- fly toggle key (not while typing or while the key box is waiting for a key)
+table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
+	if gp or i.UserInputType ~= Enum.UserInputType.Keyboard or flyKey:IsListening() then return end
+	if flyKey:Get() == i.KeyCode then mFly:Set(not mFly:Get()) end
 end))
 
 win:Notify(TITLE .. " loaded  v" .. tostring(env.ScrdsxVersion or "?"))
