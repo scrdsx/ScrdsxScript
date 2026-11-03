@@ -7,6 +7,8 @@ local Vehicle = { Height = 0, MaxHeight = 20, Info = "no car" }
 local lp = Players.LocalPlayer
 local model, saved = nil, {} -- saved[spring] = { FreeLength, MinLength, MaxLength }
 local conn, acc = nil, 0
+local attrOrig -- the car's own suspensionHeight attribute before we touched it
+Vehicle.UseAttribute, Vehicle.UseSprings = true, false
 
 local function currentCar()
 	local c = lp.Character
@@ -23,6 +25,8 @@ local function restore()
 		if sp.Parent then pcall(function() sp.MinLength = o[2]; sp.MaxLength = o[3]; sp.FreeLength = o[1] end) end
 	end
 	saved = {}
+	if model and model.Parent and attrOrig ~= nil then pcall(function() model:SetAttribute("suspensionHeight", attrOrig) end) end
+	attrOrig = nil
 end
 
 local function apply()
@@ -30,7 +34,21 @@ local function apply()
 	if m ~= model then restore(); model = m end
 	if not m then Vehicle.Info = "no car (sit in one)"; return end
 	local n = 0
-	for _, d in ipairs(m:GetDescendants()) do
+	-- the game's own setting (car attribute); set locally, so it only matters if the client physics reads it
+	local cur = m:GetAttribute("suspensionHeight")
+	if Vehicle.UseAttribute and cur ~= nil then
+		if attrOrig == nil then attrOrig = cur end
+		if cur ~= Vehicle.Height then m:SetAttribute("suspensionHeight", Vehicle.Height) end
+	elseif attrOrig ~= nil then
+		m:SetAttribute("suspensionHeight", attrOrig); attrOrig = nil
+	end
+	if not Vehicle.UseSprings and next(saved) ~= nil then -- toggled off: put the springs back
+		for sp, o in pairs(saved) do
+			if sp.Parent then pcall(function() sp.MinLength = o[2]; sp.MaxLength = o[3]; sp.FreeLength = o[1] end) end
+		end
+		saved = {}
+	end
+	for _, d in ipairs(Vehicle.UseSprings and m:GetDescendants() or {}) do
 		if d:IsA("SpringConstraint") then
 			n += 1
 			local o = saved[d]
@@ -41,7 +59,7 @@ local function apply()
 			d.FreeLength = o[1] + Vehicle.Height
 		end
 	end
-	Vehicle.Info = n > 0 and (m.Name .. ": " .. n .. " springs") or (m.Name .. ": no SpringConstraints")
+	Vehicle.Info = m.Name .. " | attr=" .. tostring(m:GetAttribute("suspensionHeight")) .. " | springs raised: " .. n
 end
 
 function Vehicle.SetHeight(v) Vehicle.Height = math.clamp(v, 0, Vehicle.MaxHeight); apply() end
