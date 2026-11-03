@@ -6,6 +6,7 @@ local Fly = __import("fly")
 local Player = __import("player")
 local Anti = __import("anticrash")
 local AntiFlat = __import("antiflat")
+local Speed = __import("speed")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -44,6 +45,16 @@ mAnti:Slider({ Name = "Block impacts above", Min = 1, Max = 2000, Step = 1, Defa
 Anti.Changed = function()
 	lAntiState:Set(Anti.Info); lAntiBlocked:Set(Anti.Blocked); lAntiLast:Set(Anti.Last)
 end
+
+local mSpeed = tVeh:Module({ Name = "Speed", Default = false, Callback = function(on) Speed.SetEnabled(on) end })
+local lSpeed = mSpeed:Label({ Name = "Status", Value = Speed.Info })
+mSpeed:Slider({ Name = "Engine level", Min = 0, Max = 100, Step = 1, Default = 0, Callback = function(v) Speed.Engine = v end })
+mSpeed:Slider({ Name = "Brakes level", Min = 0, Max = 100, Step = 1, Default = 0, Callback = function(v) Speed.Brakes = v end })
+mSpeed:Slider({ Name = "Armor level", Min = 0, Max = 20, Step = 1, Default = 0, Callback = function(v) Speed.Armor = v end })
+mSpeed:Slider({ Name = "Acceleration multiplier", Min = 1, Max = 10, Step = 0.5, Default = 1, Suffix = "x", Callback = function(v) Speed.AccelMult = v end })
+mSpeed:Slider({ Name = "Top speed multiplier", Min = 1, Max = 5, Step = 0.25, Default = 1, Suffix = "x", Callback = function(v) Speed.TopMult = v end })
+Speed.Changed = function() lSpeed:Set(Speed.Info) end
+Speed.Start()
 
 local mFlat = tVeh:Module({ Name = "Anti Flat Tires", Default = false, Callback = function(on) AntiFlat.SetEnabled(on) end })
 local lFlatState = mFlat:Label({ Name = "Status", Value = AntiFlat.Info })
@@ -95,6 +106,7 @@ local function unload()
 	Player.Destroy()
 	Anti.Destroy()
 	AntiFlat.Destroy()
+	Speed.Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
