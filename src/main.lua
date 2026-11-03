@@ -3,6 +3,7 @@ local UI = __import("ui")
 local Loading = __import("loading")
 local Vehicle = __import("vehicle")
 local Fly = __import("fly")
+local Player = __import("player")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -45,7 +46,10 @@ Fly.Start()
 
 -- Player tab
 local tPlayer = win:Tab("Player")
-tPlayer:Label({ Name = "Status", Value = "No modules yet" })
+local mStam = tPlayer:Module({ Name = "Inf Stamina", Default = false, Callback = function(on) Player.SetInfStamina(on) end })
+local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
+Player.Changed = function() lStam:Set(Player.Info) end
+Player.Start()
 
 -- Settings tab
 local tSet = win:Tab("Settings")
@@ -60,6 +64,8 @@ local function unload()
 	Vehicle.Changed = nil
 	Vehicle.Destroy()
 	Fly.Destroy()
+	Player.Changed = nil
+	Player.Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
