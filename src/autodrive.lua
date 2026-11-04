@@ -320,21 +320,51 @@ function Drive.To(targetPos, opts)
 			task.wait(0.9)
 			local dy = wrap(yawOf(forward()) - y0)
 			setCtl("Steering", 0)
-			steerSign = dy >= 0 and 1 or -1
-			log(("steering: +0.8 for 0.9 s changed the heading by %.2f rad -> sign %d"):format(dy, steerSign))
+			if math.abs(dy) > 0.3 then steerSign = dy >= 0 and 1 or -1 else steerSign = -1 end
+			log(("steering: +0.8 for 0.9 s changed the heading by %.2f rad -> sign %d%s"):format(dy, steerSign, math.abs(dy) > 0.3 and "" or " (too small to trust, using the default)"))
 		end
 
-		local idx, stuckSince, recoveries = 1, nil, 0
+		-- Pure pursuit: project the car on the route, aim at a point a little way ahead ON the route, steer by the angle to it
+		-- (with a damping term on the turn rate so it does not weave), slow down for bends coming up.
+		local path = { seat.Position }
+		for _, w in ipairs(wps) do path[#path + 1] = w end
+		local seglen = {}
+		for i = 1, #path - 1 do seglen[i] = flat(path[i], path[i + 1]) end
+		local function remainingFrom(i, t)
+			local r = seglen[i] * (1 - t)
+			for k = i + 1, #path - 1 do r = r + seglen[k] end
+			return r
+		end
+		local function pointAhead(i, t, dist)
+			local a, b = path[i], path[i + 1]
+			local pos = a + (b - a) * t
+			local left = seglen[i] * (1 - t)
+			local cur = i
+			while dist > left and cur < #path - 1 do
+				dist = dist - left
+				cur = cur + 1
+				pos = path[cur]
+				left = seglen[cur]
+			end
+			if cur >= #path - 1 and dist > left then return path[#path], cur end
+			local a2, b2 = path[cur], path[cur + 1]
+			if seglen[cur] < 0.01 then return b2, cur end
+			return pos + (b2 - a2).Unit * math.min(dist, left), cur
+		end
+		local segIdx, stuckSince, recoveries = 1, nil, 0
 		local reversing, revT, revCool = false, 0, 0
 		Drive.State = { name = opts.name or "destination", wps = wps, idx = 1, spd = 0, remain = 0, err = 0 }
 		local startT = os.clock()
-		local totalD = 0
-		do local p = seat.Position; for _, w in ipairs(wps) do totalD = totalD + flat(p, w); p = w end end
-		local limit = totalD / math.max(Drive.MaxSpeed * 0.35, 8) + 60
+		local totalD = remainingFrom(1, 0)
+		local limit = totalD / math.max(Drive.MaxSpeed * 0.3, 8) + 70
 		local arrive = opts.arrive or 22
-		local lastLog = 0
+		local lastLog, lastYaw, yawRate = 0, yawOf(forward()), 0
+		local lastT = os.clock()
 		while not Drive.Cancel and os.clock() - startT < limit do
 			RunService.Heartbeat:Wait()
+			local nowT = os.clock()
+			local dt = math.max(nowT - lastT, 1 / 120)
+			lastT = nowT
 			if hum.SeatPart ~= seat then
 				local up = seat.CFrame.UpVector
 				log(("left the car at (%.0f,%.0f,%.0f): speed %.0f, car up-vector Y=%.2f (low = on its side), car health %s, occupant=%s"):format(
@@ -345,47 +375,61 @@ function Drive.To(targetPos, opts)
 			local pos = seat.Position
 			local spd = speedFlat()
 			local fwd = forward()
-			while idx < #wps and flat(pos, wps[idx]) < 12 do idx = idx + 1 end
-			local final = (idx == #wps)
-			local remain = flat(pos, wps[idx])
-			if final and remain < arrive then
+			local yaw = yawOf(fwd)
+			yawRate = yawRate * 0.6 + wrap(yaw - lastYaw) / dt * 0.4
+			lastYaw = yaw
+
+			-- where am I on the route? (never go backwards along it)
+			local bestD, bestI, bestT = math.huge, segIdx, 0
+			for i = math.max(segIdx - 1, 1), math.min(#path - 1, segIdx + 6) do
+				local a, b = path[i], path[i + 1]
+				local ab = V3(b.X - a.X, 0, b.Z - a.Z)
+				local l2 = ab:Dot(ab)
+				local t = l2 > 0.01 and math.clamp(V3(pos.X - a.X, 0, pos.Z - a.Z):Dot(ab) / l2, 0, 1) or 0
+				local d = flat(pos, a + (b - a) * t)
+				if d < bestD then bestD, bestI, bestT = d, i, t end
+			end
+			segIdx = math.max(segIdx, bestI)
+			local remainRoute = remainingFrom(bestI, bestT)
+			if remainRoute < arrive or (segIdx >= #path - 1 and flat(pos, path[#path]) < arrive) then
 				setCtl("Throttle", -1); setCtl("Steering", 0)
 				local tb = os.clock()
 				while speedFlat() > 2.5 and os.clock() - tb < 4 do task.wait(0.05) end
 				release()
 				return true, "arrived"
 			end
-			-- aim at a point a little ahead on the route
-			local look = math.clamp(spd * 0.45, 14, 40)
-			local ti = idx
-			local acc = flat(pos, wps[idx])
-			while ti < #wps and acc < look do acc = acc + flat(wps[ti], wps[ti + 1]); ti = ti + 1 end
-			local aim = wps[ti]
+
+			-- aim point on the route, further ahead when faster
+			local look = math.clamp(10 + spd * 0.55, 14, 42)
+			local aim = pointAhead(bestI, bestT, look)
 			local dirv = V3(aim.X - pos.X, 0, aim.Z - pos.Z)
 			if dirv.Magnitude < 0.5 then dirv = fwd end
-			local e = wrap(yawOf(dirv) - yawOf(fwd))
-			local steerCmd = math.clamp(e * 1.8, -1, 1) * steerSign
-			-- speed: slower in corners and when the end is near
-			local totalRemain = remain
-			for i = idx, #wps - 1 do totalRemain = totalRemain + flat(wps[i], wps[i + 1]) end
-			do
-				local st = Drive.State
-				if st then st.idx, st.spd, st.remain, st.err, st.fwd = idx, spd, totalRemain, e, fwd end
-			end
-			local corner = 1 - math.clamp(math.abs(e) / 1.1, 0, 0.6)
-			local target = math.min(Drive.MaxSpeed * corner, math.sqrt(2 * 9 * math.max(totalRemain - arrive, 0)) + 10)
+			local e = wrap(yawOf(dirv) - yaw)
+
+			-- steering: proportional (less at speed) minus damping on the turn rate
+			local kp = 2.0 / (1 + spd / 40)
+			local steerCmd = math.clamp(e * kp - yawRate * 0.22, -1, 1) * steerSign
+
+			-- speed: look at how much the route bends in the next ~45 studs
+			local ahead1 = pointAhead(bestI, bestT, 8)
+			local ahead2 = pointAhead(bestI, bestT, 50)
+			local bend = math.abs(wrap(yawOf(V3(ahead2.X - ahead1.X, 0, ahead2.Z - ahead1.Z)) - yaw))
+			local corner = (1 - math.clamp(bend / 1.4, 0, 0.62)) * (1 - math.clamp(math.abs(e) / 1.5, 0, 0.5))
+			local target = math.min(Drive.MaxSpeed * corner, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
+			target = math.max(target, 14)
 			local thrCmd = cur.Throttle
-			if spd < target - 4 then thrCmd = 1
-			elseif spd > target + 10 then thrCmd = -1
-			elseif spd > target then thrCmd = 0 end
-			-- the target is behind us: do not circle, back up while steering the other way until we point roughly at it
-			if not reversing and math.abs(e) > 2.1 and spd < 16 and os.clock() - revCool > 2 then
-				reversing, revT = true, os.clock()
+			if spd < target - 3 then thrCmd = 1
+			elseif spd > target + 14 then thrCmd = -1
+			elseif spd > target + 2 then thrCmd = 0 end
+
+			-- the aim point is behind us: do not circle, back up while steering the other way until we point roughly at it
+			if not reversing and math.abs(e) > 2.1 and spd < 18 and nowT - revCool > 2 then
+				reversing, revT = true, nowT
 				log(("target is behind (error %.2f): backing up to turn around"):format(e))
 			end
 			if reversing then
-				if math.abs(e) < 1.3 or os.clock() - revT > 3.5 then
-					reversing, revCool = false, os.clock()
+				if math.abs(e) < 1.2 or nowT - revT > 3.5 then
+					reversing, revCool = false, nowT
 				else
 					thrCmd = -1
 					steerCmd = -steerCmd
@@ -393,24 +437,33 @@ function Drive.To(targetPos, opts)
 			end
 			setCtl("Steering", steerCmd)
 			setCtl("Throttle", thrCmd)
+
+			do
+				local st = Drive.State
+				if st then
+					st.idx = math.min(#wps, math.max(1, segIdx))
+					st.spd, st.remain, st.err, st.fwd = spd, remainRoute, e, fwd
+				end
+			end
+
 			-- stuck? back up a bit, then try again
-			if spd < 1.5 and cur.Throttle ~= 0 and os.clock() - startT > 3 then
-				stuckSince = stuckSince or os.clock()
-				if os.clock() - stuckSince > 2.5 then
+			if spd < 1.5 and cur.Throttle > 0 and nowT - startT > 2 and not reversing then
+				stuckSince = stuckSince or nowT
+				if nowT - stuckSince > 1.6 then
 					recoveries = recoveries + 1
 					log(("stuck at (%.0f,%.0f,%.0f), backing up (%d)"):format(pos.X, pos.Y, pos.Z, recoveries))
-					if recoveries > 6 then release(); return false, "stuck" end
-					setCtl("Throttle", -1); setCtl("Steering", -math.clamp(e, -1, 1) * steerSign)
-					task.wait(1.6)
+					if recoveries > 8 then release(); return false, "stuck" end
+					setCtl("Throttle", -1); setCtl("Steering", -steerCmd)
+					task.wait(1.5)
 					setCtl("Steering", 0)
 					stuckSince = nil
 				end
 			else
 				stuckSince = nil
 			end
-			if os.clock() - lastLog > 3 then
-				lastLog = os.clock()
-				log(("drive: %.0f studs left, speed %.0f, waypoint %d/%d, heading error %.2f"):format(totalRemain, spd, idx, #wps, e))
+			if nowT - lastLog > 3 then
+				lastLog = nowT
+				log(("drive: %.0f studs left, speed %.0f (target %.0f), segment %d/%d, aim error %.2f, bend %.2f, off route %.1f"):format(remainRoute, spd, target, segIdx, #path - 1, e, bend, bestD))
 			end
 		end
 		release()
