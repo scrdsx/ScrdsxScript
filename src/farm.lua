@@ -970,6 +970,33 @@ local function doClub()
 		end, "club")
 end
 
+-- what the HUD mini-map shows: shops (green = ready, grey = on cooldown), the bank, jeweler, club and the dealers that are loaded
+local poiCache, poiAt = {}, 0
+function Farm.POIs()
+	if os.clock() - poiAt < 1 then return poiCache end
+	poiAt = os.clock()
+	local list = {}
+	for _, e in ipairs(REGISTERS) do
+		local p = locationFor(e)
+		if p then list[#list + 1] = { pos = p, tag = "$", color = Color3.fromRGB(60, 190, 100), dim = not ready(e.key) } end
+	end
+	list[#list + 1] = { pos = BANK.pos, tag = "B", color = Color3.fromRGB(235, 185, 60), dim = not ready("bank") }
+	list[#list + 1] = { pos = JEWELER_POS, tag = "J", color = Color3.fromRGB(70, 190, 230), dim = not ready("jeweler") }
+	list[#list + 1] = { pos = CLUB_POS, tag = "C", color = Color3.fromRGB(220, 100, 190), dim = not ready("club") }
+	local root = workspace:FindFirstChild("Spawned") and workspace.Spawned:FindFirstChild("Dealer")
+	for _, d in ipairs(root and root:GetDescendants() or {}) do
+		if d:IsA("BasePart") and d:GetAttribute("ItemStore") == "Dealer" and #list < 24 then
+			list[#list + 1] = { pos = d.Position, tag = "D", color = Color3.fromRGB(150, 90, 220), dim = false }
+		end
+	end
+	poiCache = list
+	return list
+end
+function Farm.Earned()
+	local m = Farm.moneyNow and Farm.moneyNow()
+	if m and startMoney then return m - startMoney end
+end
+
 -- control ------------------------------------------------------------------------------------------------------------
 local function runOnce(kind)
 	if kind == "registers" then return doRegisters()

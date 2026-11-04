@@ -163,67 +163,114 @@ function HUD.new(opts)
 	local mods = widget("modules", "Active")
 	local farm = widget("farm", "AutoFarm")
 
-	-- route mini-map (north = the direction the car faces), drawn with thin rotated frames
-	local MAP_W, MAP_H = 190, 130
-	local mapFrame = new("Frame", { Size = UDim2.fromOffset(MAP_W, MAP_H), BackgroundColor3 = Color3.fromRGB(16, 16, 18), BorderSizePixel = 0,
-		ClipsDescendants = true, LayoutOrder = 100, Visible = false, Parent = farm.frame })
-	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = mapFrame })
+	-- AutoFarm mini-map in the style of the game's own map: you in the middle, shops / dealers as round icons, the route as a line,
+	-- and an info bar underneath (green: earned, blue: car / autopilot state)
+	local MAP_W, MAP_H = 200, 140
+	local PX, PY = MAP_W / 2, MAP_H * 0.62 -- where you are on the map
+	local mapFrame = new("Frame", { Size = UDim2.fromOffset(MAP_W, MAP_H), BackgroundColor3 = Color3.fromRGB(34, 36, 40), BorderSizePixel = 0,
+		ClipsDescendants = true, LayoutOrder = 100, Parent = farm.frame })
+	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = mapFrame })
 	new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = mapFrame })
+	for _, rr in ipairs({ 0.33, 0.66, 1 }) do
+		local ring = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(PX, PY), Size = UDim2.fromOffset(MAP_H * rr * 1.25, MAP_H * rr * 1.25),
+			BackgroundTransparency = 1, BorderSizePixel = 0, Parent = mapFrame })
+		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
+		new("UIStroke", { Color = Color3.fromRGB(70, 74, 82), Thickness = 1, Transparency = 0.55, Parent = ring })
+	end
 	local segs = {}
 	for i = 1, 60 do
 		segs[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = Color3.fromRGB(110, 190, 255), BorderSizePixel = 0,
-			Size = UDim2.fromOffset(10, 3), Visible = false, Parent = mapFrame })
+			Size = UDim2.fromOffset(10, 3), Visible = false, ZIndex = 2, Parent = mapFrame })
 	end
-	local carDot = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(MAP_W / 2, MAP_H * 0.72), Size = UDim2.fromOffset(9, 9),
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, ZIndex = 3, Parent = mapFrame })
-	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = carDot })
-	local destDot = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(11, 11), BackgroundColor3 = T.good, BorderSizePixel = 0,
-		ZIndex = 3, Visible = false, Parent = mapFrame })
-	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = destDot })
-	local function drawMap(st, seat)
-		local pos = seat.Position
-		local f = seat.CFrame:VectorToWorldSpace(Vector3.new(0, 0, -1))
-		-- the car's real forward axis is not known here: use the direction it moves, else the seat's look vector
-		local vel = seat.AssemblyLinearVelocity
-		if st.fwd then f = st.fwd elseif Vector3.new(vel.X, 0, vel.Z).Magnitude > 4 then f = vel end
-		f = Vector3.new(f.X, 0, f.Z)
+	local pois = {}
+	for i = 1, 24 do
+		local d = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = T.good, BorderSizePixel = 0,
+			Visible = false, ZIndex = 4, Parent = mapFrame })
+		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = d })
+		new("UIStroke", { Color = Color3.fromRGB(20, 20, 22), Thickness = 2, Parent = d })
+		local t = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "", TextColor3 = Color3.new(1, 1, 1),
+			Font = T.bold, TextSize = 11, ZIndex = 5, Parent = d })
+		pois[i] = { f = d, t = t }
+	end
+	local me = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(PX, PY), Size = UDim2.fromOffset(22, 22),
+		BackgroundColor3 = Color3.fromRGB(24, 26, 30), BorderSizePixel = 0, ZIndex = 6, Parent = mapFrame })
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = me })
+	new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "^", TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 16, ZIndex = 7, Parent = me })
+	local destRing = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1, BorderSizePixel = 0,
+		Visible = false, ZIndex = 5, Parent = mapFrame })
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = destRing })
+	new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = destRing })
+	local bar = new("Frame", { Size = UDim2.fromOffset(MAP_W, 22), BackgroundColor3 = Color3.fromRGB(20, 62, 92), BorderSizePixel = 0, LayoutOrder = 101, Parent = farm.frame })
+	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = bar })
+	local barGreen = new("Frame", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(40, 170, 90), BorderSizePixel = 0, Parent = bar })
+	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = barGreen })
+	local barEarn = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "+", TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 12,
+		ZIndex = 2, Parent = barGreen })
+	local barCar = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.new(0.62, 0, 0, 0), Size = UDim2.new(0.38, 0, 1, 0), Text = "IDLE",
+		TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 11, ZIndex = 2, Parent = bar })
+
+	local function drawMap(fd, pos, camLook)
+		local f = Vector3.new(camLook.X, 0, camLook.Z)
 		f = f.Magnitude > 0.1 and f.Unit or Vector3.new(0, 0, -1)
 		local r = Vector3.new(-f.Z, 0, f.X)
-		-- zoom: fit the next waypoints
-		local R = 90
-		for i = st.idx, math.min(#st.wps, st.idx + 10) do
-			local d = st.wps[i] - pos
-			R = math.max(R, math.sqrt(d.X * d.X + d.Z * d.Z) * 1.15)
+		local st = fd.drive
+		local R = 260
+		if st and st.wps and #st.wps > 0 then
+			R = 90
+			for i = st.idx, math.min(#st.wps, st.idx + 10) do
+				local d = st.wps[i] - pos
+				R = math.max(R, math.sqrt(d.X * d.X + d.Z * d.Z) * 1.15)
+			end
+			R = math.min(R, 600)
 		end
-		R = math.min(R, 600)
-		local sc = (MAP_H * 0.68) / R
+		local sc = (MAP_H * 0.55) / R
 		local function toMap(p)
 			local d = p - pos
-			return Vector2.new(MAP_W / 2 + d:Dot(r) * sc, MAP_H * 0.72 - d:Dot(f) * sc)
+			return Vector2.new(PX + d:Dot(r) * sc, PY - d:Dot(f) * sc)
 		end
-		local prev = Vector2.new(MAP_W / 2, MAP_H * 0.72)
 		local n = 0
-		for i = st.idx, #st.wps do
-			if n >= #segs then break end
-			local cur = toMap(st.wps[i])
-			local dv = cur - prev
-			local len = dv.Magnitude
-			if len > 1 then
-				n = n + 1
-				local sgm = segs[n]
-				sgm.Visible = true
-				sgm.Size = UDim2.fromOffset(len, 3)
-				sgm.Position = UDim2.fromOffset((prev.X + cur.X) / 2, (prev.Y + cur.Y) / 2)
-				sgm.Rotation = math.deg(math.atan2(dv.Y, dv.X))
-			end
-			prev = cur
-			if cur.X < -300 or cur.X > MAP_W + 300 or cur.Y < -300 or cur.Y > MAP_H + 300 then break end
+		for _, p in ipairs(fd.pois or {}) do
+			n = n + 1
+			local slot = pois[n]
+			if not slot then break end
+			local m = toMap(p.pos)
+			local inside = m.X > 8 and m.X < MAP_W - 8 and m.Y > 8 and m.Y < MAP_H - 8
+			slot.f.Visible = true
+			slot.f.Position = UDim2.fromOffset(math.clamp(m.X, 9, MAP_W - 9), math.clamp(m.Y, 9, MAP_H - 9))
+			slot.f.BackgroundColor3 = p.dim and Color3.fromRGB(95, 95, 100) or p.color
+			slot.f.BackgroundTransparency = inside and 0 or 0.45
+			slot.f.Size = UDim2.fromOffset(inside and 18 or 12, inside and 18 or 12)
+			slot.t.Text = inside and p.tag or ""
 		end
-		for i = n + 1, #segs do segs[i].Visible = false end
-		local dp = toMap(st.wps[#st.wps])
-		destDot.Position = UDim2.fromOffset(math.clamp(dp.X, 6, MAP_W - 6), math.clamp(dp.Y, 6, MAP_H - 6))
-		destDot.Visible = true
+		for i = n + 1, #pois do pois[i].f.Visible = false end
+		local k = 0
+		if st and st.wps and #st.wps > 0 then
+			local prev = Vector2.new(PX, PY)
+			for i = st.idx, #st.wps do
+				if k >= #segs then break end
+				local cur = toMap(st.wps[i])
+				local dv = cur - prev
+				local len = dv.Magnitude
+				if len > 1 then
+					k = k + 1
+					local sgm = segs[k]
+					sgm.Visible = true
+					sgm.Size = UDim2.fromOffset(len, 3)
+					sgm.Position = UDim2.fromOffset((prev.X + cur.X) / 2, (prev.Y + cur.Y) / 2)
+					sgm.Rotation = math.deg(math.atan2(dv.Y, dv.X))
+				end
+				prev = cur
+				if cur.X < -300 or cur.X > MAP_W + 300 or cur.Y < -300 or cur.Y > MAP_H + 300 then break end
+			end
+			local dp = toMap(st.wps[#st.wps])
+			destRing.Position = UDim2.fromOffset(math.clamp(dp.X, 13, MAP_W - 13), math.clamp(dp.Y, 13, MAP_H - 13))
+			destRing.Visible = true
+		else
+			destRing.Visible = false
+		end
+		for i = k + 1, #segs do segs[i].Visible = false end
 	end
+
 	self.lastFps = 60
 
 	-- data ----------------------------------------------------------------------------------------------------
@@ -301,20 +348,21 @@ function HUD.new(opts)
 
 		if farm.enabled then
 			local fd = opts.GetFarm and opts.GetFarm() or {}
+			local st = fd.drive
+			local cam = workspace.CurrentCamera
+			local camLook = cam and cam.CFrame.LookVector or Vector3.new(0, 0, -1)
+			if st and st.fwd then camLook = st.fwd end
+			if hrp then pcall(drawMap, fd, hrp.Position, camLook) end
+			local earned = fd.earned
+			barEarn.Text = earned and ("+" .. tostring(math.floor(earned)) .. " EUR") or "AutoFarm"
+			barCar.Text = (st and (tostring(math.floor((st.spd or 0) * 1.008)) .. " km/h")) or (fd.busy and "WORKING" or "IDLE")
 			local rows = { { "", fd.info or "idle", T.text } }
 			if fd.stats then rows[#rows + 1] = { "Done", fd.stats, T.sub } end
-			local st = fd.drive
-			local car, seat = myCar()
-			if st and st.wps and #st.wps > 0 and seat then
+			if st and st.wps and #st.wps > 0 then
 				rows[#rows + 1] = { "To", tostring(st.name), T.text }
 				rows[#rows + 1] = { "Left", ("%d st   (%d / %d)"):format(st.remain or 0, st.idx or 0, #st.wps), T.text }
-				rows[#rows + 1] = { "Speed", ("%d km/h"):format((st.spd or 0) * 1.008), T.text }
 				local err = math.abs(st.err or 0)
 				rows[#rows + 1] = { "Steering", err < 0.15 and "straight" or (err < 0.6 and "turning" or "sharp turn"), err < 0.6 and T.good or T.warn }
-				mapFrame.Visible = true
-				pcall(drawMap, st, seat)
-			else
-				mapFrame.Visible = false
 			end
 			setRows(farm, rows)
 		end

@@ -166,7 +166,7 @@ local hud = Hud.new({
 	Title = TITLE,
 	Version = (getgenv and getgenv() or _G).ScrdsxVersion,
 	GetLocations = function() return Tele.Locations end,
-	GetFarm = function() return { info = Farm.Info, stats = Farm.Stats, drive = Drive.State } end,
+	GetFarm = function() return { info = Farm.Info, stats = Farm.Stats, drive = Drive.State, pois = Farm.POIs(), earned = Farm.Earned(), busy = Farm.Busy } end,
 	GetModules = function()
 		local list = {}
 		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
