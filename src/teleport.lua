@@ -84,9 +84,18 @@ function Tele.Scan(done)
 			end
 			return false
 		end
+		-- same place under another name ("Bank" / "BankRobbery", "Jeweler" / "JewelleryStore", "... Fuel Station"): list it once
+		local function key(name)
+			local k = name:lower():gsub("[^%a]", ""):gsub("robbery$", ""):gsub("fuelstation$", "fuel"):gsub("store$", ""):gsub("jewellery", "jeweler")
+			return k
+		end
 		local function add(name, pos, force)
 			if not pos then return end
-			if not force and nearExisting(pos) then return end
+			if not force then
+				if nearExisting(pos) then return end
+				local k = key(name)
+				for _, e in ipairs(list) do if key(e.name) == k then return end end
+			end
 			local final, i = name, 2
 			local function taken(n) for _, e in ipairs(list) do if e.name == n then return true end end return false end
 			while taken(final) do final = name .. " " .. i; i = i + 1 end
@@ -309,8 +318,13 @@ function Tele.GoTo(loc)
 			local destPos = ground + Vector3.new(0, seatH, 0)
 			local finalRot = startCF.Rotation
 			if Tele.Face then
-				local lookAt = Vector3.new(loc.pos.X, destPos.Y, loc.pos.Z)
-				if (lookAt - destPos).Magnitude > 1 then finalRot = CFrame.lookAt(destPos, lookAt).Rotation end
+				-- yaw-only turn toward the location: keeps the car's own pitch/roll (the seat's axes may not match the body's)
+				local f = Vector3.new(startCF.LookVector.X, 0, startCF.LookVector.Z)
+				local w = Vector3.new(loc.pos.X - destPos.X, 0, loc.pos.Z - destPos.Z)
+				if f.Magnitude > 0.05 and w.Magnitude > 1 then
+					local delta = CFrame.lookAt(Vector3.zero, w.Unit) * CFrame.lookAt(Vector3.zero, f.Unit):Inverse()
+					finalRot = delta * startCF.Rotation
+				end
 			end
 
 			local cruise = math.max(startCF.Position.Y, destPos.Y) + Tele.Height
@@ -324,6 +338,25 @@ function Tele.GoTo(loc)
 			for i = 1, #pts - 1 do lens[i] = (pts[i + 1] - pts[i]).Magnitude; total = total + lens[i] end
 			local T = math.clamp(total / math.max(Tele.Speed, 50), 0.45, 5)
 			local startRot = startCF.Rotation
+
+			-- The wheels hang off the body on constraints (separate physics assemblies), so the WHOLE car model is moved
+			-- as one rigid piece with PivotTo; moving only the seat's assembly would yank the wheels off.
+			local rel = seat.CFrame:Inverse() * car:GetPivot()
+			local roots, seenRoot = {}, {}
+			for _, holder in ipairs({ car, c }) do
+				for _, d in ipairs(holder:GetDescendants()) do
+					if d:IsA("BasePart") then
+						local r = d.AssemblyRootPart
+						if r and not seenRoot[r] then seenRoot[r] = true; roots[#roots + 1] = r end
+					end
+				end
+			end
+			local function zero()
+				for _, r in ipairs(roots) do
+					r.AssemblyLinearVelocity = Vector3.zero
+					r.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
 
 			ghost(car, c, true, store) -- nothing can crash, ragdoll or kill you on the way
 			local stealth = false
@@ -346,12 +379,11 @@ function Tele.GoTo(loc)
 				local p = math.clamp((os.clock() - t0) / T, 0, 1)
 				local pos = along(pts, lens, smooth(p) * total)
 				local rot = startRot:Lerp(finalRot, smooth(math.clamp(p * 1.3, 0, 1)))
-				root.CFrame = ((rot + pos) * seat.CFrame:Inverse()) * root.CFrame
-				root.AssemblyLinearVelocity = Vector3.zero
-				root.AssemblyAngularVelocity = Vector3.zero
+				car:PivotTo((rot + pos) * rel)
+				zero()
 				if p >= 1 then
 					task.wait(0.05)
-					root.AssemblyLinearVelocity = Vector3.zero
+					zero()
 					say("Arrived: " .. loc.name)
 					finished = true
 					break
@@ -362,12 +394,12 @@ function Tele.GoTo(loc)
 				local below = workspace:Raycast(seat.Position, Vector3.new(0, -600, 0), params(ignore))
 				if below then
 					local want = CFrame.new(below.Position + Vector3.new(0, seatH + 0.6, 0)) * seat.CFrame.Rotation
-					root.CFrame = (want * seat.CFrame:Inverse()) * root.CFrame
+					car:PivotTo(want * rel)
 				end
 			end
+			zero()
 			ghost(car, c, false, store)       -- solid again, hovering 0.6 above the road: it just settles
-			root.AssemblyLinearVelocity = Vector3.zero
-			root.AssemblyAngularVelocity = Vector3.zero
+			zero()
 			task.wait(0.25)                   -- let the wheels touch down before others get your position
 			if lagOn then setLag(false) end
 		end)
