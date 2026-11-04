@@ -15,6 +15,7 @@ local Tele = {
 	GetIn = true,     -- put you in your car first
 	Face = true,      -- end facing the location
 	Stealth = false,  -- others keep seeing you at the start until you arrive (can make the server think you are still there)
+	Mode = "Fly",     -- "Fly": drive the car along the path with velocity (what Vehicle Fly does, the server accepts it); "Glide": move it with CFrames
 	Ghost = true,     -- non-solid while travelling so nothing crashes / ragdolls you
 	Busy = false,
 	Cancel = false,
@@ -393,7 +394,10 @@ function Tele.GoTo(loc)
 				end
 			end
 
-			local cruise = math.max(startCF.Position.Y, destPos.Y) + Tele.Height
+			local flyMode = Tele.Mode == "Fly"
+			local lift = Tele.Height
+			if flyMode and not Tele.Ghost then lift = math.max(lift, 120) end -- solid car: stay above the buildings
+			local cruise = math.max(startCF.Position.Y, destPos.Y) + lift
 			local pts = {
 				startCF.Position,
 				Vector3.new(startCF.Position.X, cruise, startCF.Position.Z),
@@ -431,8 +435,9 @@ function Tele.GoTo(loc)
 
 			say(("%s %s (%.1fs%s)"):format(onRoad and "Going to" or "Going near", loc.name, T, stealth and ", hidden" or ""))
 			local t0, lostSince, finished = os.clock(), nil, false
+			local idx = 1
 			while true do
-				RunService.Heartbeat:Wait()
+				local dt = RunService.Heartbeat:Wait()
 				if Tele.Cancel then say("Cancelled"); break end
 				if not seat.Parent then say("Car disappeared"); break end
 				if hum.SeatPart ~= seat then
@@ -442,17 +447,43 @@ function Tele.GoTo(loc)
 				else
 					lostSince = nil
 				end
-				local p = math.clamp((os.clock() - t0) / T, 0, 1)
-				local pos = along(pts, lens, smooth(p) * total)
-				local rot = startRot:Lerp(finalRot, smooth(math.clamp(p * 1.3, 0, 1)))
-				car:PivotTo((rot + pos) * rel)
-				zero()
-				if p >= 1 then
-					task.wait(0.05)
+				if flyMode then
+					-- velocity flight: set the speed of every physics piece of the car, like Vehicle Fly does
+					local sp = seat.Position
+					while idx < #pts - 1 and (pts[idx + 1] - sp).Magnitude < 8 do idx = idx + 1 end
+					local to = pts[idx + 1] - sp
+					local d = to.Magnitude
+					local remaining = d
+					for i = idx + 1, #lens do remaining = remaining + lens[i] end
+					if idx == #pts - 1 and d < 1.5 then
+						zero()
+						if Tele.Face then pcall(function() car:PivotTo((finalRot + seat.Position) * rel) end) end
+						task.wait(0.05)
+						zero()
+						say("Arrived: " .. loc.name)
+						finished = true
+						break
+					end
+					if os.clock() - t0 > total / math.max(Tele.Speed, 50) * 2 + 6 then say("Took too long, stopped"); break end
+					local speed = math.min(Tele.Speed, 80 + (os.clock() - t0) * Tele.Speed * 4, remaining * 4 + 12, d / math.max(dt, 0.008))
+					local v = d > 0.01 and to.Unit * speed or Vector3.zero
+					for _, r in ipairs(roots) do
+						r.AssemblyLinearVelocity = v
+						r.AssemblyAngularVelocity = Vector3.zero
+					end
+				else
+					local p = math.clamp((os.clock() - t0) / T, 0, 1)
+					local pos = along(pts, lens, smooth(p) * total)
+					local rot = startRot:Lerp(finalRot, smooth(math.clamp(p * 1.3, 0, 1)))
+					car:PivotTo((rot + pos) * rel)
 					zero()
-					say("Arrived: " .. loc.name)
-					finished = true
-					break
+					if p >= 1 then
+						task.wait(0.05)
+						zero()
+						say("Arrived: " .. loc.name)
+						finished = true
+						break
+					end
 				end
 			end
 			if not finished and seat.Parent then

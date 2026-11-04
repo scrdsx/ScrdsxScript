@@ -98,6 +98,7 @@ local lTele = tTele:Label({ Name = "Status", Value = Tele.Info })
 Tele.Notify = function(m) win:Notify(m) end
 Tele.Changed = function() lTele:Set(Tele.Info) end
 tTele:Button({ Name = "Go to my vehicle (get in)", Callback = function() Tele.GoToCar() end })
+tTele:Toggle({ Name = "Fly there (velocity, like Vehicle Fly)", Default = Tele.Mode == "Fly", Callback = function(v) Tele.Mode = v and "Fly" or "Glide" end })
 tTele:Toggle({ Name = "Get in my car first", Default = Tele.GetIn, Callback = function(v) Tele.GetIn = v end })
 tTele:Toggle({ Name = "Face the location when I arrive", Default = Tele.Face, Callback = function(v) Tele.Face = v end })
 tTele:Toggle({ Name = "Hide the trip from other players (risky)", Default = Tele.Stealth, Callback = function(v) Tele.Stealth = v end })
