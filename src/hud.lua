@@ -12,9 +12,9 @@ local lp = Players.LocalPlayer
 local Logo = __import("logo")
 
 local T = {
-	bg = Color3.fromRGB(255, 255, 255), stroke = Color3.fromRGB(216, 221, 232), text = Color3.fromRGB(22, 25, 34),
-	sub = Color3.fromRGB(112, 118, 135), accent = Color3.fromRGB(45, 108, 240), accentSoft = Color3.fromRGB(45, 108, 240),
-	good = Color3.fromRGB(24, 150, 80), warn = Color3.fromRGB(196, 124, 10), bad = Color3.fromRGB(214, 58, 58),
+	bg = Color3.fromRGB(9, 9, 11), stroke = Color3.fromRGB(36, 36, 42), text = Color3.fromRGB(245, 245, 248),
+	sub = Color3.fromRGB(138, 138, 152), accent = Color3.fromRGB(64, 132, 255), accentSoft = Color3.fromRGB(120, 168, 255),
+	good = Color3.fromRGB(120, 220, 140), warn = Color3.fromRGB(240, 190, 90), bad = Color3.fromRGB(240, 100, 100),
 	font = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold,
 }
 
@@ -80,7 +80,7 @@ function HUD.new(opts)
 	-- one widget = a card with an optional title and a list of rows
 	local function widget(id, title)
 		local f = new("Frame", {
-			Name = id, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = T.bg, BackgroundTransparency = .05,
+			Name = id, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = T.bg, BackgroundTransparency = .1,
 			BorderSizePixel = 0, Active = false, Parent = gui,
 		})
 		new("UICorner", { CornerRadius = UDim.new(0, 12), Parent = f })
@@ -191,7 +191,7 @@ function HUD.new(opts)
 	-- and an info bar underneath (green: earned, blue: car / autopilot state)
 	local MAP_W, MAP_H = 200, 140
 	local PX, PY = MAP_W / 2, MAP_H * 0.62 -- where you are on the map
-	local mapFrame = new("Frame", { Size = UDim2.fromOffset(MAP_W, MAP_H), BackgroundColor3 = Color3.fromRGB(231, 235, 244), BorderSizePixel = 0,
+	local mapFrame = new("Frame", { Size = UDim2.fromOffset(MAP_W, MAP_H), BackgroundColor3 = Color3.fromRGB(16, 17, 21), BorderSizePixel = 0,
 		ClipsDescendants = true, LayoutOrder = 100, Parent = farm.frame })
 	new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = mapFrame })
 	new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = mapFrame })
@@ -200,15 +200,15 @@ function HUD.new(opts)
 		local ring = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(PX, PY), Size = UDim2.fromOffset(r * 2, r * 2),
 			BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1, Parent = mapFrame })
 		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
-		new("UIStroke", { Color = Color3.fromRGB(120, 130, 160), Transparency = .7, Thickness = 1, Parent = ring })
+		new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = .9, Thickness = 1, Parent = ring })
 	end
 	local northTag = new("TextLabel", { AnchorPoint = Vector2.new(.5, .5), BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 14), Text = "N",
-		TextColor3 = Color3.fromRGB(226, 70, 70), Font = T.bold, TextSize = 10, ZIndex = 3, Parent = mapFrame })
+		TextColor3 = Color3.fromRGB(255, 120, 120), Font = T.bold, TextSize = 10, ZIndex = 3, Parent = mapFrame })
 	local segs, glow = {}, {}
 	for i = 1, 40 do
-		glow[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = T.accent, BackgroundTransparency = .8, BorderSizePixel = 0,
+		glow[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = T.accent, BackgroundTransparency = .72, BorderSizePixel = 0,
 			Size = UDim2.fromOffset(10, 8), Visible = false, ZIndex = 1, Parent = mapFrame })
-		segs[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = T.accent, BorderSizePixel = 0,
+		segs[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = Color3.fromRGB(150, 195, 255), BorderSizePixel = 0,
 			Size = UDim2.fromOffset(10, 3), Visible = false, ZIndex = 2, Parent = mapFrame })
 	end
 	local pois = {}
@@ -229,22 +229,22 @@ function HUD.new(opts)
 		Visible = false, ZIndex = 5, Parent = mapFrame })
 	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = destRing })
 	destRing.BackgroundTransparency = 0.55
-	destRing.BackgroundColor3 = T.accent
+	destRing.BackgroundColor3 = Color3.new(1, 1, 1)
 	-- pulsing destination ring
 	pcall(function()
 		TweenService:Create(destRing, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1), { Size = UDim2.fromOffset(40, 40), BackgroundTransparency = 1 }):Play()
 	end)
 	local statusText = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 3), Size = UDim2.new(1, -12, 0, 14), Text = "",
-		TextColor3 = T.text, Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+		TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 8, Parent = mapFrame })
-	local bar = new("Frame", { Size = UDim2.fromOffset(MAP_W, 22), BackgroundColor3 = Color3.fromRGB(222, 230, 247), BorderSizePixel = 0, LayoutOrder = 101, Parent = farm.frame })
+	local bar = new("Frame", { Size = UDim2.fromOffset(MAP_W, 22), BackgroundColor3 = Color3.fromRGB(24, 30, 46), BorderSizePixel = 0, LayoutOrder = 101, Parent = farm.frame })
 	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = bar })
 	local barGreen = new("Frame", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(36, 160, 96), BorderSizePixel = 0, Parent = bar })
 	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = barGreen })
 	local barEarn = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "+", TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 12,
 		ZIndex = 2, Parent = barGreen })
 	local barCar = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.new(0.62, 0, 0, 0), Size = UDim2.new(0.38, 0, 1, 0), Text = "IDLE",
-		TextColor3 = T.text, Font = T.bold, TextSize = 11, ZIndex = 2, Parent = bar })
+		TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 11, ZIndex = 2, Parent = bar })
 
 	local function drawMap(fd, pos, camLook)
 		local f = Vector3.new(camLook.X, 0, camLook.Z)
@@ -274,7 +274,7 @@ function HUD.new(opts)
 			local inside = m.X > 8 and m.X < MAP_W - 8 and m.Y > 8 and m.Y < MAP_H - 8
 			slot.f.Visible = true
 			slot.f.Position = UDim2.fromOffset(math.clamp(m.X, 9, MAP_W - 9), math.clamp(m.Y, 9, MAP_H - 9))
-			slot.f.BackgroundColor3 = p.dim and Color3.fromRGB(176, 180, 192) or p.color
+			slot.f.BackgroundColor3 = p.dim and Color3.fromRGB(95, 95, 100) or p.color
 			slot.f.BackgroundTransparency = inside and 0 or 0.45
 			slot.f.Size = UDim2.fromOffset(inside and 18 or 12, inside and 18 or 12)
 			slot.t.Text = inside and p.tag or ""
@@ -502,7 +502,7 @@ function HUD:SetEdit(v)
 		w.frame.Active = v
 		w.frame.Visible = w.enabled
 		tween(w.stroke, .2, { Color = v and T.accent or T.stroke })
-		tween(w.frame, .2, { BackgroundTransparency = v and 0 or .05 })
+		tween(w.frame, .2, { BackgroundTransparency = v and .03 or .1 })
 	end
 	if v then
 		-- swallow "/" so it does not open the chat while you are moving things

@@ -5,16 +5,16 @@ local Players = game:GetService("Players")
 local Logo = __import("logo")
 
 local T = {
-	bg = Color3.fromRGB(241, 243, 248),
-	panel = Color3.fromRGB(255, 255, 255),
-	elem = Color3.fromRGB(255, 255, 255),
-	hover = Color3.fromRGB(237, 240, 247),
-	stroke = Color3.fromRGB(223, 227, 236),
-	text = Color3.fromRGB(22, 25, 34),
-	sub = Color3.fromRGB(112, 118, 135),
-	accent = Color3.fromRGB(45, 108, 240),
-	accentDim = Color3.fromRGB(224, 235, 255),
-	off = Color3.fromRGB(207, 211, 223),
+	bg = Color3.fromRGB(9, 9, 11),
+	panel = Color3.fromRGB(14, 14, 17),
+	elem = Color3.fromRGB(20, 20, 24),
+	hover = Color3.fromRGB(29, 29, 35),
+	stroke = Color3.fromRGB(34, 34, 40),
+	text = Color3.fromRGB(245, 245, 248),
+	sub = Color3.fromRGB(138, 138, 152),
+	accent = Color3.fromRGB(64, 132, 255),
+	accentDim = Color3.fromRGB(22, 38, 76),
+	off = Color3.fromRGB(46, 46, 55),
 	font = Enum.Font.GothamMedium,
 	bold = Enum.Font.GothamBold,
 }
@@ -109,7 +109,7 @@ function UI.new(opts)
 	end)
 	local pn = label(lp.DisplayName, 13, T.text, T.bold); pn.Position = UDim2.fromOffset(48, 8); pn.Size = UDim2.new(1, -56, 0, 16); pn.Parent = pc
 	local pu = label("@" .. lp.Name, 11, T.sub); pu.Position = UDim2.fromOffset(48, 25); pu.Size = UDim2.new(1, -56, 0, 14); pu.Parent = pc
-	local foot = label("RightShift hide   /  search", 10, Color3.fromRGB(160, 165, 180), T.font, Enum.TextXAlignment.Center)
+	local foot = label("RightShift hide   /  search", 10, Color3.fromRGB(84, 84, 96), T.font, Enum.TextXAlignment.Center)
 	foot.AnchorPoint = Vector2.new(0, 1); foot.Position = UDim2.new(0, 12, 1, -66); foot.Size = UDim2.new(1, -24, 0, 12); foot.Parent = side
 
 	-- header (page title, search, close) ----------------------------------
@@ -194,7 +194,7 @@ function UI.new(opts)
 	-- content (all pages live in one list; search shows every page, filtered)
 	local content = new("ScrollingFrame", {
 		Position = UDim2.fromOffset(SIDE_W, HEAD_H), Size = UDim2.new(1, -SIDE_W, 1, -HEAD_H), BackgroundTransparency = 1, BorderSizePixel = 0,
-		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(190, 195, 208), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(70, 70, 82), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(), Parent = root,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder, Parent = content })
@@ -220,7 +220,7 @@ function UI:Tab(name, opts)
 	local idx = #self.tabs + 1
 	if opts.Section and opts.Section ~= self.lastSection then
 		self.lastSection = opts.Section
-		local sl = label(opts.Section:upper(), 10, Color3.fromRGB(150, 155, 170), T.bold)
+		local sl = label(opts.Section:upper(), 10, Color3.fromRGB(96, 96, 110), T.bold)
 		sl.Size = UDim2.new(1, 0, 0, 22); sl.LayoutOrder = idx * 2 - 1; sl.Parent = self.nav
 		new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 8), Parent = sl })
 	end
@@ -449,7 +449,7 @@ function M:Toggle(o)
 	local f = row(self, o.Name, 46)
 	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(16, 0); n.Size = UDim2.new(1, -90, 1, 0); n.Parent = f
 	local sw = new("Frame", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -14, .5, 0), Size = UDim2.fromOffset(44, 24), BackgroundColor3 = T.off, BorderSizePixel = 0, Parent = f }, { corner(12) })
-	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = sw }, { corner(9), stroke(Color3.fromRGB(196, 201, 214), 1) })
+	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = sw }, { corner(9), stroke(Color3.fromRGB(0, 0, 0), 1) })
 	local state = false
 	local obj = {}
 	-- lit-up look when on: brighter outline + a small accent bar on the left edge
@@ -458,7 +458,7 @@ function M:Toggle(o)
 	local function apply(v, silent)
 		state = v
 		tween(bar, .25, { Size = UDim2.fromOffset(3, v and 20 or 0) }, Enum.EasingStyle.Back)
-		if rowStroke then tween(rowStroke, .22, { Color = v and Color3.fromRGB(150, 184, 250) or T.stroke }) end
+		if rowStroke then tween(rowStroke, .22, { Color = v and Color3.fromRGB(46, 78, 150) or T.stroke }) end
 		tween(sw, .22, { BackgroundColor3 = v and T.accent or T.off })
 		tween(knob, .25, { Position = v and UDim2.new(1, -21, .5, 0) or UDim2.new(0, 3, .5, 0), BackgroundColor3 = Color3.new(1, 1, 1) }, Enum.EasingStyle.Back)
 		if not silent and o.Callback then task.spawn(o.Callback, v) end
@@ -521,10 +521,10 @@ function M:Slider(o)
 	local f = row(self, o.Name, 62)
 	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(16, 10); n.Size = UDim2.new(.6, 0, 0, 16); n.Parent = f
 	local chip = new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.accentDim, BorderSizePixel = 0, Parent = f }, { corner(6), new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }) })
-	local val = label("", 12, T.accent, T.bold, Enum.TextXAlignment.Center); val.Size = UDim2.fromOffset(0, 20); val.AutomaticSize = Enum.AutomaticSize.X; val.TextTruncate = Enum.TextTruncate.None; val.Parent = chip
+	local val = label("", 12, Color3.fromRGB(130, 176, 255), T.bold, Enum.TextXAlignment.Center); val.Size = UDim2.fromOffset(0, 20); val.AutomaticSize = Enum.AutomaticSize.X; val.TextTruncate = Enum.TextTruncate.None; val.Parent = chip
 	local track = new("Frame", { Position = UDim2.new(0, 16, 0, 42), Size = UDim2.new(1, -32, 0, 5), BackgroundColor3 = T.off, BorderSizePixel = 0, Parent = f }, { corner(3) })
 	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = track }, { corner(3) })
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(60, 120, 245), Color3.fromRGB(110, 165, 255)), Parent = fill })
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(48, 92, 220), Color3.fromRGB(110, 170, 255)), Parent = fill })
 	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track }, { corner(7), stroke(T.accent, 2) })
 	local min, max, step = o.Min, o.Max, o.Step or 1
 	local value
