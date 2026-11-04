@@ -38,7 +38,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = false, Parallel = true, bombs = 0,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 220, InstantMove = false, Parallel = true, bombs = 0,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -271,9 +271,20 @@ local function goNear(pos, name)
 	ensureInCar()
 	say("driving to " .. name)
 	stream(pos)
+	-- farm trips are slower and gentler than the Teleports tab: the server drops you out of the car on fast / long ones
+	local oldMax, oldAccel, oldLift = Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift
+	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift = Farm.TravelSpeed, 200, 50
 	Tele.GoTo({ name = name, pos = pos })
 	task.wait(0.2)
 	while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
+	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift = oldMax, oldAccel, oldLift
+	if tostring(Tele.Info):find("setback") then
+		flog("SETBACK: stopping the farm so nothing else goes wrong")
+		Farm.Stop()
+		say("stopped: the server moved you out of the car. Try again from a standing start (Travel speed lower)")
+		if Farm.Stopped then task.defer(Farm.Stopped) end
+		return false
+	end
 	if Farm.Cancel then return false end
 	flog(("teleport result=%s info=%s"):format(tostring(Tele.LastResult), tostring(Tele.Info)))
 	if Tele.LastResult ~= "ok" then say("could not drive to " .. name .. ": " .. tostring(Tele.Info)); return false end
@@ -552,9 +563,26 @@ local function enterShop(rp)
 	walkTo(d.pos - out * 5 + V3(0, 1, 0), nil, 2.5)   -- through it
 end
 
+local function findRegisterModel(entry)
+	local folder = workspace:FindFirstChild("Robberies") and workspace.Robberies:FindFirstChild(entry.folder)
+	for _, d in ipairs(folder and folder:GetDescendants() or {}) do
+		if d:IsA("Model") and CS:HasTag(d, "Cash Register") then return d end
+	end
+end
+
 local function robRegister(entry)
 	local pos = locationFor(entry)
 	if not pos then cooldown(entry.key, 300); return false end
+	-- look at the register from here first (streams the area in): a robbed shop is skipped without driving there
+	say(entry.key .. ": checking if it is robbed")
+	pcall(function() lp:RequestStreamAroundAsync(pos, 8) end)
+	local peek = findRegisterModel(entry)
+	if peek then
+		flog(entry.key .. ": seen from afar, TimedOut=" .. tostring(peek:GetAttribute("TimedOut")))
+		if peek:GetAttribute("TimedOut") == true then say(entry.key .. " is on cooldown, skipping it"); cooldown(entry.key, 150); return "skip" end
+	else
+		flog(entry.key .. ": not visible from afar, will drive there to see")
+	end
 	if not goNear(pos, entry.key) then cooldown(entry.key, 60); return false end
 	local folder = workspace:FindFirstChild("Robberies") and workspace.Robberies:FindFirstChild(entry.folder)
 	local model

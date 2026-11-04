@@ -133,7 +133,9 @@ Tele.OnTrace = Farm.Trace
 local lFarm = tFarm:Label({ Name = "Status", Value = Farm.Info })
 local lFarmStats = tFarm:Label({ Name = "Done", Value = Farm.Stats })
 Farm.Changed = function() lFarm:Set(Farm.Info); lFarmStats:Set(Farm.Stats) end
-local mFarm = tFarm:Module({ Name = "Auto Rob", Default = false, NoSave = true, Callback = function(on)
+local mFarm
+Farm.Stopped = function() if mFarm then mFarm:Set(false, true) end end
+mFarm = tFarm:Module({ Name = "Auto Rob", Default = false, NoSave = true, Callback = function(on)
 	Farm.SetEnabled(on)
 	win:Notify(on and "AutoFarm on" or "AutoFarm stopping...")
 end })
@@ -144,6 +146,7 @@ mFarm:Toggle({ Name = "Club safe (experimental)", Default = Farm.Club, Callback 
 mFarm:Toggle({ Name = "Sell gold at the dealer after the bank", Default = Farm.SellGold, Callback = function(v) Farm.SellGold = v end })
 mFarm:Toggle({ Name = "Instant teleport on foot (off = walk)", Default = Farm.InstantMove, NoSave = true, Callback = function(v) Farm.InstantMove = v end })
 mFarm:Slider({ Name = "Sell calls", Min = 1, Max = 6, Step = 1, Default = Farm.SellCalls, Callback = function(v) Farm.SellCalls = v end })
+mFarm:Slider({ Name = "Travel speed", Min = 80, Max = 600, Step = 20, Default = Farm.TravelSpeed, Suffix = " st/s", Callback = function(v) Farm.TravelSpeed = v end })
 tFarm:Button({ Name = "Rob nearest cash register now", Callback = function() Farm.Once("registers") end })
 tFarm:Button({ Name = "Rob the bank now", Callback = function() Farm.Once("bank") end })
 tFarm:Button({ Name = "Rob the jeweler now (experimental)", Callback = function() Farm.Once("jeweler") end })

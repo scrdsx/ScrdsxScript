@@ -578,6 +578,7 @@ function Tele.GoTo(loc)
 					if hrp and (hrp.Position - sp).Magnitude > 40 then
 						trace(("SETBACK: hrp=%s seat=%s"):format(v3s(hrp.Position), v3s(sp)))
 						say("The server moved you out of the car (setback)")
+						pcall(function() hrp.Anchored = true; hrp.AssemblyLinearVelocity = Vector3.zero end) -- hold still, do not fall
 						break
 					end
 					local to = pts[idx + 1] - sp
@@ -656,10 +657,16 @@ function Tele.GoTo(loc)
 					end
 				end
 			end
+			if hrp and hrp.Anchored then
+				-- setback: put the body on the ground below it (falling from 100+ studs kills you)
+				local gr = workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), params(ignore))
+				pcall(function() hrp.CFrame = CFrame.new((gr and gr.Position or seat.Position) + Vector3.new(0, 3.5, 0)) end)
+			end
 			trace(("end finished=%s seat=%s hrp=%s seated=%s"):format(tostring(finished), v3s(seat.Position), hrp and v3s(hrp.Position) or "-", tostring(hum.SeatPart == seat)))
 			zero()
 			ghostOn = false
-			ghost(car, c, false, store)       -- solid again, hovering 0.6 above the road: it just settles
+			ghost(car, c, false, store)       -- solid again
+			pcall(function() if hrp and hrp.Anchored then task.wait(0.2); hrp.Anchored = false end end) -- (hovering 0.6 above the road: it just settles)
 			zero()
 			task.wait(0.25)                   -- let the wheels touch down before others get your position
 			if lagOn then setLag(false) end
