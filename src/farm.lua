@@ -38,7 +38,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = true,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -165,6 +165,17 @@ local function walkTo(pos, _, stop)
 	if not (hum and hrp) or hum.Health <= 0 then return false end
 	stop = stop or 3
 	if hum.SeatPart then hum.Sit = false; task.wait(0.4) end
+	if Farm.InstantMove then
+		-- instant teleport on foot; if the server puts you back, fall through to real walking
+		local from = hrp.Position
+		hrp.CFrame = CFrame.new(pos + V3(0, 2, 0)) * hrp.CFrame.Rotation
+		hrp.AssemblyLinearVelocity = V3()
+		task.wait(0.35)
+		local now = hrp.Position
+		if near(now, pos, stop + 4) then return true end
+		flog(("instant move was reverted (now %.0f studs from the target), walking instead"):format((now - pos).Magnitude))
+		if (now - from).Magnitude < 6 then Farm.InstantMove = false; flog("instant move switched off for this session") end
+	end
 	local waypoints
 	local path = PFS:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 5 })
 	local okc = pcall(function() path:ComputeAsync(hrp.Position, pos) end)
