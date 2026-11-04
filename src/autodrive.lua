@@ -519,8 +519,8 @@ end
 -- "training": the driving parameters are re-tried with small random changes on every trip; a change that drives better (closer to the
 -- route, fewer stuck / turn-around moments, quicker) is kept. Saved in ScrdsxScript/drivetune.json so it keeps improving between sessions.
 local TUNE_FILE = "ScrdsxScript/drivetune.json"
-local RANGE = { kp = { 1.0, 3.5 }, kd = { 0.05, 0.5 }, lookBase = { 6, 20 }, lookGain = { 0.3, 0.9 }, bendDiv = { 0.9, 2.0 }, speedMul = { 0.7, 1.35 }, latAcc = { 8, 30 } }
-local best = { p = { kp = 2.0, kd = 0.22, lookBase = 10, lookGain = 0.55, bendDiv = 1.4, speedMul = 1.0, latAcc = 16 }, cost = nil, trips = 0, pieces = {} }
+local RANGE = { kp = { 1.0, 5.0 }, kd = { 0.03, 0.5 }, lookBase = { 6, 28 }, lookGain = { 0.1, 0.9 }, bendDiv = { 0.9, 2.0 }, speedMul = { 0.6, 1.3 }, latAcc = { 15, 80 } }
+local best = { p = { kp = 4.0, kd = 0.08, lookBase = 22.5, lookGain = 0.21, bendDiv = 1.4, speedMul = 0.95, latAcc = 38.6 }, cost = nil, trips = 0, pieces = {} }
 local loaded = false
 local function loadTune()
 	if loaded then return end
@@ -967,7 +967,7 @@ function Drive.To(targetPos, opts)
 			local ahead1 = pointAhead(bestI, bestT, 8)
 			local ahead2 = pointAhead(bestI, bestT, 60)
 			local bend = math.abs(wrap(yawOf(V3(ahead2.X - ahead1.X, 0, ahead2.Z - ahead1.Z)) - yaw))
-			local allowed = math.min(Drive.MaxSpeed, 62) * P.speedMul
+			local allowed = math.min(Drive.MaxSpeed, 80) * P.speedMul
 			do
 				local prevPt, prevH = pointAhead(bestI, bestT, 4), nil
 				for k = 1, 8 do
@@ -977,7 +977,7 @@ function Drive.To(targetPos, opts)
 					if prevH then
 						local kappa = math.abs(wrap(h - prevH)) / 14
 						local vk = math.sqrt(P.latAcc / math.max(kappa, 0.0004))
-						allowed = math.min(allowed, math.sqrt(vk * vk + 2 * 12 * math.max(d - 14, 0)))
+						allowed = math.min(allowed, math.sqrt(vk * vk + 2 * 14 * math.max(d - 14, 0)))
 					end
 					prevPt, prevH = pt, h
 				end
