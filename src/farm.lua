@@ -327,8 +327,16 @@ local function goNear(pos, name)
 		if not seated then say("could not get into the car"); return false end
 		say("driving to " .. name)
 		Farm.Drive.MaxSpeed = Farm.DriveSpeed
-		local ok, why = Farm.Drive.To(pos, { arrive = 22, name = name })
-		flog(("autopilot result: %s (%s)"):format(tostring(ok), tostring(why)))
+		local ok, why
+		for attempt = 1, 3 do
+			ok, why = Farm.Drive.To(pos, { arrive = 22, name = name })
+			flog(("autopilot result: %s (%s)"):format(tostring(ok), tostring(why)))
+			if ok or Farm.Cancel or (why ~= "left the car" and why ~= "stuck") then break end
+			say("lost the car, getting back in and driving on")
+			Farm.SitInteract = true
+			ensureInCar()
+			Farm.SitInteract = prevSit
+		end
 		if not ok then say("could not drive to " .. name .. ": " .. tostring(why)); return false end
 		leaveCar()
 		return true

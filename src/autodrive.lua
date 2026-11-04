@@ -325,6 +325,7 @@ function Drive.To(targetPos, opts)
 		end
 
 		local idx, stuckSince, recoveries = 1, nil, 0
+		local reversing, revT, revCool = false, 0, 0
 		Drive.State = { name = opts.name or "destination", wps = wps, idx = 1, spd = 0, remain = 0, err = 0 }
 		local startT = os.clock()
 		local totalD = 0
@@ -334,7 +335,13 @@ function Drive.To(targetPos, opts)
 		local lastLog = 0
 		while not Drive.Cancel and os.clock() - startT < limit do
 			RunService.Heartbeat:Wait()
-			if hum.SeatPart ~= seat then release(); return false, "left the car" end
+			if hum.SeatPart ~= seat then
+				local up = seat.CFrame.UpVector
+				log(("left the car at (%.0f,%.0f,%.0f): speed %.0f, car up-vector Y=%.2f (low = on its side), car health %s, occupant=%s"):format(
+					seat.Position.X, seat.Position.Y, seat.Position.Z, speedFlat(), up.Y, tostring(car:GetAttribute("currentHealth")), tostring(seat.Occupant)))
+				release()
+				return false, "left the car"
+			end
 			local pos = seat.Position
 			local spd = speedFlat()
 			local fwd = forward()
@@ -357,7 +364,7 @@ function Drive.To(targetPos, opts)
 			local dirv = V3(aim.X - pos.X, 0, aim.Z - pos.Z)
 			if dirv.Magnitude < 0.5 then dirv = fwd end
 			local e = wrap(yawOf(dirv) - yawOf(fwd))
-			setCtl("Steering", math.clamp(e * 1.8, -1, 1) * steerSign)
+			local steerCmd = math.clamp(e * 1.8, -1, 1) * steerSign
 			-- speed: slower in corners and when the end is near
 			local totalRemain = remain
 			for i = idx, #wps - 1 do totalRemain = totalRemain + flat(wps[i], wps[i + 1]) end
@@ -365,11 +372,27 @@ function Drive.To(targetPos, opts)
 				local st = Drive.State
 				if st then st.idx, st.spd, st.remain, st.err, st.fwd = idx, spd, totalRemain, e, fwd end
 			end
-			local corner = 1 - math.clamp(math.abs(e) / 0.9, 0, 0.7)
+			local corner = 1 - math.clamp(math.abs(e) / 1.1, 0, 0.6)
 			local target = math.min(Drive.MaxSpeed * corner, math.sqrt(2 * 9 * math.max(totalRemain - arrive, 0)) + 10)
-			if spd < target - 4 then setCtl("Throttle", 1)
-			elseif spd > target + 10 then setCtl("Throttle", -1)
-			elseif spd > target then setCtl("Throttle", 0) end
+			local thrCmd = cur.Throttle
+			if spd < target - 4 then thrCmd = 1
+			elseif spd > target + 10 then thrCmd = -1
+			elseif spd > target then thrCmd = 0 end
+			-- the target is behind us: do not circle, back up while steering the other way until we point roughly at it
+			if not reversing and math.abs(e) > 2.1 and spd < 16 and os.clock() - revCool > 2 then
+				reversing, revT = true, os.clock()
+				log(("target is behind (error %.2f): backing up to turn around"):format(e))
+			end
+			if reversing then
+				if math.abs(e) < 1.3 or os.clock() - revT > 3.5 then
+					reversing, revCool = false, os.clock()
+				else
+					thrCmd = -1
+					steerCmd = -steerCmd
+				end
+			end
+			setCtl("Steering", steerCmd)
+			setCtl("Throttle", thrCmd)
 			-- stuck? back up a bit, then try again
 			if spd < 1.5 and cur.Throttle ~= 0 and os.clock() - startT > 3 then
 				stuckSince = stuckSince or os.clock()

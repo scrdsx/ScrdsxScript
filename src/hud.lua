@@ -161,7 +161,7 @@ function HUD.new(opts)
 	local info = widget("info", "Player")
 	local veh = widget("vehicle", "Vehicle")
 	local mods = widget("modules", "Active")
-	local farm = widget("farm", "AutoFarm")
+	local farm = widget("farm", nil)
 
 	-- AutoFarm mini-map in the style of the game's own map: you in the middle, shops / dealers as round icons, the route as a line,
 	-- and an info bar underneath (green: earned, blue: car / autopilot state)
@@ -171,12 +171,6 @@ function HUD.new(opts)
 		ClipsDescendants = true, LayoutOrder = 100, Parent = farm.frame })
 	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = mapFrame })
 	new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = mapFrame })
-	for _, rr in ipairs({ 0.33, 0.66, 1 }) do
-		local ring = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(PX, PY), Size = UDim2.fromOffset(MAP_H * rr * 1.25, MAP_H * rr * 1.25),
-			BackgroundTransparency = 1, BorderSizePixel = 0, Parent = mapFrame })
-		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
-		new("UIStroke", { Color = Color3.fromRGB(70, 74, 82), Thickness = 1, Transparency = 0.55, Parent = ring })
-	end
 	local segs = {}
 	for i = 1, 60 do
 		segs[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = Color3.fromRGB(110, 190, 255), BorderSizePixel = 0,
@@ -187,7 +181,6 @@ function HUD.new(opts)
 		local d = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = T.good, BorderSizePixel = 0,
 			Visible = false, ZIndex = 4, Parent = mapFrame })
 		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = d })
-		new("UIStroke", { Color = Color3.fromRGB(20, 20, 22), Thickness = 2, Parent = d })
 		local t = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "", TextColor3 = Color3.new(1, 1, 1),
 			Font = T.bold, TextSize = 11, ZIndex = 5, Parent = d })
 		pois[i] = { f = d, t = t }
@@ -199,7 +192,11 @@ function HUD.new(opts)
 	local destRing = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1, BorderSizePixel = 0,
 		Visible = false, ZIndex = 5, Parent = mapFrame })
 	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = destRing })
-	new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = destRing })
+	destRing.BackgroundTransparency = 0.55
+	destRing.BackgroundColor3 = Color3.new(1, 1, 1)
+	local statusText = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 3), Size = UDim2.new(1, -12, 0, 14), Text = "",
+		TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 8, Parent = mapFrame })
 	local bar = new("Frame", { Size = UDim2.fromOffset(MAP_W, 22), BackgroundColor3 = Color3.fromRGB(20, 62, 92), BorderSizePixel = 0, LayoutOrder = 101, Parent = farm.frame })
 	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = bar })
 	local barGreen = new("Frame", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(40, 170, 90), BorderSizePixel = 0, Parent = bar })
@@ -346,7 +343,8 @@ function HUD.new(opts)
 			end
 		end
 
-		if farm.enabled then
+		if farm.enabled and os.clock() - (self.farmT or 0) > 0.25 then
+			self.farmT = os.clock()
 			local fd = opts.GetFarm and opts.GetFarm() or {}
 			local st = fd.drive
 			local cam = workspace.CurrentCamera
@@ -356,15 +354,9 @@ function HUD.new(opts)
 			local earned = fd.earned
 			barEarn.Text = earned and ("+" .. tostring(math.floor(earned)) .. " EUR") or "AutoFarm"
 			barCar.Text = (st and (tostring(math.floor((st.spd or 0) * 1.008)) .. " km/h")) or (fd.busy and "WORKING" or "IDLE")
-			local rows = { { "", fd.info or "idle", T.text } }
-			if fd.stats then rows[#rows + 1] = { "Done", fd.stats, T.sub } end
-			if st and st.wps and #st.wps > 0 then
-				rows[#rows + 1] = { "To", tostring(st.name), T.text }
-				rows[#rows + 1] = { "Left", ("%d st   (%d / %d)"):format(st.remain or 0, st.idx or 0, #st.wps), T.text }
-				local err = math.abs(st.err or 0)
-				rows[#rows + 1] = { "Steering", err < 0.15 and "straight" or (err < 0.6 and "turning" or "sharp turn"), err < 0.6 and T.good or T.warn }
-			end
-			setRows(farm, rows)
+			local line = fd.info or "idle"
+			if st and st.wps then line = line .. "  -  " .. tostring(math.floor(st.remain or 0)) .. " st" end
+			statusText.Text = line
 		end
 
 		if mods.enabled then
