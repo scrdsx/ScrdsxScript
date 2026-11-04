@@ -396,7 +396,7 @@ local function robRegister(entry)
 		task.wait(0.5)
 	end
 	if not model then say(entry.key .. ": register not found"); cooldown(entry.key, 120); return false end
-	if model:GetAttribute("TimedOut") == true then say(entry.key .. " was already robbed"); cooldown(entry.key, 150); backToCar(); return true end
+	if model:GetAttribute("TimedOut") == true then say(entry.key .. " is on cooldown, trying the next one"); cooldown(entry.key, 150); backToCar(); return "skip" end
 	local body = model:FindFirstChild("Body") or model:FindFirstChildWhichIsA("BasePart")
 	local rp = body and body.Position or where(model)
 	local _, hum, hrp = parts()
@@ -448,15 +448,32 @@ end
 
 local function doRegisters()
 	local list = {}
-	for _, e in ipairs(REGISTERS) do if ready(e.key) then list[#list + 1] = e end end
+	for _, e in ipairs(REGISTERS) do if ready(e.key) and locationFor(e) then list[#list + 1] = e end end
 	if #list == 0 then return false end
 	local _, _, hrp = parts()
 	local here = hrp and hrp.Position or V3()
-	table.sort(list, function(a, b)
-		local pa, pb = locationFor(a) or V3(1e5, 0, 1e5), locationFor(b) or V3(1e5, 0, 1e5)
-		return (pa - here).Magnitude < (pb - here).Magnitude
-	end)
-	return tryRoutine(list[1].key, function() return robRegister(list[1]) end)
+	table.sort(list, function(a, b) return (locationFor(a) - here).Magnitude < (locationFor(b) - here).Magnitude end)
+	-- a register that turns out to be on cooldown only costs a short flight: go on to the next one
+	for _, e in ipairs(list) do
+		if Farm.Cancel then return true end
+		local ok, res = pcall(robRegister, e)
+		if not ok then
+			print("[farm] " .. e.key .. " error: " .. tostring(res))
+			flog("ERROR in " .. e.key .. ": " .. tostring(res))
+			restoreChar()
+			Farm.done.fails = Farm.done.fails + 1
+			cooldown(e.key, 90)
+			stats(); changed()
+			return true
+		end
+		if res ~= "skip" then
+			if res == false then Farm.done.fails = Farm.done.fails + 1 end
+			stats(); changed()
+			return true
+		end
+	end
+	say("every register is on cooldown")
+	return true
 end
 
 local function doBank()
