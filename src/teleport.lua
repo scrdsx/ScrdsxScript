@@ -474,7 +474,8 @@ function Tele.GoTo(loc)
 				end
 			end
 
-			if Tele.Ghost then ghost(car, c, true, store) end -- nothing can crash, ragdoll or kill you on the way
+			local ghostOn = false
+			if Tele.Ghost then ghost(car, c, true, store); ghostOn = true end -- nothing can crash, ragdoll or kill you on the way
 			local stealth = false
 			if Tele.Stealth then stealth = setLag(true) end
 			task.delay(T + 8, function() if lagOn then setLag(false) end end) -- watchdog: never leave the network throttled
@@ -495,6 +496,11 @@ function Tele.GoTo(loc)
 				pcall(function()
 					hum.Jump = false
 					if hum.SeatPart == seat then hum.Sit = true end
+					-- the Humanoid switches your body collision back on every physics step; a solid body in a ghost car
+					-- hits the buildings and drags the whole car to a stop (or tears you out of the seat), so keep it off
+					if ghostOn then
+						for part in pairs(store) do if part.Parent then part.CanCollide = false end end
+					end
 				end)
 			end)
 			undo[#undo + 1] = function() hold:Disconnect() end
@@ -623,6 +629,7 @@ function Tele.GoTo(loc)
 			end
 			trace(("end finished=%s seat=%s hrp=%s seated=%s"):format(tostring(finished), v3s(seat.Position), hrp and v3s(hrp.Position) or "-", tostring(hum.SeatPart == seat)))
 			zero()
+			ghostOn = false
 			ghost(car, c, false, store)       -- solid again, hovering 0.6 above the road: it just settles
 			zero()
 			task.wait(0.25)                   -- let the wheels touch down before others get your position

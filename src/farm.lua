@@ -137,6 +137,10 @@ local function walkTo(pos, speed, stop)
 		if d:IsA("BasePart") and d.CanCollide then saved[#saved + 1] = d; d.CanCollide = false end
 	end
 	local ok = false
+	-- the Humanoid turns body collision back on every physics step: keep it off while moving
+	local nc = RunService.Stepped:Connect(function()
+		for _, p in ipairs(saved) do if p.Parent then p.CanCollide = false end end
+	end)
 	local run, err = pcall(function()
 		local t0 = os.clock()
 		local limit = (hrp.Position - pos).Magnitude / speed * 2 + 4
@@ -151,6 +155,7 @@ local function walkTo(pos, speed, stop)
 			hrp.AssemblyAngularVelocity = V3()
 		end
 	end)
+	nc:Disconnect()
 	for _, p in ipairs(saved) do if p.Parent then p.CanCollide = true end end
 	restoreChar()
 	if not run then flog("walkTo error: " .. tostring(err)) end
