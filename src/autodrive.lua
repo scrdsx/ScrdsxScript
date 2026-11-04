@@ -17,7 +17,7 @@ local REM = {
 	IGNITION = "de7910a1-5108-423c-bb43-bb8dbe2dcf8a",
 }
 
-local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil }
+local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil } -- State: live data for the HUD map
 local function log(s) if Drive.Log then Drive.Log(s) else print("[drive] " .. s) end end
 
 local remotes = {}
@@ -249,6 +249,7 @@ function Drive.To(targetPos, opts)
 		end
 
 		local idx, stuckSince, recoveries = 1, nil, 0
+		Drive.State = { name = opts.name or "destination", wps = wps, idx = 1, spd = 0, remain = 0, err = 0 }
 		local startT = os.clock()
 		local totalD = 0
 		do local p = seat.Position; for _, w in ipairs(wps) do totalD = totalD + flat(p, w); p = w end end
@@ -284,6 +285,10 @@ function Drive.To(targetPos, opts)
 			-- speed: slower in corners and when the end is near
 			local totalRemain = remain
 			for i = idx, #wps - 1 do totalRemain = totalRemain + flat(wps[i], wps[i + 1]) end
+			do
+				local st = Drive.State
+				if st then st.idx, st.spd, st.remain, st.err, st.fwd = idx, spd, totalRemain, e, fwd end
+			end
 			local corner = 1 - math.clamp(math.abs(e) / 0.9, 0, 0.7)
 			local target = math.min(Drive.MaxSpeed * corner, math.sqrt(2 * 9 * math.max(totalRemain - arrive, 0)) + 10)
 			if spd < target - 4 then setCtl("Throttle", 1)
@@ -313,6 +318,7 @@ function Drive.To(targetPos, opts)
 		return false, Drive.Cancel and "cancelled" or "took too long"
 	end)
 	Drive.Busy = false
+	Drive.State = nil
 	if not ok then log("drive error: " .. tostring(res)); return false, tostring(res) end
 	return res, why or res
 end

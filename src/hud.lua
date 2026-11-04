@@ -23,6 +23,7 @@ local DEFAULTS = {
 	info = { x = 0.010, y = 0.090 },
 	vehicle = { x = 0.010, y = 0.600 },
 	modules = { x = 0.880, y = 0.015 },
+	farm = { x = 0.760, y = 0.300 },
 }
 
 local function new(class, props, children)
@@ -160,6 +161,69 @@ function HUD.new(opts)
 	local info = widget("info", "Player")
 	local veh = widget("vehicle", "Vehicle")
 	local mods = widget("modules", "Active")
+	local farm = widget("farm", "AutoFarm")
+
+	-- route mini-map (north = the direction the car faces), drawn with thin rotated frames
+	local MAP_W, MAP_H = 190, 130
+	local mapFrame = new("Frame", { Size = UDim2.fromOffset(MAP_W, MAP_H), BackgroundColor3 = Color3.fromRGB(16, 16, 18), BorderSizePixel = 0,
+		ClipsDescendants = true, LayoutOrder = 100, Visible = false, Parent = farm.frame })
+	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = mapFrame })
+	new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = mapFrame })
+	local segs = {}
+	for i = 1, 60 do
+		segs[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = Color3.fromRGB(110, 190, 255), BorderSizePixel = 0,
+			Size = UDim2.fromOffset(10, 3), Visible = false, Parent = mapFrame })
+	end
+	local carDot = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(MAP_W / 2, MAP_H * 0.72), Size = UDim2.fromOffset(9, 9),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, ZIndex = 3, Parent = mapFrame })
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = carDot })
+	local destDot = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(11, 11), BackgroundColor3 = T.good, BorderSizePixel = 0,
+		ZIndex = 3, Visible = false, Parent = mapFrame })
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = destDot })
+	local function drawMap(st, seat)
+		local pos = seat.Position
+		local f = seat.CFrame:VectorToWorldSpace(Vector3.new(0, 0, -1))
+		-- the car's real forward axis is not known here: use the direction it moves, else the seat's look vector
+		local vel = seat.AssemblyLinearVelocity
+		if st.fwd then f = st.fwd elseif Vector3.new(vel.X, 0, vel.Z).Magnitude > 4 then f = vel end
+		f = Vector3.new(f.X, 0, f.Z)
+		f = f.Magnitude > 0.1 and f.Unit or Vector3.new(0, 0, -1)
+		local r = Vector3.new(-f.Z, 0, f.X)
+		-- zoom: fit the next waypoints
+		local R = 90
+		for i = st.idx, math.min(#st.wps, st.idx + 10) do
+			local d = st.wps[i] - pos
+			R = math.max(R, math.sqrt(d.X * d.X + d.Z * d.Z) * 1.15)
+		end
+		R = math.min(R, 600)
+		local sc = (MAP_H * 0.68) / R
+		local function toMap(p)
+			local d = p - pos
+			return Vector2.new(MAP_W / 2 + d:Dot(r) * sc, MAP_H * 0.72 - d:Dot(f) * sc)
+		end
+		local prev = Vector2.new(MAP_W / 2, MAP_H * 0.72)
+		local n = 0
+		for i = st.idx, #st.wps do
+			if n >= #segs then break end
+			local cur = toMap(st.wps[i])
+			local dv = cur - prev
+			local len = dv.Magnitude
+			if len > 1 then
+				n = n + 1
+				local sgm = segs[n]
+				sgm.Visible = true
+				sgm.Size = UDim2.fromOffset(len, 3)
+				sgm.Position = UDim2.fromOffset((prev.X + cur.X) / 2, (prev.Y + cur.Y) / 2)
+				sgm.Rotation = math.deg(math.atan2(dv.Y, dv.X))
+			end
+			prev = cur
+			if cur.X < -300 or cur.X > MAP_W + 300 or cur.Y < -300 or cur.Y > MAP_H + 300 then break end
+		end
+		for i = n + 1, #segs do segs[i].Visible = false end
+		local dp = toMap(st.wps[#st.wps])
+		destDot.Position = UDim2.fromOffset(math.clamp(dp.X, 6, MAP_W - 6), math.clamp(dp.Y, 6, MAP_H - 6))
+		destDot.Visible = true
+	end
 	self.lastFps = 60
 
 	-- data ----------------------------------------------------------------------------------------------------
@@ -233,6 +297,26 @@ function HUD.new(opts)
 				rows[#rows + 1] = { "Seat", seated and "in car" or "out", seated and T.good or T.sub }
 				setRows(veh, rows)
 			end
+		end
+
+		if farm.enabled then
+			local fd = opts.GetFarm and opts.GetFarm() or {}
+			local rows = { { "", fd.info or "idle", T.text } }
+			if fd.stats then rows[#rows + 1] = { "Done", fd.stats, T.sub } end
+			local st = fd.drive
+			local car, seat = myCar()
+			if st and st.wps and #st.wps > 0 and seat then
+				rows[#rows + 1] = { "To", tostring(st.name), T.text }
+				rows[#rows + 1] = { "Left", ("%d st   (%d / %d)"):format(st.remain or 0, st.idx or 0, #st.wps), T.text }
+				rows[#rows + 1] = { "Speed", ("%d km/h"):format((st.spd or 0) * 1.008), T.text }
+				local err = math.abs(st.err or 0)
+				rows[#rows + 1] = { "Steering", err < 0.15 and "straight" or (err < 0.6 and "turning" or "sharp turn"), err < 0.6 and T.good or T.warn }
+				mapFrame.Visible = true
+				pcall(drawMap, st, seat)
+			else
+				mapFrame.Visible = false
+			end
+			setRows(farm, rows)
 		end
 
 		if mods.enabled then

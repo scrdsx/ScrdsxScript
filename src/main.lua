@@ -166,6 +166,7 @@ local hud = Hud.new({
 	Title = TITLE,
 	Version = (getgenv and getgenv() or _G).ScrdsxVersion,
 	GetLocations = function() return Tele.Locations end,
+	GetFarm = function() return { info = Farm.Info, stats = Farm.Stats, drive = Drive.State } end,
 	GetModules = function()
 		local list = {}
 		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
@@ -179,6 +180,7 @@ local tHud = win:Tab("HUD")
 tHud:Toggle({ Name = "Watermark", Default = hud:IsOn("watermark"), Callback = function(v) hud:SetWidget("watermark", v) end })
 tHud:Toggle({ Name = "Player info (health, position, nearest spot)", Default = hud:IsOn("info"), Callback = function(v) hud:SetWidget("info", v) end })
 tHud:Toggle({ Name = "Vehicle (speed, fuel, health, tires)", Default = hud:IsOn("vehicle"), Callback = function(v) hud:SetWidget("vehicle", v) end })
+tHud:Toggle({ Name = "AutoFarm navigation (status + route map)", Default = hud:IsOn("farm"), Callback = function(v) hud:SetWidget("farm", v) end })
 tHud:Toggle({ Name = "Active modules list", Default = hud:IsOn("modules"), Callback = function(v) hud:SetWidget("modules", v) end })
 tHud:Slider({ Name = "HUD size", Min = 0.6, Max = 1.6, Step = 0.05, Default = hud.scale, Callback = function(v) hud:SetScale(v) end })
 tHud:Button({ Name = "Move HUD (closes this window; press / when done)", Callback = function()
