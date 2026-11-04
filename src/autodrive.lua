@@ -211,29 +211,71 @@ function Drive.To(targetPos, opts)
 		if not wps then return false, endPos end
 		log(("route: %d waypoints, ends at (%.0f,%.0f,%.0f)"):format(#wps, endPos.X, endPos.Y, endPos.Z))
 
-		-- controls: set the local attribute (the car's drive code reads it) AND tell the server, exactly like the game's own client
+		-- Controls. Default = the real keys (W/S throttle, A/D steering, N ignition) pressed through the input system, so the game's own
+		-- code does everything a player's input does (sets Throttle/Steering, tells the server). Steering is on/off per key, so it is
+		-- pulse-width modulated to get in-between values. Fallback = write the attributes + send the remotes ourselves.
+		local VIM = game:GetService("VirtualInputManager")
+		local useKeys = Drive.UseKeys ~= false
 		local cur = { Throttle = 0, Steering = 0 }
-		local lastSent = { Throttle = 0, Steering = 0 }
-		local lastSteerT = 0
+		local down = {}
+		local function key(code, on)
+			if (down[code] or false) == on then return end
+			down[code] = on
+			pcall(function() VIM:SendKeyEvent(on, code, false, game) end)
+		end
+		local pwmPhase = 0
+		local pwmConn
+		local function pwmStep(dt)
+			local v = cur.Steering
+			pwmPhase = (pwmPhase + dt * 14) % 1
+			local a = math.abs(v)
+			local on = a > 0.12 and (a > 0.85 or pwmPhase < a)
+			key(Enum.KeyCode.D, on and v > 0)
+			key(Enum.KeyCode.A, on and v < 0)
+		end
 		local function setCtl(name, value, force)
 			value = math.clamp(value, -1, 1)
 			if name == "Steering" then value = math.floor(value * 10 + 0.5) / 10 end
 			if value == cur[name] and not force then return end
-			if name == "Steering" and not force and os.clock() - lastSteerT < 0.05 then return end
 			cur[name] = value
-			if name == "Steering" then lastSteerT = os.clock() end
-			pcall(function() car:SetAttribute(name, value) end)
-			local r = remote(name == "Throttle" and REM.THROTTLE or REM.STEER)
-			if r then pcall(function() r:FireServer(car, value) end) end
+			if useKeys then
+				if name == "Throttle" then
+					key(Enum.KeyCode.W, value > 0)
+					key(Enum.KeyCode.S, value < 0)
+				end
+			else
+				pcall(function() car:SetAttribute(name, value) end)
+				local r = remote(name == "Throttle" and REM.THROTTLE or REM.STEER)
+				if r then pcall(function() r:FireServer(car, value) end) end
+			end
 		end
-		local function release() setCtl("Throttle", 0, true); setCtl("Steering", 0, true) end
+		if useKeys then pwmConn = RunService.Heartbeat:Connect(pwmStep) end
+		local function release()
+			setCtl("Throttle", 0, true)
+			setCtl("Steering", 0, true)
+			if pwmConn then pwmConn:Disconnect(); pwmConn = nil end
+			for _, code in ipairs({ Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D }) do key(code, false) end
+		end
 
-		if car:GetAttribute("IsOn") ~= true then
+		log(("car state: IsOn=%s ParkingBrake=%s fuel=%s health=%s Throttle=%s"):format(tostring(car:GetAttribute("IsOn")), tostring(car:GetAttribute("ParkingBrake")),
+			tostring(car:GetAttribute("currentFuel")), tostring(car:GetAttribute("currentHealth")), tostring(car:GetAttribute("Throttle"))))
+		-- engine: press N like a player, then wait until the server says it is on
+		for attempt = 1, 3 do
+			if car:GetAttribute("IsOn") == true then break end
+			if attempt == 1 or not useKeys then
+				key(Enum.KeyCode.N, true); task.wait(0.08); key(Enum.KeyCode.N, false)
+			end
 			local r = remote(REM.IGNITION)
-			if r then pcall(function() r:FireServer(car, true) end) end
-			task.wait(0.6)
+			if attempt > 1 and r then pcall(function() r:FireServer(car, true) end) end
+			local t = os.clock()
+			while os.clock() - t < 1.6 and car:GetAttribute("IsOn") ~= true do task.wait(0.1) end
 		end
-		if car:GetAttribute("ParkingBrake") == true then pcall(function() car:SetAttribute("ParkingBrake", false) end) end
+		log("engine IsOn = " .. tostring(car:GetAttribute("IsOn")))
+		if car:GetAttribute("ParkingBrake") == true then
+			key(Enum.KeyCode.P, true); task.wait(0.08); key(Enum.KeyCode.P, false)
+			task.wait(0.3)
+			log("parking brake = " .. tostring(car:GetAttribute("ParkingBrake")))
+		end
 
 		local function speedFlat() local v = seat.AssemblyLinearVelocity; return V3(v.X, 0, v.Z).Magnitude end
 
@@ -241,7 +283,23 @@ function Drive.To(targetPos, opts)
 		setCtl("Throttle", 1)
 		local t0 = os.clock()
 		while os.clock() - t0 < 3 and speedFlat() < 4 and not Drive.Cancel do task.wait(0.05) end
-		if speedFlat() < 3 then release(); return false, "the car does not move (engine off / parking brake / no road under it?)" end
+		if speedFlat() < 3 and useKeys then
+			log("the keys did not move the car, trying the attribute + remote way")
+			setCtl("Throttle", 0, true)
+			useKeys = false
+			if pwmConn then pwmConn:Disconnect(); pwmConn = nil end
+			for _, code in ipairs({ Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D }) do key(code, false) end
+			cur.Throttle = 0
+			setCtl("Throttle", 1)
+			t0 = os.clock()
+			while os.clock() - t0 < 3 and speedFlat() < 4 and not Drive.Cancel do task.wait(0.05) end
+		end
+		if speedFlat() < 3 then
+			log(("no movement: IsOn=%s ParkingBrake=%s Throttle attr=%s Occupant=%s"):format(tostring(car:GetAttribute("IsOn")), tostring(car:GetAttribute("ParkingBrake")),
+				tostring(car:GetAttribute("Throttle")), tostring(seat.Occupant)))
+			release()
+			return false, "the car does not move (engine off / parking brake / no road under it?)"
+		end
 		local v0 = seat.AssemblyLinearVelocity
 		local fwdLocal = seat.CFrame:VectorToObjectSpace(V3(v0.X, 0, v0.Z).Unit)
 		local axis = { V3(1, 0, 0), V3(0, 0, 1) }
