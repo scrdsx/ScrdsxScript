@@ -297,8 +297,8 @@ local function goNear(pos, name)
 	local oldMax, oldAccel, oldLift = Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift
 	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift = Farm.TravelSpeed, 200, 50
 	Tele.GoTo({ name = name, pos = pos })
-	task.wait(0.2)
-	while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
+	task.wait(0.4)
+	while (Tele.Busy or Tele.Chain) and not Farm.Cancel do task.wait(0.2) end
 	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift = oldMax, oldAccel, oldLift
 	if tostring(Tele.Info):find("setback") then
 		flog("SETBACK: stopping the farm so nothing else goes wrong")
@@ -325,6 +325,16 @@ local function goNear(pos, name)
 		hum.Sit = false
 		task.wait(0.35)
 		if hum.SeatPart then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end); task.wait(0.4) end
+	end
+	task.wait(1.2)
+	local _, _, h3 = parts()
+	local _, seat3 = myCar()
+	if h3 and seat3 and (h3.Position - seat3.Position).Magnitude > 45 then
+		flog(("DESYNC: after getting out you are %.0f studs from the car (the server had a different position for it)"):format((h3.Position - seat3.Position).Magnitude))
+		say("the server lost the car during the trip (you were moved back). Stopped; try a shorter trip")
+		Farm.Stop()
+		if Farm.Stopped then task.defer(Farm.Stopped) end
+		return false
 	end
 	-- the server shows "Visible" again once it knows you are out of the car
 	local c = parts()

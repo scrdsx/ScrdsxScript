@@ -14,6 +14,9 @@ local CAS = game:GetService("ContextActionService")
 local Tele = {
 	Speed = 900,      -- top studs/s along the whole path (it ramps up gently: a hard launch tears you out of the seat)
 	Accel = 300,      -- studs/s gained per second while ramping up
+	LegLen = 800,     -- longer trips are split into legs of at most this many studs: land, rest, go on (non-stop 1500+ stud flights make the server lose the car)
+	LegRest = 3,      -- seconds resting on the ground between legs
+	Chain = false,
 	HopLen = 700,     -- the velocity flight goes in hops of at most this many studs and rests between them (the server drops you out of the car on very long non-stop trips)
 	HopPause = 1.0,   -- seconds hovering between hops
 	FlyMaxSpeed = 500, -- the velocity flight never goes faster than this (very high speeds froze / crashed the game)
@@ -402,7 +405,7 @@ function Tele.GoToCar()
 	end)
 end
 
-function Tele.GoTo(loc)
+local function tripInner(loc)
 	if Tele.Busy then return end
 	local car, seat = myCar()
 	if not car or not seat then say("Spawn your car first"); return end
@@ -696,6 +699,36 @@ function Tele.GoTo(loc)
 		guard(seat, 4)
 		Tele.Busy = false
 		if not okRun then say("Teleport error: " .. tostring(err):sub(1, 80)) end
+	end)
+end
+
+-- public entry: short trips go straight, long ones are chained legs with a rest on the ground between them
+function Tele.GoTo(loc)
+	if Tele.Busy or Tele.Chain then return end
+	local car, seat = myCar()
+	if not (car and seat) then return tripInner(loc) end
+	local from = seat.Position
+	local flat = Vector3.new(loc.pos.X - from.X, 0, loc.pos.Z - from.Z)
+	if flat.Magnitude <= Tele.LegLen * 1.15 then return tripInner(loc) end
+	Tele.Chain = true
+	Tele.LastResult = nil
+	task.spawn(function()
+		local n = math.ceil(flat.Magnitude / Tele.LegLen)
+		local ok = true
+		for k = 1, n do
+			local f = k / n
+			local target = (k == n) and loc.pos or Vector3.new(from.X + flat.X * f, loc.pos.Y, from.Z + flat.Z * f)
+			tripInner({ name = (k == n) and loc.name or ("%s (leg %d/%d)"):format(loc.name, k, n), pos = target })
+			task.wait(0.3)
+			while Tele.Busy do task.wait(0.2) end
+			if Tele.LastResult ~= "ok" or Tele.Cancel then ok = false; break end
+			if k < n then
+				say(("Resting %ds before the next leg (%d/%d)..."):format(Tele.LegRest, k, n))
+				task.wait(Tele.LegRest)
+			end
+		end
+		Tele.Chain = false
+		if not ok then Tele.LastResult = nil end
 	end)
 end
 
