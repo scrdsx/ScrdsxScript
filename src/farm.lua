@@ -55,8 +55,7 @@ local function flog(s)
 	if #logbuf > 400 then table.remove(logbuf, 1) end
 end
 function Farm.CopyLog()
-	local txt = table.concat(logbuf, "
-")
+	local txt = table.concat(logbuf, "\n")
 	local ok = pcall(function() setclipboard(txt) end)
 	pcall(function() writefile("farm_log.txt", txt) end)
 	return ok
