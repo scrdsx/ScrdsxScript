@@ -12,7 +12,8 @@ local UIS = game:GetService("UserInputService")
 local CAS = game:GetService("ContextActionService")
 
 local Tele = {
-	Speed = 900,      -- studs/s along the whole path
+	Speed = 900,      -- top studs/s along the whole path (it ramps up gently: a hard launch tears you out of the seat)
+	Accel = 300,      -- studs/s gained per second while ramping up
 	Height = 25,      -- how far above the higher end the car cruises (it is non-solid, so this can stay low)
 	GetIn = true,     -- put you in your car first
 	Face = true,      -- end facing the location
@@ -375,6 +376,7 @@ function Tele.GoTo(loc)
 			local hrp = c and c:FindFirstChild("HumanoidRootPart")
 			if Tele.GetIn and not ensureSeated(car, seat) then say("Could not sit in the car"); return end
 			if not (hum and hum.SeatPart == seat) then say("Sit in your car first (or turn Get in on)"); return end
+			task.wait(0.5) -- let the seat weld settle (and register on the server) before moving
 
 			local root = seat.AssemblyRootPart or seat
 			local ignore = { car, c }
@@ -528,8 +530,8 @@ function Tele.GoTo(loc)
 						Tele.LastResult = "ok"
 						break
 					end
-					if os.clock() - t0 - lostAccum > total / math.max(Tele.Speed, 50) * 2 + 6 then say("Took too long, stopped"); break end
-					local speed = math.min(Tele.Speed, 80 + (os.clock() - t0) * Tele.Speed * 4, remaining * 4 + 12, d / math.max(dt, 0.008))
+					if os.clock() - t0 - lostAccum > total / math.max(math.min(Tele.Speed, 400), 50) + Tele.Speed / math.max(Tele.Accel, 50) + 8 then say("Took too long, stopped"); break end
+					local speed = math.min(Tele.Speed, 50 + (os.clock() - t0 - lostAccum) * Tele.Accel, math.sqrt(2 * 500 * remaining) + 10, d / math.max(dt, 0.008))
 					if assist then
 						-- the car's physics would not go that fast: move the whole car in small steps instead
 						local step = math.min(d, speed * math.min(dt, 0.1))

@@ -105,6 +105,7 @@ tTele:Toggle({ Name = "Face the location when I arrive", Default = Tele.Face, Ca
 tTele:Toggle({ Name = "Hide the trip from other players (risky)", Default = Tele.Stealth, Callback = function(v) Tele.Stealth = v end })
 tTele:Toggle({ Name = "Phase through objects while travelling", Default = Tele.Ghost, Callback = function(v) Tele.Ghost = v end })
 tTele:Slider({ Name = "Travel speed", Min = 100, Max = 3000, Step = 50, Default = Tele.Speed, Suffix = " st/s", Callback = function(v) Tele.Speed = v end })
+tTele:Slider({ Name = "Acceleration (lower = gentler, stays seated)", Min = 100, Max = 1500, Step = 50, Default = Tele.Accel, Suffix = " st/s2", Callback = function(v) Tele.Accel = v end })
 tTele:Slider({ Name = "Cruise height", Min = 10, Max = 200, Step = 5, Default = Tele.Height, Suffix = " st", Callback = function(v) Tele.Height = v end })
 tTele:Button({ Name = "Cancel teleport", Callback = function() Tele.Stop() end })
 local shownLoc = {}
