@@ -533,6 +533,7 @@ end
 -- pick up everything under `root' that is switched on (money = id 2vd, items/gold = id 7Rm)
 local function loot(root, label)
 	local tried, got = {}, 0
+	local lastHere
 	while not Farm.Cancel do
 		local list = {}
 		for _, d in ipairs(root:GetDescendants()) do
@@ -546,6 +547,11 @@ local function loot(root, label)
 		local _, _, hrp = parts()
 		if not hrp then break end
 		local here = hrp.Position
+		if lastHere and (here - lastHere).Magnitude > 250 then
+			flog(("%s: the character was moved %.0f studs in a moment (arrested?): stopping the loot run"):format(label, (here - lastHere).Magnitude))
+			break
+		end
+		lastHere = here
 		table.sort(list, function(a, b) return (a.part.Position - here).Magnitude < (b.part.Position - here).Magnitude end)
 		local it = list[1]
 		walkTo(it.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
@@ -688,8 +694,23 @@ local function throwBomb(target)
 		return false
 	end
 	task.wait(0.8)
+	local before = bombCount()
 	fire(ID.THROW, tool, target.X, target.Y, target.Z)
 	task.wait(0.4)
+	if before then
+		local function now() return bombCount() or before end
+		local t = os.clock()
+		while os.clock() - t < 2.5 and now() >= before do task.wait(0.15) end
+		if now() >= before then
+			flog("the bomb count did not go down after the throw: throwing again")
+			fire(ID.THROW, tool, target.X, target.Y + 0.5, target.Z)
+			task.wait(0.4)
+			t = os.clock()
+			while os.clock() - t < 2.5 and now() >= before do task.wait(0.15) end
+			if now() >= before then flog("throw failed: the bomb is still in the inventory"); return false end
+		end
+		flog(("bomb thrown (inventory %d -> %d)"):format(before, now()))
+	end
 	return true
 end
 local function waitAttr(inst, name, want, seconds)
@@ -882,28 +903,64 @@ local function robRegister(entry)
 	local lt = game:GetService("Lighting")
 	flog(("clock: Lighting.ClockTime=%.2f  workspace attrs[%s]"):format(lt.ClockTime, attrs(workspace)))
 
-	-- standing spots around the register; the ones with a clear line to it come first (the counter may block one side)
+	-- Standing spots around the register. The register sits ON a counter, so the old spots 1.6 studs from it were on top of the counter (the
+	-- character climbed up there and could not hit anything). Now: points on the FLOOR (same level as where we walked in), nearest first,
+	-- spread over different directions. The spot that worked is remembered (ScrdsxScript/stands.json) and tried first next time.
 	local rparams = RaycastParams.new()
 	rparams.FilterType = Enum.RaycastFilterType.Exclude
 	rparams.FilterDescendantsInstances = { lp.Character, (myCar()) }
-	local sides = {}
-	for _, off in ipairs({ V3(-1.6, 0, 0), V3(1.6, 0, 0), V3(0, 0, -1.6), V3(0, 0, 1.6) }) do
-		local sp = rp + off
-		local origin = V3(sp.X, rp.Y, sp.Z)
-		local hit = workspace:Raycast(origin, rp - origin, rparams)
-		sides[#sides + 1] = { pos = sp + V3(0, 1, 0), clear = hit == nil or hit.Instance:IsDescendantOf(model), d = (sp - hrp.Position).Magnitude }
-	end
-	table.sort(sides, function(a, b)
-		if a.clear ~= b.clear then return a.clear end
-		return a.d < b.d
+	local STAND_FILE = "ScrdsxScript/stands.json"
+	local standMem = {}
+	pcall(function()
+		if isfile and readfile and isfile(STAND_FILE) then
+			local d = game:GetService("HttpService"):JSONDecode(readfile(STAND_FILE))
+			if type(d) == "table" then standMem = d end
+		end
 	end)
+	local sides = {}
+	local function buildSides()
+		sides = {}
+		local _, _, h = parts()
+		local floorY = h.Position.Y
+		local cand = {}
+		for _, r in ipairs({ 2.4, 3.2, 4.0, 5.0, 6.0 }) do
+			for k = 0, 15 do
+				local ang = k * math.pi / 8
+				local x, z = rp.X + math.cos(ang) * r, rp.Z + math.sin(ang) * r
+				local res = workspace:Raycast(V3(x, rp.Y + 3, z), V3(0, -12, 0), rparams)
+				if res and res.Normal.Y > 0.7 and math.abs(res.Position.Y + 3 - floorY) < 1.4 then
+					cand[#cand + 1] = { pos = V3(x, res.Position.Y + 3, z), r = r, a = ang, clear = true }
+				end
+			end
+		end
+		table.sort(cand, function(p1, q1) if p1.r ~= q1.r then return p1.r < q1.r end return p1.a < q1.a end)
+		for _, cd in ipairs(cand) do
+			local okc = true
+			for _, d in ipairs(sides) do
+				if math.abs((cd.a - d.a + math.pi) % (2 * math.pi) - math.pi) < 1.2 then okc = false; break end
+			end
+			if okc then sides[#sides + 1] = cd end
+			if #sides >= 4 then break end
+		end
+		local mem = standMem[entry.key]
+		if mem then table.insert(sides, 1, { pos = V3(rp.X + mem.dx, rp.Y + mem.dy, rp.Z + mem.dz), clear = true }) end
+		if #sides == 0 then
+			flog("no floor spot found around the register, using the old guesses")
+			for _, off in ipairs({ V3(-1.6, 0, 0), V3(1.6, 0, 0), V3(0, 0, -1.6), V3(0, 0, 1.6) }) do
+				sides[#sides + 1] = { pos = rp + off + V3(0, 1, 0), clear = false }
+			end
+		end
+		flog(("%d standing spots on the floor around the register (floor level %.1f)%s"):format(#sides, floorY, mem and ", remembered one first" or ""))
+	end
 
 	enterShop(rp)
 	pcall(function() hum:UnequipTools() end)
 	fire(ID.UNEQUIP) -- the server must see empty hands too
 	task.wait(0.4)
+	buildSides()
 	local h0 = model:GetAttribute("Health") or 48
 	local landed = false
+	local landedPos
 	for i, sd in ipairs(sides) do
 		if Farm.Cancel then break end
 		say(("%s: trying side %d/%d (%s)"):format(entry.key, i, #sides, sd.clear and "clear" or "blocked"))
@@ -923,11 +980,20 @@ local function robRegister(entry)
 		for _ = 1, 5 do
 			punch()
 			task.wait(0.62)
-			if (model:GetAttribute("Health") or h0) < h0 or model:GetAttribute("TimedOut") == true then landed = true; break end
+			if (model:GetAttribute("Health") or h0) < h0 or model:GetAttribute("TimedOut") == true then landed = true; landedPos = sd.pos; break end
 		end
 		if conn then conn:Disconnect() end
 		flog(("side %d (arrived=%s): health %s -> %s, server answered %d punches"):format(i, tostring(arrived), tostring(h0), tostring(model:GetAttribute("Health")), echoes))
 		if landed then break end
+	end
+	if landed and landedPos then
+		standMem[entry.key] = { dx = landedPos.X - rp.X, dy = landedPos.Y - rp.Y, dz = landedPos.Z - rp.Z }
+		pcall(function()
+			if writefile then
+				pcall(function() if makefolder then makefolder("ScrdsxScript") end end)
+				writefile(STAND_FILE, game:GetService("HttpService"):JSONEncode(standMem))
+			end
+		end)
 	end
 	if not landed then
 		say(entry.key .. ": punches do not hurt it (closed?), skipping it for 10 min"); cooldown(entry.key, 600); backToCar(); return false
