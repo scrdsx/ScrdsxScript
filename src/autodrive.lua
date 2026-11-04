@@ -32,6 +32,7 @@ end
 
 -- road graph ----------------------------------------------------------------------------------------------------
 local graph
+local PIECES = {} -- road piece -> { m = speed multiplier, n = times driven, s = times stuck }
 local function flat(a, b) return V3(a.X - b.X, 0, a.Z - b.Z).Magnitude end
 
 local function fullName(i) local ok, r = pcall(game.GetFullName, i); return ok and r or tostring(i) end
@@ -161,7 +162,8 @@ local function route(g, fromPos, toPos)
 		if not done[n] then
 			done[n] = true
 			for o, e in pairs(n.edges) do
-				local nd = d + e.cost
+				local pr = PIECES[math.floor(o.pos.X / 10) .. "," .. math.floor(o.pos.Z / 10)]
+				local nd = d + e.cost * (1 + 3 * math.min((pr and pr.s) or 0, 3))
 				if nd < (dist[o] or math.huge) then dist[o] = nd; prev[o] = n; push(o, nd) end
 			end
 		end
@@ -210,12 +212,14 @@ local function loadTune()
 					if tonumber(d.p[k]) then best.p[k] = math.clamp(d.p[k], r[1], r[2]) end
 				end
 				best.cost, best.trips = tonumber(d.cost), tonumber(d.trips) or 0
-				if type(d.pieces) == 'table' then best.pieces = d.pieces end
+				if type(d.pieces) == 'table' then PIECES = d.pieces end
 			end
 		end
 	end)
 end
+function Drive.PieceCount() local n = 0 for _ in pairs(PIECES) do n = n + 1 end return n end
 local function saveTune()
+	best.pieces = PIECES
 	pcall(function()
 		if writefile then
 			pcall(function() if makefolder then makefolder("ScrdsxScript") end end)
@@ -227,15 +231,16 @@ end
 -- up or wandered off the road, and slowly up where it drove cleanly
 local function learnPiece(key, stat)
 	if not key or not stat then return end
-	local rec = best.pieces[key] or { m = 1, n = 0 }
+	local rec = PIECES[key] or { m = 1, n = 0, s = 0 }
+	if stat.stuck then rec.s = (rec.s or 0) + 1 end
 	if stat.stuck or stat.rev then rec.m = math.max(0.4, rec.m * 0.72)
 	elseif stat.maxOff > 14 or stat.maxErr > 1.1 then rec.m = math.max(0.4, rec.m * 0.9)
 	else rec.m = math.min(1.45, rec.m * 1.05) end
 	rec.n = (rec.n or 0) + 1
-	best.pieces[key] = rec
+	PIECES[key] = rec
 end
 local function pieceMul(key)
-	local rec = key and best.pieces[key]
+	local rec = key and PIECES[key]
 	return rec and rec.m or 1
 end
 
@@ -375,12 +380,12 @@ function Drive.To(targetPos, opts)
 		local v0 = seat.AssemblyLinearVelocity
 		local fwdLocal = seat.CFrame:VectorToObjectSpace(V3(v0.X, 0, v0.Z).Unit)
 		local axis = { V3(1, 0, 0), V3(0, 0, 1) }
-		local best, bv = nil, 0
+		local bestAx, bv = nil, 0
 		for _, ax in ipairs(axis) do
 			local d = fwdLocal:Dot(ax)
-			if math.abs(d) > math.abs(bv) then best, bv = ax, d end
+			if math.abs(d) > math.abs(bv) then bestAx, bv = ax, d end
 		end
-		fwdLocal = best * (bv >= 0 and 1 or -1)
+		fwdLocal = bestAx * (bv >= 0 and 1 or -1)
 		local function forward() local f = seat.CFrame:VectorToWorldSpace(fwdLocal); return V3(f.X, 0, f.Z).Unit end
 		log(("forward axis in seat space: (%.0f,%.0f,%.0f), speed %.1f"):format(fwdLocal.X, fwdLocal.Y, fwdLocal.Z, speedFlat()))
 
@@ -491,7 +496,7 @@ function Drive.To(targetPos, opts)
 				while speedFlat() > 2.5 and os.clock() - tb < 4 do task.wait(0.05) end
 				release()
 				closePiece()
-				log(("training: learned from %d road pieces on this trip (%d pieces known)"):format(learned, (function() local n = 0 for _ in pairs(best.pieces) do n = n + 1 end return n end)()))
+				log(("training: learned from %d road pieces on this trip (%d pieces known)"):format(learned, Drive.PieceCount()))
 				if totalD > 250 and offN > 20 then
 					local dur = os.clock() - startT
 					local cost = (offSum / offN) * 1.5 + recoveries * 30 + reverses * 15 + (dur / (totalD / 100)) * 0.8
@@ -556,9 +561,14 @@ function Drive.To(targetPos, opts)
 				stuckSince = stuckSince or nowT
 				if nowT - stuckSince > 1.6 then
 					recoveries = recoveries + 1
-					if pStat then pStat.stuck = true end
+					if pStat then pStat.stuck = true; pStat.stuckN = (pStat.stuckN or 0) + 1 end
 					log(("stuck at (%.0f,%.0f,%.0f), backing up (%d)"):format(pos.X, pos.Y, pos.Z, recoveries))
 					if recoveries > 8 then release(); closePiece(); saveTune(); return false, "stuck" end
+					if pStat and pStat.stuckN >= 2 and (opts.replans or 0) < 4 then
+						log("stuck twice on the same road piece: planning another route around it")
+						release(); closePiece(); saveTune()
+						return false, "replan"
+					end
 					setCtl("Throttle", -1); setCtl("Steering", -steerCmd)
 					task.wait(1.5)
 					setCtl("Steering", 0)
