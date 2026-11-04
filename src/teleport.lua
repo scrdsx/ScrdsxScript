@@ -176,7 +176,7 @@ local function ensureSeated(car, seat)
 	local hum = c and c:FindFirstChildOfClass("Humanoid")
 	local hrp = c and c:FindFirstChild("HumanoidRootPart")
 	if not (hum and hrp) or hum.Health <= 0 then return false end
-	if hum.SeatPart == seat then return true end
+	if hum.SeatPart == seat and (hrp.Position - seat.Position).Magnitude < 12 then return true end -- (seated on paper but left behind = not seated)
 	hrp.CFrame = seat.CFrame * CFrame.new(0, 3, 0)
 	task.wait(0.15)
 	pcall(function() seat:Sit(hum) end)
@@ -311,6 +311,35 @@ local function trace(msg)
 	print("[teleport] " .. msg)
 end
 local function v3s(v) return ("(%.0f,%.0f,%.0f)"):format(v.X, v.Y, v.Z) end
+-- the car stopped moving: list what is around it so the blocker can be identified
+local function dumpNearby(pos, toward, ignore)
+	local function full(i) local ok, r = pcall(game.GetFullName, i); return ok and r or tostring(i) end
+	local ok, list = pcall(function() return workspace:GetPartBoundsInRadius(pos, 45) end)
+	local n = 0
+	for _, p in ipairs(ok and list or {}) do
+		local skip = false
+		for _, ig in ipairs(ignore) do if p:IsDescendantOf(ig) then skip = true; break end end
+		if not skip and n < 25 then
+			n = n + 1
+			trace(("  near: %s [%s] collide=%s anchored=%s size=%s"):format(full(p), p.ClassName, tostring(p.CanCollide), tostring(p.Anchored), v3s(p.Size)))
+		end
+	end
+	if toward then
+		local rp = RaycastParams.new()
+		rp.FilterType = Enum.RaycastFilterType.Exclude
+		rp.FilterDescendantsInstances = ignore
+		local hit = workspace:Raycast(pos, toward.Unit * 300, rp)
+		trace(hit and ("  ray ahead hits %s at %.0f studs (collide=%s)"):format(full(hit.Instance), hit.Distance, tostring(hit.Instance.CanCollide)) or "  ray ahead (300 studs): nothing")
+	end
+	for _, name in ipairs({ "MapBarriers", "VehicleDeleteZones", "Gates", "SpeedZones" }) do
+		local f = workspace:FindFirstChild(name)
+		for _, d in ipairs(f and f:GetDescendants() or {}) do
+			if d:IsA("BasePart") and (d.Position - pos).Magnitude < 200 + d.Size.Magnitude then
+				trace(("  zone: %s size=%s dist=%.0f"):format(full(d), v3s(d.Size), (d.Position - pos).Magnitude))
+			end
+		end
+	end
+end
 
 -- Seat guard. Seating ourselves skips the game's normal "interact" flow; its interaction UI then unmounts and the game's
 -- own client sends FireServer(seat, <id>, "cancel"), and the server throws you out of the seat (seen in tools/seatloss_probe.lua,
@@ -480,6 +509,7 @@ function Tele.GoTo(loc)
 			local lostAccum = 0
 			local assist, slow, sampleT, samplePos = false, 0, os.clock(), seat.Position
 			local traceT = 0
+			local stallPos, stallT = seat.Position, os.clock()
 			trace(("start seat=%s dest=%s loc=%s total=%.0f speed=%d mode=%s ghost=%s"):format(v3s(seat.Position), v3s(destPos), v3s(loc.pos), total, Tele.Speed, tostring(Tele.Mode), tostring(Tele.Ghost)))
 			while true do
 				local dt = RunService.Heartbeat:Wait()
@@ -528,6 +558,15 @@ function Tele.GoTo(loc)
 						say("Arrived: " .. loc.name)
 						finished = true
 						Tele.LastResult = "ok"
+						break
+					end
+					-- not moving although it should: find out what is in the way, then give up early
+					if (seat.Position - stallPos).Magnitude > 4 or d < 20 then
+						stallPos, stallT = seat.Position, os.clock()
+					elseif os.clock() - stallT > 2 then
+						trace("STUCK at " .. v3s(seat.Position) .. " heading " .. v3s(pts[idx + 1]))
+						dumpNearby(seat.Position, pts[idx + 1] - seat.Position, ignore)
+						say("Stuck at " .. v3s(seat.Position))
 						break
 					end
 					if os.clock() - t0 - lostAccum > total / math.max(math.min(Tele.Speed, 400), 50) + Tele.Speed / math.max(Tele.Accel, 50) + 8 then say("Took too long, stopped"); break end

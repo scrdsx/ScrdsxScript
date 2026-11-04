@@ -183,8 +183,8 @@ local function goNear(pos, name)
 	if not seat or (seat.Position - pos).Magnitude > 250 then say("the car is not at " .. name); return false end
 	local _, hum, hrp = parts()
 	-- thrown out during the trip? sit back in before doing anything else
-	if hum and hum.SeatPart ~= seat then
-		flog("not in the car after the trip, sitting back in")
+	if hum and (hum.SeatPart ~= seat or (hrp.Position - seat.Position).Magnitude > 15) then
+		flog(("not in the car after the trip (%.0f studs away), sitting back in"):format(hrp and (hrp.Position - seat.Position).Magnitude or -1))
 		Tele.GoToCar()
 		task.wait(0.3)
 		while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
