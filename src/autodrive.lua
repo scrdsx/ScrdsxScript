@@ -111,11 +111,22 @@ local function build()
 	return { mods = mods }
 end
 
-local function nearestMod(g, pos)
-	local best, bd
+-- head (optional): the direction the car faces. Pieces behind the car count as farther away, so the route starts forwards instead of
+-- sending the car into a U-turn when a piece ahead is only a little further.
+local function nearestMod(g, pos, head)
+	local best, bd, bscore
 	for _, mod in pairs(g.mods) do
-		local d = V3(mod.pos.X - pos.X, (mod.pos.Y - pos.Y) * 0.3, mod.pos.Z - pos.Z).Magnitude
-		if not bd or d < bd then best, bd = mod, d end
+		local dx, dz = mod.pos.X - pos.X, mod.pos.Z - pos.Z
+		local d = V3(dx, (mod.pos.Y - pos.Y) * 0.3, dz).Magnitude
+		local score = d
+		if head then
+			local fl = math.sqrt(dx * dx + dz * dz)
+			if fl > 6 then
+				local dotp = (dx * head.X + dz * head.Z) / fl
+				if dotp < 0 then score = score + 110 * -dotp end
+			end
+		end
+		if not bscore or score < bscore then best, bd, bscore = mod, d, score end
 	end
 	return best, bd
 end
@@ -244,7 +255,7 @@ local function scanRoute(wps, fromPos, car)
 				if okb then res = r else useBlock = false end
 			end
 			if not useBlock then res = workspace:Raycast(origin, vec, params) end
-			if res and math.abs(res.Normal.Y) < 0.5 then
+			if res and math.abs(res.Normal.Y) < 0.5 and res.Instance ~= workspace.Terrain and res.Instance.Name ~= "Road" then
 				local m = res.Instance:FindFirstAncestorOfClass("Model")
 				if not (m and m:FindFirstChildOfClass("Humanoid")) then
 					hits[#hits + 1] = { pos = res.Position, name = res.Instance:GetFullName(), seg = i }
@@ -256,8 +267,8 @@ local function scanRoute(wps, fromPos, car)
 end
 
 -- Dijkstra with a small binary heap
-local function route(g, fromPos, toPos, relax)
-	local s, sd = nearestMod(g, fromPos)
+local function route(g, fromPos, toPos, relax, head)
+	local s, sd = nearestMod(g, fromPos, head)
 	local t, td = nearestMod(g, toPos)
 	if not (s and t) then return nil, "no road pieces" end
 	log(("route: start piece %.0f studs from the car, end piece %.0f studs from the target"):format(sd, td))
@@ -426,11 +437,17 @@ function Drive.To(targetPos, opts)
 		loadTune()
 		if (opts.replans or 0) == 0 then TRIP_BLOCK = {} end
 		local wps, endPos, wpKeys
+		local head0
+		do
+			local lv = Drive.cal and seat.CFrame:VectorToWorldSpace(Drive.cal.fwdLocal) or seat.CFrame.LookVector
+			head0 = V3(lv.X, 0, lv.Z)
+			head0 = head0.Magnitude > 0.1 and head0.Unit or nil
+		end
 		for attempt = 1, 6 do
-			wps, endPos, wpKeys = route(graph, seat.Position, targetPos)
+			wps, endPos, wpKeys = route(graph, seat.Position, targetPos, false, head0)
 			if not wps and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
 				log("every route is blocked somewhere, ignoring the blocked spots")
-				wps, endPos, wpKeys = route(graph, seat.Position, targetPos, true)
+				wps, endPos, wpKeys = route(graph, seat.Position, targetPos, true, head0)
 				if wps then wps, wpKeys = densify(wps, wpKeys, seat.Position) end
 				break
 			end
@@ -520,49 +537,63 @@ function Drive.To(targetPos, opts)
 
 		local function speedFlat() local v = seat.AssemblyLinearVelocity; return V3(v.X, 0, v.Z).Magnitude end
 
-		-- calibration 1: which way is "forward" for the seat? push the throttle and look where the car goes
-		setCtl("Throttle", 1)
-		local t0 = os.clock()
-		while os.clock() - t0 < 3 and speedFlat() < 4 and not Drive.Cancel do task.wait(0.05) end
-		if speedFlat() < 3 and useKeys then
-			log("the keys did not move the car, trying the attribute + remote way")
-			setCtl("Throttle", 0, true)
-			useKeys = false
-			if pwmConn then pwmConn:Disconnect(); pwmConn = nil end
-			for _, code in ipairs({ Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D }) do key(code, false) end
-			cur.Throttle = 0
-			setCtl("Throttle", 1)
-			t0 = os.clock()
-			while os.clock() - t0 < 3 and speedFlat() < 4 and not Drive.Cancel do task.wait(0.05) end
-		end
-		if speedFlat() < 3 then
-			log(("no movement: IsOn=%s ParkingBrake=%s Throttle attr=%s Occupant=%s"):format(tostring(car:GetAttribute("IsOn")), tostring(car:GetAttribute("ParkingBrake")),
-				tostring(car:GetAttribute("Throttle")), tostring(seat.Occupant)))
-			release()
-			return false, "the car does not move (engine off / parking brake / no road under it?)"
-		end
-		local v0 = seat.AssemblyLinearVelocity
-		local fwdLocal = seat.CFrame:VectorToObjectSpace(V3(v0.X, 0, v0.Z).Unit)
-		local axis = { V3(1, 0, 0), V3(0, 0, 1) }
-		local bestAx, bv = nil, 0
-		for _, ax in ipairs(axis) do
-			local d = fwdLocal:Dot(ax)
-			if math.abs(d) > math.abs(bv) then bestAx, bv = ax, d end
-		end
-		fwdLocal = bestAx * (bv >= 0 and 1 or -1)
+		local fwdLocal, steerSign
 		local function forward() local f = seat.CFrame:VectorToWorldSpace(fwdLocal); return V3(f.X, 0, f.Z).Unit end
-		log(("forward axis in seat space: (%.0f,%.0f,%.0f), speed %.1f"):format(fwdLocal.X, fwdLocal.Y, fwdLocal.Z, speedFlat()))
+		if Drive.cal then
+			-- same car, same keys: no need to drive it around again to find out which way is forward / which way steers
+			fwdLocal, steerSign = Drive.cal.fwdLocal, Drive.cal.steerSign
+			if Drive.cal.useKeys == false and useKeys then
+				useKeys = false
+				if pwmConn then pwmConn:Disconnect(); pwmConn = nil end
+				for _, code in ipairs({ Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D }) do key(code, false) end
+			end
+			log(("calibration remembered: forward axis (%.0f,%.0f,%.0f), steering sign %d"):format(fwdLocal.X, fwdLocal.Y, fwdLocal.Z, steerSign))
+		else
+			-- calibration 1: which way is "forward" for the seat? push the throttle and look where the car goes
+			setCtl("Throttle", 1)
+			local t0 = os.clock()
+			while os.clock() - t0 < 3 and speedFlat() < 4 and not Drive.Cancel do task.wait(0.05) end
+			if speedFlat() < 3 and useKeys then
+				log("the keys did not move the car, trying the attribute + remote way")
+				setCtl("Throttle", 0, true)
+				useKeys = false
+				if pwmConn then pwmConn:Disconnect(); pwmConn = nil end
+				for _, code in ipairs({ Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D }) do key(code, false) end
+				cur.Throttle = 0
+				setCtl("Throttle", 1)
+				t0 = os.clock()
+				while os.clock() - t0 < 3 and speedFlat() < 4 and not Drive.Cancel do task.wait(0.05) end
+			end
+			if speedFlat() < 3 then
+				log(("no movement: IsOn=%s ParkingBrake=%s Throttle attr=%s Occupant=%s"):format(tostring(car:GetAttribute("IsOn")), tostring(car:GetAttribute("ParkingBrake")),
+					tostring(car:GetAttribute("Throttle")), tostring(seat.Occupant)))
+				release()
+				return false, "the car does not move (engine off / parking brake / no road under it?)"
+			end
+			local v0 = seat.AssemblyLinearVelocity
+			fwdLocal = seat.CFrame:VectorToObjectSpace(V3(v0.X, 0, v0.Z).Unit)
+			local axis = { V3(1, 0, 0), V3(0, 0, 1) }
+			local bestAx, bv = nil, 0
+			for _, ax in ipairs(axis) do
+				local d = fwdLocal:Dot(ax)
+				if math.abs(d) > math.abs(bv) then bestAx, bv = ax, d end
+			end
+			fwdLocal = bestAx * (bv >= 0 and 1 or -1)
+			log(("forward axis in seat space: (%.0f,%.0f,%.0f), speed %.1f"):format(fwdLocal.X, fwdLocal.Y, fwdLocal.Z, speedFlat()))
 
-		-- calibration 2: does a positive Steering raise or lower the heading angle?
-		local steerSign = 1
-		do
-			local y0 = yawOf(forward())
-			setCtl("Steering", 0.8)
-			task.wait(0.9)
-			local dy = wrap(yawOf(forward()) - y0)
-			setCtl("Steering", 0)
-			if math.abs(dy) > 0.3 then steerSign = dy >= 0 and 1 or -1 else steerSign = -1 end
-			log(("steering: +0.8 for 0.9 s changed the heading by %.2f rad -> sign %d%s"):format(dy, steerSign, math.abs(dy) > 0.3 and "" or " (too small to trust, using the default)"))
+			-- calibration 2: does a positive Steering raise or lower the heading angle?
+			steerSign = 1
+			do
+				local y0 = yawOf(forward())
+				setCtl("Steering", 0.8)
+				task.wait(0.9)
+				local dy = wrap(yawOf(forward()) - y0)
+				setCtl("Steering", 0)
+				if math.abs(dy) > 0.3 then steerSign = dy >= 0 and 1 or -1 else steerSign = -1 end
+				log(("steering: +0.8 for 0.9 s changed the heading by %.2f rad -> sign %d%s"):format(dy, steerSign, math.abs(dy) > 0.3 and "" or " (too small to trust, using the default)"))
+			end
+			Drive.cal = { fwdLocal = fwdLocal, steerSign = steerSign, useKeys = useKeys }
+
 		end
 
 		-- Pure pursuit: project the car on the route, aim at a point a little way ahead ON the route, steer by the angle to it
@@ -751,10 +782,10 @@ function Drive.To(targetPos, opts)
 			if nowT - lastScan > 0.1 and not reversing then
 				lastScan = nowT
 				local L = math.clamp(spd * 0.9 + 8, 10, 70)
-				local origin = V3(pos.X, pos.Y - 1, pos.Z) + fwd * 3
+				local origin = V3(pos.X, pos.Y - 0.5, pos.Z) + fwd * 3
 				local okb, r = pcall(function() return workspace:Blockcast(CFrame.lookAt(origin, origin + fwd), V3(6, 3, 1), fwd * L, scanPar) end)
 				danger = nil
-				if okb and r and math.abs(r.Normal.Y) < 0.5 then
+				if okb and r and math.abs(r.Normal.Y) < 0.5 and r.Instance ~= workspace.Terrain and r.Instance.Name ~= "Road" then
 					local m = r.Instance:FindFirstAncestorOfClass("Model")
 					if not (m and m:FindFirstChildOfClass("Humanoid")) then danger = { dist = r.Distance, pos = r.Position, name = r.Instance:GetFullName() } end
 				end
