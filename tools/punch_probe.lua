@@ -96,8 +96,7 @@ local function finish()
 	if not active then return end
 	active = false
 	for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-	local txt = table.concat(out, "
-")
+	local txt = table.concat(out, "\n")
 	local ok = pcall(function() setclipboard(txt) end)
 	pcall(function() writefile("punch_report.txt", txt) end)
 	print("[punch] " .. #out .. " lines " .. (ok and "copied to clipboard" or "(clipboard failed)") .. " + workspace/punch_report.txt")
