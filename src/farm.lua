@@ -28,7 +28,7 @@ local JEWELER_POS = V3(-412, 12, 3582)
 local CLUB_POS = V3(-1744, 11, 3009)
 local REGISTERS = { -- robbery folder name -> fallback position
 	{ key = "Tool Shop", folder = "Tool Shop Robbery", pos = V3(-759, 9, 635) },
-	{ key = "Ares", folder = "Ares Fuel Station Robbery", pos = V3(-839, 7, 1530) },
+	{ key = "Ares Fuel Station", folder = "Ares Fuel Station Robbery", pos = V3(-839, 7, 1530) },
 	{ key = "Gas-N-Go", folder = "Gas-N-Go Fuel Station Robbery", pos = V3(-1541, 9, 3771) },
 	{ key = "Osso", folder = "Osso Fuel Station Robbery", pos = nil },
 	{ key = "Farm Shop", folder = "Farm Shop Robbery", pos = nil },
@@ -348,11 +348,12 @@ local function tryRoutine(name, fn)
 end
 
 local function locationFor(entry)
+	if entry.pos then return entry.pos end -- coordinates read from Workspace.Robberies
 	local Tele = Farm.Tele
 	for _, l in ipairs(Tele and Tele.Locations or {}) do
 		if l.name:lower():find(entry.key:lower(), 1, true) then return l.pos end
 	end
-	return entry.pos
+	return nil
 end
 
 local function robRegister(entry)

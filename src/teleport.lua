@@ -466,6 +466,7 @@ function Tele.GoTo(loc)
 			local t0, lostSince, finished = os.clock(), nil, false
 			local idx = 1
 			local lostAccum = 0
+			local assist, slow, sampleT, samplePos = false, 0, os.clock(), seat.Position
 			while true do
 				local dt = RunService.Heartbeat:Wait()
 				if Tele.Cancel then say("Cancelled"); break end
@@ -513,10 +514,27 @@ function Tele.GoTo(loc)
 					end
 					if os.clock() - t0 - lostAccum > total / math.max(Tele.Speed, 50) * 2 + 6 then say("Took too long, stopped"); break end
 					local speed = math.min(Tele.Speed, 80 + (os.clock() - t0) * Tele.Speed * 4, remaining * 4 + 12, d / math.max(dt, 0.008))
-					local v = d > 0.01 and to.Unit * speed or Vector3.zero
-					for _, r in ipairs(roots) do
-						r.AssemblyLinearVelocity = v
-						r.AssemblyAngularVelocity = Vector3.zero
+					if assist then
+						-- the car's physics would not go that fast: move the whole car in small steps instead
+						local step = math.min(d, speed * math.min(dt, 0.1))
+						pcall(function() car:PivotTo(car:GetPivot() + to.Unit * step) end)
+						zero()
+					else
+						local v = d > 0.01 and to.Unit * speed or Vector3.zero
+						for _, r in ipairs(roots) do
+							r.AssemblyLinearVelocity = v
+							r.AssemblyAngularVelocity = Vector3.zero
+						end
+						-- is the car really going that fast? (the game / physics can cap it)
+						if os.clock() - sampleT >= 0.5 then
+							local actual = (seat.Position - samplePos).Magnitude / (os.clock() - sampleT)
+							sampleT, samplePos = os.clock(), seat.Position
+							if speed > 150 and actual < speed * 0.4 then slow = slow + 1 else slow = 0 end
+							if slow >= 2 then
+								assist = true
+								print(("[teleport] car only reached %.0f st/s of %.0f, switching to stepping"):format(actual, speed))
+							end
+						end
 					end
 				else
 					local p = math.clamp((os.clock() - t0) / T, 0, 1)
