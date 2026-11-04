@@ -269,8 +269,8 @@ local function ghost(car, char, on, store)
 			for _, d in ipairs(root:GetDescendants()) do
 				if d:IsA("BasePart") then
 					store[d] = { d.CanCollide, d.CanTouch }
+					-- CanCollide only: CanTouch=false makes the game's own client send "cancel" and the server unseats you
 					d.CanCollide = false
-					d.CanTouch = false
 				end
 			end
 		end
@@ -425,6 +425,10 @@ function Tele.GoTo(loc)
 				if below then
 					local want = CFrame.new(below.Position + Vector3.new(0, seatH + 0.6, 0)) * seat.CFrame.Rotation
 					car:PivotTo(want * rel)
+					if hum.SeatPart ~= seat then
+						-- thrown out mid-flight: stand next to the car instead of falling from cruise height
+						pcall(function() c:PivotTo(CFrame.new(below.Position + Vector3.new(0, 4, 0)) * CFrame.new(seat.CFrame.RightVector * -7)) end)
+					end
 				end
 			end
 			zero()
