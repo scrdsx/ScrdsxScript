@@ -14,6 +14,8 @@ local CAS = game:GetService("ContextActionService")
 local Tele = {
 	Speed = 900,      -- top studs/s along the whole path (it ramps up gently: a hard launch tears you out of the seat)
 	Accel = 300,      -- studs/s gained per second while ramping up
+	FlyMaxSpeed = 500, -- the velocity flight never goes faster than this (very high speeds froze / crashed the game)
+	FlyMinLift = 150, -- the velocity flight always cruises at least this high above the higher end (over the buildings)
 	Height = 25,      -- how far above the higher end the car cruises (it is non-solid, so this can stay low)
 	GetIn = true,     -- put you in your car first
 	Face = true,      -- end facing the location
@@ -309,6 +311,7 @@ local function trace(msg)
 	Tele.Trace[#Tele.Trace + 1] = msg
 	if #Tele.Trace > 60 then table.remove(Tele.Trace, 1) end
 	print("[teleport] " .. msg)
+	if Tele.OnTrace then pcall(Tele.OnTrace, msg) end
 end
 local function v3s(v) return ("(%.0f,%.0f,%.0f)"):format(v.X, v.Y, v.Z) end
 -- the car stopped moving: list what is around it so the blocker can be identified
@@ -442,7 +445,7 @@ function Tele.GoTo(loc)
 
 			local flyMode = Tele.Mode == "Fly"
 			local lift = Tele.Height
-			if flyMode and not Tele.Ghost then lift = math.max(lift, 120) end -- solid car: stay above the buildings
+			if flyMode then lift = math.max(lift, Tele.FlyMinLift) end -- fly OVER the buildings, not through them
 			local cruise = math.max(startCF.Position.Y, destPos.Y) + lift
 			local pts = {
 				startCF.Position,
@@ -575,8 +578,8 @@ function Tele.GoTo(loc)
 						say("Stuck at " .. v3s(seat.Position))
 						break
 					end
-					if os.clock() - t0 - lostAccum > total / math.max(math.min(Tele.Speed, 400), 50) + Tele.Speed / math.max(Tele.Accel, 50) + 8 then say("Took too long, stopped"); break end
-					local speed = math.min(Tele.Speed, 50 + (os.clock() - t0 - lostAccum) * Tele.Accel, math.sqrt(2 * 500 * remaining) + 10, d / math.max(dt, 0.008))
+					if os.clock() - t0 - lostAccum > total / math.max(math.min(Tele.Speed, Tele.FlyMaxSpeed, 400), 50) + math.min(Tele.Speed, Tele.FlyMaxSpeed) / math.max(Tele.Accel, 50) + 8 then say("Took too long, stopped"); break end
+					local speed = math.min(Tele.Speed, Tele.FlyMaxSpeed, 50 + (os.clock() - t0 - lostAccum) * Tele.Accel, math.sqrt(2 * 500 * remaining) + 10, d / math.max(dt, 0.008))
 					if assist then
 						-- the car's physics would not go that fast: move the whole car in small steps instead
 						local step = math.min(d, speed * math.min(dt, 0.1))

@@ -129,6 +129,7 @@ Tele.Scan(addLocations)
 -- AutoFarm tab (modules get added here)
 local tFarm = win:Tab("AutoFarm")
 Farm.Tele = Tele
+Tele.OnTrace = Farm.Trace
 local lFarm = tFarm:Label({ Name = "Status", Value = Farm.Info })
 local lFarmStats = tFarm:Label({ Name = "Done", Value = Farm.Stats })
 Farm.Changed = function() lFarm:Set(Farm.Info); lFarmStats:Set(Farm.Stats) end

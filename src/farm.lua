@@ -50,10 +50,21 @@ local function posStr()
 	local h = c and c:FindFirstChild("HumanoidRootPart")
 	return h and ("(%.0f,%.0f,%.0f)"):format(h.Position.X, h.Position.Y, h.Position.Z) or "(no char)"
 end
+local writing = false
+local function flush()
+	if writing then return end
+	writing = true
+	task.delay(0.4, function()
+		writing = false
+		pcall(function() if writefile then writefile("farm_log.txt", table.concat(logbuf, string.char(10))) end end)
+	end)
+end
 local function flog(s)
 	logbuf[#logbuf + 1] = ("[+%6.1f] %s  @%s"):format(os.clock() - T0, s, posStr())
 	if #logbuf > 400 then table.remove(logbuf, 1) end
+	flush() -- written to farm_log.txt as it happens, so a game crash does not lose it
 end
+function Farm.Trace(msg) flog("  tele: " .. msg) end
 function Farm.CopyLog()
 	local txt = table.concat(logbuf, "\n")
 	local ok = pcall(function() setclipboard(txt) end)
@@ -181,7 +192,6 @@ local function goNear(pos, name)
 	task.wait(0.2)
 	while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
 	if Farm.Cancel then return false end
-	for _, l in ipairs(Tele.Trace or {}) do flog("  tele: " .. l) end
 	flog(("teleport result=%s info=%s"):format(tostring(Tele.LastResult), tostring(Tele.Info)))
 	if Tele.LastResult ~= "ok" then say("could not drive to " .. name .. ": " .. tostring(Tele.Info)); return false end
 	local car, seat = myCar()
