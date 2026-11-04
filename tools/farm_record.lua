@@ -199,7 +199,7 @@ end
 conn(UIS.InputBegan:Connect(function(i, gp)
 	if not active then return end
 	-- End works even when the game swallowed the key; ; and Backspace-less marks only when not typing
-	if i.KeyCode == Enum.KeyCode.End then finish("End pressed")
+	if i.KeyCode == Enum.KeyCode.End or i.KeyCode == Enum.KeyCode.RightControl or i.KeyCode == Enum.KeyCode.Equals then finish("stop key pressed")
 	elseif i.KeyCode == Enum.KeyCode.Semicolon and not gp then mark() end
 end))
 

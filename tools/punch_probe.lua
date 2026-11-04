@@ -105,7 +105,7 @@ end
 -- everything else your input does around the punch (clicks, keys)
 table.insert(conns, UIS.InputBegan:Connect(function(i, gp)
 	if not active then return end
-	if i.KeyCode == Enum.KeyCode.End then
+	if i.KeyCode == Enum.KeyCode.End or i.KeyCode == Enum.KeyCode.RightControl or i.KeyCode == Enum.KeyCode.Equals then
 		finish()
 	elseif i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 		log(("input: left click gameProcessed=%s"):format(tostring(gp)))
@@ -114,5 +114,5 @@ table.insert(conns, UIS.InputBegan:Connect(function(i, gp)
 	end
 end))
 env.PunchProbe = { Stop = function() active = false end, Finish = finish }
-log("recording; punch a register, then press End (or run getgenv().PunchProbe.Finish())")
-print("[punch] recording - punch a cash register by hand, then press End (or run getgenv().PunchProbe.Finish())")
+log("recording; punch a register, then press End / Right Ctrl / = (or run getgenv().PunchProbe.Finish())")
+print("[punch] recording - punch a cash register by hand, then press End / Right Ctrl / = (or run getgenv().PunchProbe.Finish())")
