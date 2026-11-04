@@ -354,6 +354,7 @@ function Tele.GoTo(loc)
 	local car, seat = myCar()
 	if not car or not seat then say("Spawn your car first"); return end
 	Tele.Busy, Tele.Cancel = true, false
+	Tele.LastResult = nil -- becomes "ok" only when the car really arrived
 	guard(seat, 1e9) -- from before we sit until a few seconds after we arrive
 	task.spawn(function()
 		local store = {}
@@ -464,6 +465,7 @@ function Tele.GoTo(loc)
 			say(("%s %s (%.1fs%s)"):format(onRoad and "Going to" or "Going near", loc.name, T, stealth and ", hidden" or ""))
 			local t0, lostSince, finished = os.clock(), nil, false
 			local idx = 1
+			local lostAccum = 0
 			while true do
 				local dt = RunService.Heartbeat:Wait()
 				if Tele.Cancel then say("Cancelled"); break end
@@ -489,6 +491,7 @@ function Tele.GoTo(loc)
 					lostSince = nil
 				end
 				if not seated then
+					lostAccum = lostAccum + dt
 					zero() -- hover while we get you back in
 				elseif flyMode then
 					-- velocity flight: set the speed of every physics piece of the car, like Vehicle Fly does
@@ -505,9 +508,10 @@ function Tele.GoTo(loc)
 						zero()
 						say("Arrived: " .. loc.name)
 						finished = true
+						Tele.LastResult = "ok"
 						break
 					end
-					if os.clock() - t0 > total / math.max(Tele.Speed, 50) * 2 + 6 then say("Took too long, stopped"); break end
+					if os.clock() - t0 - lostAccum > total / math.max(Tele.Speed, 50) * 2 + 6 then say("Took too long, stopped"); break end
 					local speed = math.min(Tele.Speed, 80 + (os.clock() - t0) * Tele.Speed * 4, remaining * 4 + 12, d / math.max(dt, 0.008))
 					local v = d > 0.01 and to.Unit * speed or Vector3.zero
 					for _, r in ipairs(roots) do
@@ -525,6 +529,7 @@ function Tele.GoTo(loc)
 						zero()
 						say("Arrived: " .. loc.name)
 						finished = true
+						Tele.LastResult = "ok"
 						break
 					end
 				end

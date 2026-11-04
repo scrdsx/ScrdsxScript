@@ -145,6 +145,7 @@ mFarm:Slider({ Name = "Walk speed on foot", Min = 20, Max = 120, Step = 5, Defau
 tFarm:Button({ Name = "Rob nearest cash register now", Callback = function() Farm.Once("registers") end })
 tFarm:Button({ Name = "Rob the bank now", Callback = function() Farm.Once("bank") end })
 tFarm:Button({ Name = "Rob the jeweler now (experimental)", Callback = function() Farm.Once("jeweler") end })
+tFarm:Button({ Name = "Copy farm log (send me this if it fails)", Callback = function() win:Notify(Farm.CopyLog() and "Farm log copied" or "Could not copy; see workspace/farm_log.txt") end })
 tFarm:Button({ Name = "Stop AutoFarm", Callback = function() mFarm:Set(false, true); Farm.Stop() end })
 
 -- HUD tab: widgets that stay on screen; press / (window closed) to move them

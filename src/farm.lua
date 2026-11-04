@@ -43,8 +43,26 @@ local Farm = {
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
 
+local T0 = os.clock()
+local logbuf = {}
+local function posStr()
+	local c = lp.Character
+	local h = c and c:FindFirstChild("HumanoidRootPart")
+	return h and ("(%.0f,%.0f,%.0f)"):format(h.Position.X, h.Position.Y, h.Position.Z) or "(no char)"
+end
+local function flog(s)
+	logbuf[#logbuf + 1] = ("[+%6.1f] %s  @%s"):format(os.clock() - T0, s, posStr())
+	if #logbuf > 400 then table.remove(logbuf, 1) end
+end
+function Farm.CopyLog()
+	local txt = table.concat(logbuf, "
+")
+	local ok = pcall(function() setclipboard(txt) end)
+	pcall(function() writefile("farm_log.txt", txt) end)
+	return ok
+end
 local function changed() if Farm.Changed then task.defer(Farm.Changed) end end
-local function say(s) Farm.Info = s; changed() end
+local function say(s) Farm.Info = s; flog(s); changed() end
 local function stats()
 	local d = Farm.done
 	Farm.Stats = ("reg %d  bank %d  jewel %d  club %d  fails %d"):format(d.registers, d.bank, d.jeweler, d.club, d.fails)
@@ -94,7 +112,23 @@ local function cooldown(key, s) Farm.cool[key] = os.clock() + s end
 
 local function stream(pos) pcall(function() lp:RequestStreamAroundAsync(pos, 8) end) end
 
--- on foot: noclip + velocity (like the car flight), never an instant CFrame jump
+-- on foot: small CFrame steps every frame (about walking speed x2), noclip while moving, always restored afterwards
+local function restoreChar()
+	local c, hum, hrp = parts()
+	pcall(function()
+		if hum then
+			hum.PlatformStand = false
+			if hum.Health > 0 and hum:GetState() == Enum.HumanoidStateType.Physics then hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
+		end
+		if hrp then
+			hrp.AssemblyLinearVelocity = V3()
+			hrp.AssemblyAngularVelocity = V3()
+			local look = hrp.CFrame.LookVector
+			local flat = V3(look.X, 0, look.Z)
+			if flat.Magnitude > 0.05 then hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit) end
+		end
+	end)
+end
 local function walkTo(pos, speed, stop)
 	local c, hum, hrp = parts()
 	if not hrp then return false end
@@ -103,26 +137,24 @@ local function walkTo(pos, speed, stop)
 	for _, d in ipairs(c:GetDescendants()) do
 		if d:IsA("BasePart") and d.CanCollide then saved[#saved + 1] = d; d.CanCollide = false end
 	end
-	local psWas = hum.PlatformStand
-	hum.PlatformStand = true
-	local t0 = os.clock()
-	local limit = (hrp.Position - pos).Magnitude / speed * 2 + 4
 	local ok = false
-	while os.clock() - t0 < limit and not Farm.Cancel and hrp.Parent do
-		local dt = RunService.Heartbeat:Wait()
-		local to = pos - hrp.Position
-		local d = to.Magnitude
-		if d <= stop then ok = true; break end
-		hrp.AssemblyLinearVelocity = to.Unit * math.min(speed, d / math.max(dt, 0.01))
-	end
-	hrp.AssemblyLinearVelocity = V3()
-	hrp.AssemblyAngularVelocity = V3()
-	-- stand upright again
-	local look = hrp.CFrame.LookVector
-	local flat = V3(look.X, 0, look.Z)
-	if flat.Magnitude > 0.05 then hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit) end
-	hum.PlatformStand = psWas
+	local run, err = pcall(function()
+		local t0 = os.clock()
+		local limit = (hrp.Position - pos).Magnitude / speed * 2 + 4
+		while os.clock() - t0 < limit and not Farm.Cancel and hrp.Parent do
+			local dt = RunService.Heartbeat:Wait()
+			local to = pos - hrp.Position
+			local d = to.Magnitude
+			if d <= stop then ok = true; break end
+			local step = math.min(d, speed * math.min(dt, 0.1))
+			hrp.CFrame = hrp.CFrame + to.Unit * step
+			hrp.AssemblyLinearVelocity = V3()
+			hrp.AssemblyAngularVelocity = V3()
+		end
+	end)
 	for _, p in ipairs(saved) do if p.Parent then p.CanCollide = true end end
+	restoreChar()
+	if not run then flog("walkTo error: " .. tostring(err)) end
 	return ok
 end
 local function face(pos)
@@ -142,10 +174,13 @@ local function goNear(pos, name)
 	say("driving to " .. name)
 	stream(pos)
 	Tele.GoTo({ name = name, pos = pos })
+	task.wait(0.2)
 	while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
 	if Farm.Cancel then return false end
 	local _, hum, hrp = parts()
-	if not hrp or (hrp.Position - pos).Magnitude > 220 then return false end
+	flog(("teleport result=%s info=%s"):format(tostring(Tele.LastResult), tostring(Tele.Info)))
+	if Tele.LastResult ~= "ok" then say("could not drive to " .. name .. ": " .. tostring(Tele.Info)); return false end
+	if not hrp or (hrp.Position - pos).Magnitude > 250 then say("arrived too far from " .. name); return false end
 	if hum and hum.SeatPart then
 		hum.Sit = false
 		task.wait(0.35)
@@ -300,6 +335,9 @@ local function tryRoutine(name, fn)
 	local ok, res = pcall(fn)
 	if not ok then
 		print("[farm] " .. name .. " error: " .. tostring(res))
+		flog("ERROR in " .. name .. ": " .. tostring(res))
+		restoreChar()
+		Farm.CopyLog()
 		say(name .. " error: " .. tostring(res):sub(1, 60))
 		Farm.done.fails = Farm.done.fails + 1
 		cooldown(name, 90)
