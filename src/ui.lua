@@ -1,17 +1,18 @@
--- Black UI library: sidebar tabs, animated search bar, toggles, sliders, buttons, labels, toasts.
+-- Dark sidebar UI library: brand card, grouped nav, player card, header search, rows with pill toggles, sliders with value chips, toasts.
 local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 
 local T = {
-	bg = Color3.fromRGB(8, 8, 8),
-	panel = Color3.fromRGB(13, 13, 13),
-	elem = Color3.fromRGB(19, 19, 19),
-	hover = Color3.fromRGB(27, 27, 27),
-	stroke = Color3.fromRGB(36, 36, 36),
-	text = Color3.fromRGB(235, 235, 235),
-	sub = Color3.fromRGB(118, 118, 118),
-	accent = Color3.fromRGB(255, 255, 255),
+	bg = Color3.fromRGB(14, 14, 17),
+	panel = Color3.fromRGB(19, 19, 23),
+	elem = Color3.fromRGB(25, 25, 30),
+	hover = Color3.fromRGB(33, 33, 39),
+	stroke = Color3.fromRGB(38, 38, 45),
+	text = Color3.fromRGB(236, 236, 240),
+	sub = Color3.fromRGB(125, 125, 138),
+	accent = Color3.fromRGB(64, 132, 255),
+	accentDim = Color3.fromRGB(26, 44, 84),
 	font = Enum.Font.GothamMedium,
 	bold = Enum.Font.GothamBold,
 }
@@ -51,9 +52,11 @@ end
 local UI = {}
 UI.__index = UI
 
+local SIDE_W, HEAD_H = 214, 54
+
 function UI.new(opts)
 	opts = opts or {}
-	local self = setmetatable({ tabs = {}, rows = {}, conns = {}, flags = {}, active = nil, visible = true, baseScale = 1 }, UI)
+	local self = setmetatable({ tabs = {}, rows = {}, conns = {}, flags = {}, active = nil, visible = true, baseScale = 1, lastSection = nil }, UI)
 
 	local gui = new("ScreenGui", {
 		Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -64,33 +67,70 @@ function UI.new(opts)
 	self.gui = gui
 
 	local root = new("CanvasGroup", {
-		Name = "Root", Size = UDim2.fromOffset(640, 420), AnchorPoint = Vector2.new(.5, .5),
+		Name = "Root", Size = UDim2.fromOffset(780, 500), AnchorPoint = Vector2.new(.5, .5),
 		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BorderSizePixel = 0, GroupTransparency = 1,
-	}, { corner(12), stroke(T.stroke) })
+	}, { corner(16), stroke(T.stroke) })
 	root.Parent = gui
 	self.root = root
 	self.scale = new("UIScale", { Scale = .9, Parent = root })
 
-	-- top bar
-	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = Color3.fromRGB(26, 26, 26), BorderSizePixel = 0, Parent = root })
-	new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(.45, .45, .45)), Rotation = 90, Parent = top })
-	-- hairline under the bar that fades out at both ends
-	local line = new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = Color3.fromRGB(120, 120, 120), BorderSizePixel = 0, Parent = top })
-	new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(.5, .35), NumberSequenceKeypoint.new(1, 1) }), Parent = line })
-	-- logo badge
-	local badge = new("Frame", { Position = UDim2.fromOffset(16, 13), Size = UDim2.fromOffset(26, 26), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = top }, { corner(7) })
-	new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150)), Rotation = 45, Parent = badge })
-	local bl = label("S", 15, Color3.fromRGB(8, 8, 8), T.bold, Enum.TextXAlignment.Center); bl.Size = UDim2.fromScale(1, 1); bl.Parent = badge
-	local title = label(opts.Title or "Window", 15, T.text, T.bold)
-	title.Position = UDim2.fromOffset(52, 9); title.Size = UDim2.fromOffset(200, 18); title.Parent = top
+	-- sidebar ---------------------------------------------------------
+	local side = new("Frame", { Size = UDim2.new(0, SIDE_W, 1, 0), BackgroundColor3 = T.panel, BorderSizePixel = 0, Parent = root })
+	new("Frame", { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = side })
+	self.side = side
+
+	-- brand card
+	local brand = new("Frame", { Position = UDim2.fromOffset(12, 12), Size = UDim2.new(1, -24, 0, 56), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = side }, { corner(12), stroke(T.stroke) })
+	local badge = new("Frame", { Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(36, 36), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = brand }, { corner(10) })
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(110, 170, 255), Color3.fromRGB(48, 92, 220)), Rotation = 45, Parent = badge })
+	local bl = label("S", 19, Color3.new(1, 1, 1), T.bold, Enum.TextXAlignment.Center); bl.Size = UDim2.fromScale(1, 1); bl.Parent = badge
+	local title = label(opts.Title or "Window", 14, T.text, T.bold)
+	title.Position = UDim2.fromOffset(56, 11); title.Size = UDim2.new(1, -64, 0, 18); title.Parent = brand
 	local sub = label(opts.Subtitle or "", 11, T.sub)
-	sub.Position = UDim2.fromOffset(52, 27); sub.Size = UDim2.fromOffset(200, 14); sub.Parent = top
+	sub.Position = UDim2.fromOffset(56, 29); sub.Size = UDim2.new(1, -64, 0, 14); sub.Parent = brand
+
+	-- nav list
+	local nav = new("ScrollingFrame", {
+		Position = UDim2.fromOffset(0, 78), Size = UDim2.new(1, -1, 1, -78 - 84), BackgroundTransparency = 1, BorderSizePixel = 0,
+		ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), Parent = side,
+	})
+	new("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = nav })
+	new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 2), Parent = nav })
+	self.nav = nav
+
+	-- player card (bottom)
+	local lp = Players.LocalPlayer
+	local pc = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -12), Size = UDim2.new(1, -24, 0, 48), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = side }, { corner(12), stroke(T.stroke) })
+	local av = new("ImageLabel", { Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(32, 32), BackgroundColor3 = T.hover, BorderSizePixel = 0, Image = "", Parent = pc }, { corner(16) })
+	task.spawn(function()
+		pcall(function()
+			av.Image = Players:GetUserThumbnailAsync(lp.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+		end)
+	end)
+	local pn = label(lp.DisplayName, 13, T.text, T.bold); pn.Position = UDim2.fromOffset(48, 8); pn.Size = UDim2.new(1, -56, 0, 16); pn.Parent = pc
+	local pu = label("@" .. lp.Name, 11, T.sub); pu.Position = UDim2.fromOffset(48, 25); pu.Size = UDim2.new(1, -56, 0, 14); pu.Parent = pc
+	local foot = label("RightShift hide   /  search", 10, Color3.fromRGB(84, 84, 96), T.font, Enum.TextXAlignment.Center)
+	foot.AnchorPoint = Vector2.new(0, 1); foot.Position = UDim2.new(0, 12, 1, -66); foot.Size = UDim2.new(1, -24, 0, 12); foot.Parent = side
+
+	-- header (page title, search, close) ----------------------------------
+	local head = new("Frame", { Position = UDim2.fromOffset(SIDE_W, 0), Size = UDim2.new(1, -SIDE_W, 0, HEAD_H), BackgroundTransparency = 1, Parent = root })
+	local pageTitle = label("", 17, T.text, T.bold)
+	pageTitle.Position = UDim2.fromOffset(20, 0); pageTitle.Size = UDim2.new(0, 220, 1, 0); pageTitle.Parent = head
+	self.pageTitle = pageTitle
+	local line = new("Frame", { Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = head })
+	new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(.15, 0), NumberSequenceKeypoint.new(1, 0) }), Parent = line })
+
+	local close = new("TextButton", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -14, .5, 0), Size = UDim2.fromOffset(30, 30), BackgroundColor3 = T.elem, BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = head }, { corner(9) })
+	local cx = label("×", 20, T.sub, T.bold, Enum.TextXAlignment.Center); cx.Size = UDim2.fromScale(1, 1); cx.Parent = close
+	close.MouseEnter:Connect(function() tween(close, .15, { BackgroundColor3 = Color3.fromRGB(170, 52, 60) }); tween(cx, .15, { TextColor3 = Color3.new(1, 1, 1) }) end)
+	close.MouseLeave:Connect(function() tween(close, .15, { BackgroundColor3 = T.elem }); tween(cx, .15, { TextColor3 = T.sub }) end)
+	close.MouseButton1Click:Connect(function() self:SetVisible(false) end)
 
 	-- search bar (grows + brightens on focus)
 	local sb = new("Frame", {
-		AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(190, 30),
-		BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = top,
-	}, { corner(8) })
+		AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -54, .5, 0), Size = UDim2.fromOffset(170, 30),
+		BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = head,
+	}, { corner(9) })
 	local sbStroke = stroke(T.stroke); sbStroke.Parent = sb
 	local box = new("TextBox", {
 		BackgroundTransparency = 1, Size = UDim2.new(1, -44, 1, 0), Position = UDim2.fromOffset(12, 0),
@@ -103,16 +143,14 @@ function UI.new(opts)
 	}, { corner(5) })
 	local hintTxt = label("/", 11, T.sub, T.bold, Enum.TextXAlignment.Center)
 	hintTxt.Size = UDim2.fromScale(1, 1); hintTxt.Parent = hint
-	-- sliding underline that sweeps in on focus
 	local sweep = new("Frame", {
 		AnchorPoint = Vector2.new(.5, 1), Position = UDim2.new(.5, 0, 1, 0), Size = UDim2.new(0, 0, 0, 2),
 		BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = sb,
 	}, { corner(2) })
 	self.searchBox = box
-
 	box.Focused:Connect(function()
-		tween(sb, .28, { Size = UDim2.fromOffset(270, 30) })
-		tween(sbStroke, .2, { Color = Color3.fromRGB(110, 110, 110) })
+		tween(sb, .28, { Size = UDim2.fromOffset(250, 30) })
+		tween(sbStroke, .2, { Color = T.accent })
 		tween(sb, .2, { BackgroundColor3 = T.hover })
 		tween(sweep, .35, { Size = UDim2.new(1, -16, 0, 2) })
 		tween(hint, .2, { BackgroundTransparency = 1 }); tween(hintTxt, .2, { TextTransparency = 1 })
@@ -122,22 +160,26 @@ function UI.new(opts)
 		tween(sb, .2, { BackgroundColor3 = T.elem })
 		tween(sweep, .25, { Size = UDim2.new(0, 0, 0, 2) })
 		if box.Text == "" then
-			tween(sb, .28, { Size = UDim2.fromOffset(190, 30) })
+			tween(sb, .28, { Size = UDim2.fromOffset(170, 30) })
 			tween(hint, .2, { BackgroundTransparency = 0 }); tween(hintTxt, .2, { TextTransparency = 0 })
 		end
 	end)
 	box:GetPropertyChangedSignal("Text"):Connect(function() self:_search(box.Text) end)
 
-	-- drag by top bar
+	-- drag by the header and the brand card
 	do
 		local dragging, start, origin
-		top.InputBegan:Connect(function(i)
+		local function begin(i, skip)
 			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-				local p, a, z = i.Position, sb.AbsolutePosition, sb.AbsoluteSize
-				if p.X >= a.X and p.X <= a.X + z.X and p.Y >= a.Y and p.Y <= a.Y + z.Y then return end -- clicking the search bar
+				if skip then
+					local p, a, z = i.Position, skip.AbsolutePosition, skip.AbsoluteSize
+					if p.X >= a.X and p.X <= a.X + z.X and p.Y >= a.Y and p.Y <= a.Y + z.Y then return end
+				end
 				dragging, start, origin = true, i.Position, root.Position
 			end
-		end)
+		end
+		head.InputBegan:Connect(function(i) begin(i, sb) end)
+		brand.InputBegan:Connect(function(i) begin(i) end)
 		table.insert(self.conns, UIS.InputChanged:Connect(function(i)
 			if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
 				local d = i.Position - start
@@ -149,30 +191,14 @@ function UI.new(opts)
 		end))
 	end
 
-	-- sidebar
-	local side = new("Frame", { Position = UDim2.fromOffset(0, 52), Size = UDim2.new(0, 150, 1, -52), BackgroundColor3 = T.panel, BorderSizePixel = 0, Parent = root })
-	-- divider lives on root: inside side, its UIListLayout would give it the whole column and push the tabs away
-	new("Frame", { Size = UDim2.new(0, 1, 1, -52), Position = UDim2.fromOffset(149, 52), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = root })
-	new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = side })
-	new("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12), Parent = side })
-	self.side = side
-	-- footer hint (on root, the sidebar's list layout would move it)
-	local foot = label("RightShift hide  ·  / search", 10, Color3.fromRGB(78, 78, 78))
-	foot.Position = UDim2.new(0, 16, 1, -26); foot.Size = UDim2.fromOffset(130, 14); foot.ZIndex = 2; foot.Parent = root
-	self.indicator = new("Frame", {
-		Size = UDim2.fromOffset(3, 18), Position = UDim2.fromOffset(0, 52 + 12 + 8), BackgroundColor3 = T.accent,
-		BorderSizePixel = 0, ZIndex = 3, Parent = root, -- not in the sidebar: its UIListLayout would move it
-	}, { corner(2) })
-	self.indicator.Visible = false
-
 	-- content (all pages live in one list; search shows every page, filtered)
 	local content = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(150, 52), Size = UDim2.new(1, -150, 1, -52), BackgroundTransparency = 1, BorderSizePixel = 0,
-		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(70, 70, 70), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Position = UDim2.fromOffset(SIDE_W, HEAD_H), Size = UDim2.new(1, -SIDE_W, 1, -HEAD_H), BackgroundTransparency = 1, BorderSizePixel = 0,
+		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(70, 70, 82), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(), Parent = root,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder, Parent = content })
-	new("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14), PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 17), Parent = content })
+	new("UIPadding", { PaddingTop = UDim.new(0, 16), PaddingBottom = UDim.new(0, 16), PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 21), Parent = content })
 	self.content = content
 
 	-- toast holder
@@ -184,33 +210,43 @@ function UI.new(opts)
 
 	-- open animation
 	tween(root, .45, { GroupTransparency = 0 })
-	tween(self.scale, .5, { Scale = 1 }, Enum.EasingStyle.Back)
+	tween(self.scale, .55, { Scale = 1 }, Enum.EasingStyle.Back)
 	return self
 end
 
-function UI:Tab(name)
+-- opts: { Section = "GAME" } puts a small section label above this tab in the sidebar
+function UI:Tab(name, opts)
+	opts = opts or {}
 	local idx = #self.tabs + 1
+	if opts.Section and opts.Section ~= self.lastSection then
+		self.lastSection = opts.Section
+		local sl = label(opts.Section:upper(), 10, Color3.fromRGB(88, 88, 102), T.bold)
+		sl.Size = UDim2.new(1, 0, 0, 22); sl.LayoutOrder = idx * 2 - 1; sl.Parent = self.nav
+		new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 8), Parent = sl })
+	end
 	local btn = new("TextButton", {
-		Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = T.elem, BackgroundTransparency = 1, AutoButtonColor = false,
-		Text = "", LayoutOrder = idx, Parent = self.side,
-	}, { corner(8) })
+		Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = T.accentDim, BackgroundTransparency = 1, AutoButtonColor = false,
+		Text = "", LayoutOrder = idx * 2, Parent = self.nav,
+	}, { corner(10) })
+	local dot = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 12, .5, 0), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = T.sub, BorderSizePixel = 0, Parent = btn }, { corner(3) })
+	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 0, .5, 0), Size = UDim2.fromOffset(3, 0), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = btn }, { corner(2) })
 	local txt = label(name, 13, T.sub)
-	txt.Position = UDim2.fromOffset(14, 0); txt.Size = UDim2.new(1, -14, 1, 0); txt.Parent = btn
+	txt.Position = UDim2.fromOffset(28, 0); txt.Size = UDim2.new(1, -34, 1, 0); txt.Parent = btn
 
 	local page = new("CanvasGroup", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
 		LayoutOrder = idx, Visible = false, GroupTransparency = 1, Parent = self.content,
 	})
-	new("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder, Parent = page })
+	new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = page })
 	local header = label(name:upper(), 11, T.sub, T.bold)
 	header.Size = UDim2.new(1, 0, 0, 16); header.LayoutOrder = -1; header.Visible = false; header.Parent = page
 
-	local tab = { name = name, btn = btn, txt = txt, page = page, header = header, win = self, index = idx }
+	local tab = { name = name, btn = btn, txt = txt, dot = dot, bar = bar, page = page, header = header, win = self, index = idx }
 	setmetatable(tab, { __index = UI.TabMethods })
 	table.insert(self.tabs, tab)
 
-	btn.MouseEnter:Connect(function() if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = .6 }) end end)
-	btn.MouseLeave:Connect(function() if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = 1 }) end end)
+	btn.MouseEnter:Connect(function() if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = .75, BackgroundColor3 = T.hover }); tween(txt, .15, { TextColor3 = T.text }) end end)
+	btn.MouseLeave:Connect(function() if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = 1 }); tween(txt, .15, { TextColor3 = T.sub }) end end)
 	btn.MouseButton1Click:Connect(function()
 		if self.searchBox.Text ~= "" then self.searchBox.Text = "" end
 		self:Select(tab)
@@ -220,17 +256,18 @@ function UI:Tab(name)
 end
 
 function UI:Select(tab)
-	local prev = self.active
 	self.active = tab
 	for _, t in ipairs(self.tabs) do
 		local on = t == tab
-		tween(t.btn, .2, { BackgroundTransparency = on and 0 or 1 })
-		tween(t.txt, .2, { TextColor3 = on and T.text or T.sub })
+		tween(t.btn, .22, { BackgroundTransparency = on and .35 or 1, BackgroundColor3 = T.accentDim })
+		tween(t.txt, .22, { TextColor3 = on and T.text or T.sub })
+		tween(t.dot, .22, { BackgroundColor3 = on and T.accent or T.sub })
+		tween(t.bar, .25, { Size = UDim2.fromOffset(3, on and 18 or 0) }, Enum.EasingStyle.Back)
 		if not on then t.page.Visible = false; t.page.GroupTransparency = 1 end
 	end
-	self.indicator.Visible = true
-	tween(self.indicator, .3, { Position = UDim2.fromOffset(0, 52 + 12 + (tab.index - 1) * 38 + 8) }, Enum.EasingStyle.Back)
+	self.pageTitle.Text = tab.name
 	tab.page.Visible = true
+	tab.page.GroupTransparency = 1
 	tween(tab.page, .3, { GroupTransparency = 0 })
 	self.content.CanvasPosition = Vector2.zero
 end
@@ -352,11 +389,21 @@ function UI:ApplyConfig(cfg)
 end
 
 local function row(tab, name, height)
-	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = tab.page }, { corner(9), stroke(T.stroke) })
+	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = tab.page }, { corner(11), stroke(T.stroke) })
 	f.MouseEnter:Connect(function() tween(f, .15, { BackgroundColor3 = T.hover }) end)
 	f.MouseLeave:Connect(function() tween(f, .15, { BackgroundColor3 = T.elem }) end)
 	table.insert(tab.win.rows, { frame = f, name = name:lower(), tab = tab.realTab or tab })
 	return f
+end
+
+-- small group heading between rows, like "Graphic" / "Movement"
+function M:Section(o)
+	local name = type(o) == "table" and o.Name or tostring(o)
+	local f = new("Frame", { Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Parent = self.page })
+	new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 4, .5, 2), Size = UDim2.fromOffset(4, 12), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = f }, { corner(2) })
+	local l = label(name, 12, T.sub, T.bold); l.Position = UDim2.fromOffset(16, 2); l.Size = UDim2.new(1, -16, 1, 0); l.Parent = f
+	table.insert(self.win.rows, { frame = f, name = "\0", tab = self.realTab or self }) -- hidden while searching
+	return { frame = f }
 end
 
 function M:Label(o)
@@ -368,11 +415,11 @@ function M:Label(o)
 end
 
 function M:Button(o)
-	local f = row(self, o.Name, 38)
+	local f = row(self, o.Name, 42)
 	if o.Order then f.LayoutOrder = o.Order end
 	local b = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = o.Name, TextColor3 = T.text, Font = T.font, TextSize = 13, AutoButtonColor = false, Parent = f })
 	b.MouseButton1Click:Connect(function()
-		tween(f, .08, { BackgroundColor3 = Color3.fromRGB(55, 55, 55) })
+		tween(f, .08, { BackgroundColor3 = T.accentDim })
 		task.delay(.08, function() tween(f, .3, { BackgroundColor3 = T.hover }) end)
 		if o.Callback then task.spawn(o.Callback) end
 	end)
@@ -399,21 +446,21 @@ function M:TextBox(o)
 end
 
 function M:Toggle(o)
-	local f = row(self, o.Name, 40)
-	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(14, 0); n.Size = UDim2.new(1, -80, 1, 0); n.Parent = f
-	local sw = new("Frame", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -14, .5, 0), Size = UDim2.fromOffset(38, 20), BackgroundColor3 = Color3.fromRGB(34, 34, 34), BorderSizePixel = 0, Parent = f }, { corner(10) })
-	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = T.sub, BorderSizePixel = 0, Parent = sw }, { corner(7) })
+	local f = row(self, o.Name, 46)
+	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(16, 0); n.Size = UDim2.new(1, -90, 1, 0); n.Parent = f
+	local sw = new("Frame", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -14, .5, 0), Size = UDim2.fromOffset(44, 24), BackgroundColor3 = Color3.fromRGB(44, 44, 52), BorderSizePixel = 0, Parent = f }, { corner(12) })
+	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = Color3.fromRGB(160, 160, 172), BorderSizePixel = 0, Parent = sw }, { corner(9) })
 	local state = false
 	local obj = {}
 	-- lit-up look when on: brighter outline + a small accent bar on the left edge
 	local rowStroke = f:FindFirstChildOfClass("UIStroke")
-	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 5, .5, 0), Size = UDim2.fromOffset(3, 16), BackgroundColor3 = T.accent, BackgroundTransparency = 1, BorderSizePixel = 0, Parent = f }, { corner(2) })
+	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 0, .5, 0), Size = UDim2.fromOffset(3, 0), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = f }, { corner(2) })
 	local function apply(v, silent)
 		state = v
-		tween(bar, .22, { BackgroundTransparency = v and 0 or 1 })
-		if rowStroke then tween(rowStroke, .22, { Color = v and Color3.fromRGB(88, 88, 88) or T.stroke }) end
-		tween(sw, .22, { BackgroundColor3 = v and T.accent or Color3.fromRGB(34, 34, 34) })
-		tween(knob, .22, { Position = v and UDim2.new(1, -17, .5, 0) or UDim2.new(0, 3, .5, 0), BackgroundColor3 = v and Color3.fromRGB(8, 8, 8) or T.sub }, Enum.EasingStyle.Back)
+		tween(bar, .25, { Size = UDim2.fromOffset(3, v and 20 or 0) }, Enum.EasingStyle.Back)
+		if rowStroke then tween(rowStroke, .22, { Color = v and Color3.fromRGB(46, 78, 150) or T.stroke }) end
+		tween(sw, .22, { BackgroundColor3 = v and T.accent or Color3.fromRGB(44, 44, 52) })
+		tween(knob, .25, { Position = v and UDim2.new(1, -21, .5, 0) or UDim2.new(0, 3, .5, 0), BackgroundColor3 = v and Color3.new(1, 1, 1) or Color3.fromRGB(160, 160, 172) }, Enum.EasingStyle.Back)
 		if not silent and o.Callback then task.spawn(o.Callback, v) end
 	end
 	function obj:Set(v, silent) apply(v, silent) end
@@ -439,7 +486,7 @@ function M:Module(o)
 	obj.frame.LayoutOrder = 0
 
 	local chev = label("›", 20, T.sub, T.bold, Enum.TextXAlignment.Center)
-	chev.AnchorPoint = Vector2.new(.5, .5); chev.Position = UDim2.new(1, -66, .5, -1); chev.Size = UDim2.fromOffset(16, 20); chev.Parent = obj.frame
+	chev.AnchorPoint = Vector2.new(.5, .5); chev.Position = UDim2.new(1, -72, .5, -1); chev.Size = UDim2.fromOffset(16, 20); chev.Parent = obj.frame
 
 	local sf = new("CanvasGroup", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -464,20 +511,21 @@ function M:Module(o)
 	end
 	obj.hit.MouseButton2Click:Connect(function() obj:SetOpen(not open) end)
 
-	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label", "TextBox" }) do
+	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label", "TextBox", "Section" }) do
 		obj[k] = function(_, opts) return M[k](sub, opts) end
 	end
 	return obj
 end
 
 function M:Slider(o)
-	local f = row(self, o.Name, 54)
-	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(14, 8); n.Size = UDim2.new(.6, 0, 0, 16); n.Parent = f
-	local val = label("", 13, T.sub, T.bold, Enum.TextXAlignment.Right); val.Position = UDim2.new(.5, 0, 0, 8); val.Size = UDim2.new(.5, -14, 0, 16); val.Parent = f
-	local track = new("Frame", { Position = UDim2.new(0, 14, 0, 36), Size = UDim2.new(1, -28, 0, 4), BackgroundColor3 = Color3.fromRGB(34, 34, 34), BorderSizePixel = 0, Parent = f }, { corner(2) })
-	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = track }, { corner(2) })
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(120, 120, 120), Color3.new(1, 1, 1)), Parent = fill })
-	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = track }, { corner(6) })
+	local f = row(self, o.Name, 62)
+	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(16, 10); n.Size = UDim2.new(.6, 0, 0, 16); n.Parent = f
+	local chip = new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.accentDim, BorderSizePixel = 0, Parent = f }, { corner(6), new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }) })
+	local val = label("", 12, Color3.fromRGB(130, 176, 255), T.bold, Enum.TextXAlignment.Center); val.Size = UDim2.fromOffset(0, 20); val.AutomaticSize = Enum.AutomaticSize.X; val.TextTruncate = Enum.TextTruncate.None; val.Parent = chip
+	local track = new("Frame", { Position = UDim2.new(0, 16, 0, 42), Size = UDim2.new(1, -32, 0, 5), BackgroundColor3 = Color3.fromRGB(44, 44, 52), BorderSizePixel = 0, Parent = f }, { corner(3) })
+	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = track }, { corner(3) })
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(48, 92, 220), Color3.fromRGB(110, 170, 255)), Parent = fill })
+	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track }, { corner(7) })
 	local min, max, step = o.Min, o.Max, o.Step or 1
 	local value
 	local obj = {}
@@ -493,10 +541,10 @@ function M:Slider(o)
 	function obj:Get() return value end
 	local dragging = false
 	local function fromInput(i) set(min + math.clamp((i.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1) * (max - min)) end
-	local hit = new("TextButton", { Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Text = "", Parent = f })
+	local hit = new("TextButton", { Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Text = "", Parent = f })
 	hit.InputBegan:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-			dragging = true; tween(knob, .15, { Size = UDim2.fromOffset(15, 15) }); fromInput(i)
+			dragging = true; tween(knob, .15, { Size = UDim2.fromOffset(18, 18) }); fromInput(i)
 		end
 	end)
 	table.insert(self.win.conns, UIS.InputChanged:Connect(function(i)
@@ -504,7 +552,7 @@ function M:Slider(o)
 	end))
 	table.insert(self.win.conns, UIS.InputEnded:Connect(function(i)
 		if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
-			dragging = false; tween(knob, .15, { Size = UDim2.fromOffset(12, 12) })
+			dragging = false; tween(knob, .15, { Size = UDim2.fromOffset(14, 14) })
 		end
 	end))
 	set(o.Default or min, true)

@@ -28,7 +28,7 @@ Loading.run(TITLE, SUBTITLE)
 local win = UI.new({ Title = TITLE, Subtitle = SUBTITLE })
 
 -- Vehicle Mods tab
-local tVeh = win:Tab("Vehicle Mods")
+local tVeh = win:Tab("Vehicle Mods", { Section = "Game" })
 local lCar = tVeh:Label({ Name = "Car", Value = Vehicle.Info })
 local mSusp = tVeh:Module({ Name = "Suspension", Default = false, Callback = function(on) Vehicle.SetEnabled(on) end })
 mSusp:Slider({ Name = "Height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, Default = 0, Suffix = " st", Callback = function(v) Vehicle.SetHeight(v) end })
@@ -128,7 +128,7 @@ end })
 Tele.Scan(addLocations)
 
 -- AutoFarm tab (modules get added here)
-local tFarm = win:Tab("AutoFarm")
+local tFarm = win:Tab("AutoFarm", { Section = "Farming" })
 Farm.Tele = Tele
 Farm.Drive = Drive
 Drive.Log = function(m) Farm.Trace("drive: " .. m) end
@@ -180,7 +180,7 @@ local hud = Hud.new({
 		return list
 	end,
 })
-local tHud = win:Tab("HUD")
+local tHud = win:Tab("HUD", { Section = "Client" })
 tHud:Toggle({ Name = "Watermark", Default = hud:IsOn("watermark"), Callback = function(v) hud:SetWidget("watermark", v) end })
 tHud:Toggle({ Name = "Player info (health, position, nearest spot)", Default = hud:IsOn("info"), Callback = function(v) hud:SetWidget("info", v) end })
 tHud:Toggle({ Name = "Vehicle (speed, fuel, health, tires)", Default = hud:IsOn("vehicle"), Callback = function(v) hud:SetWidget("vehicle", v) end })

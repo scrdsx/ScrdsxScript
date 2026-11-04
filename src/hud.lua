@@ -11,8 +11,8 @@ local HttpService = game:GetService("HttpService")
 local lp = Players.LocalPlayer
 
 local T = {
-	bg = Color3.fromRGB(10, 10, 10), stroke = Color3.fromRGB(44, 44, 44), text = Color3.fromRGB(235, 235, 235),
-	sub = Color3.fromRGB(130, 130, 130), accent = Color3.fromRGB(255, 255, 255),
+	bg = Color3.fromRGB(14, 14, 17), stroke = Color3.fromRGB(40, 40, 48), text = Color3.fromRGB(236, 236, 240),
+	sub = Color3.fromRGB(125, 125, 138), accent = Color3.fromRGB(64, 132, 255), accentSoft = Color3.fromRGB(120, 168, 255),
 	good = Color3.fromRGB(120, 220, 140), warn = Color3.fromRGB(240, 190, 90), bad = Color3.fromRGB(240, 100, 100),
 	font = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold,
 }
@@ -79,18 +79,18 @@ function HUD.new(opts)
 	-- one widget = a card with an optional title and a list of rows
 	local function widget(id, title)
 		local f = new("Frame", {
-			Name = id, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = T.bg, BackgroundTransparency = .18,
+			Name = id, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = T.bg, BackgroundTransparency = .12,
 			BorderSizePixel = 0, Active = false, Parent = gui,
 		})
-		new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = f })
+		new("UICorner", { CornerRadius = UDim.new(0, 12), Parent = f })
 		local st = new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = f })
-		new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7), Parent = f })
+		new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 9), PaddingBottom = UDim.new(0, 9), Parent = f })
 		local sc = new("UIScale", { Scale = self.scale, Parent = f })
 		new("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = f })
 		local w = { id = id, frame = f, stroke = st, scale = sc, rows = {}, title = title }
 		if title then
 			local tl = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, Text = title:upper(),
-				TextColor3 = T.sub, Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 0, Parent = f })
+				TextColor3 = T.accentSoft, Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 0, Parent = f })
 			w.titleLabel = tl
 		end
 		-- position (stored as a fraction of the screen so it survives resolution changes)
@@ -101,28 +101,45 @@ function HUD.new(opts)
 		self.widgets[id] = w
 		self.order[#self.order + 1] = id
 
-		-- dragging (only does anything in edit mode: Active is false otherwise, so the game still gets the click)
-		local dragging, startMouse, startPos
+		-- dragging (edit mode only): the widget follows the mouse smoothly, stays fully on screen, snaps to the screen edges, saves on release
+		local dragging, startMouse, startPos, target, cur = false, nil, nil, nil, nil
 		table.insert(self.conns, f.InputBegan:Connect(function(i)
-			if not self.editing then return end
+			if not self.editing or self.draggingId then return end
 			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 				-- InputObject.Position is a Vector3; mixing it with the Vector2 AbsolutePosition throws, so use Vector2s
-				dragging, startMouse, startPos = true, Vector2.new(i.Position.X, i.Position.Y), f.AbsolutePosition
+				dragging, self.draggingId = true, id
+				startMouse, startPos = Vector2.new(i.Position.X, i.Position.Y), f.AbsolutePosition
+				target, cur = startPos, startPos
+				f.Position = UDim2.fromOffset(cur.X, cur.Y)
+				tween(sc, .15, { Scale = self.scale * 1.04 })
+				tween(st, .15, { Thickness = 2 })
 			end
 		end))
 		table.insert(self.conns, UIS.InputChanged:Connect(function(i)
 			if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-				local screen = gui.AbsoluteSize
+				local screen, sz = gui.AbsoluteSize, f.AbsoluteSize
 				local np = startPos + (Vector2.new(i.Position.X, i.Position.Y) - startMouse)
-				local x = math.clamp(np.X / math.max(screen.X, 1), 0, 0.98)
-				local y = math.clamp(np.Y / math.max(screen.Y, 1), 0, 0.98)
-				f.Position = UDim2.fromScale(x, y)
+				local maxX, maxY = math.max(screen.X - sz.X, 0), math.max(screen.Y - sz.Y, 0)
+				local x, y = math.clamp(np.X, 0, maxX), math.clamp(np.Y, 0, maxY)
+				if x < 10 then x = 0 elseif maxX - x < 10 then x = maxX end
+				if y < 10 then y = 0 elseif maxY - y < 10 then y = maxY end
+				target = Vector2.new(x, y)
+			end
+		end))
+		table.insert(self.conns, RunService.RenderStepped:Connect(function(dt)
+			if dragging and cur then
+				cur = cur:Lerp(target, math.min(1, dt * 24))
+				f.Position = UDim2.fromOffset(cur.X, cur.Y)
 			end
 		end))
 		table.insert(self.conns, UIS.InputEnded:Connect(function(i)
 			if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
-				dragging = false
+				dragging, self.draggingId = false, nil
+				local screen = gui.AbsoluteSize
+				f.Position = UDim2.fromScale(math.clamp(target.X / math.max(screen.X, 1), 0, 0.98), math.clamp(target.Y / math.max(screen.Y, 1), 0, 0.98))
 				self.saved.pos[id] = { x = f.Position.X.Scale, y = f.Position.Y.Scale }
+				tween(sc, .2, { Scale = self.scale })
+				tween(st, .2, { Thickness = 1 })
 				self:Save()
 			end
 		end))
@@ -167,13 +184,24 @@ function HUD.new(opts)
 	-- and an info bar underneath (green: earned, blue: car / autopilot state)
 	local MAP_W, MAP_H = 200, 140
 	local PX, PY = MAP_W / 2, MAP_H * 0.62 -- where you are on the map
-	local mapFrame = new("Frame", { Size = UDim2.fromOffset(MAP_W, MAP_H), BackgroundColor3 = Color3.fromRGB(34, 36, 40), BorderSizePixel = 0,
+	local mapFrame = new("Frame", { Size = UDim2.fromOffset(MAP_W, MAP_H), BackgroundColor3 = Color3.fromRGB(19, 21, 27), BorderSizePixel = 0,
 		ClipsDescendants = true, LayoutOrder = 100, Parent = farm.frame })
-	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = mapFrame })
+	new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = mapFrame })
 	new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = mapFrame })
-	local segs = {}
+	-- faint range rings around you
+	for _, r in ipairs({ 36, 72 }) do
+		local ring = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(PX, PY), Size = UDim2.fromOffset(r * 2, r * 2),
+			BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1, Parent = mapFrame })
+		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
+		new("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = .9, Thickness = 1, Parent = ring })
+	end
+	local northTag = new("TextLabel", { AnchorPoint = Vector2.new(.5, .5), BackgroundTransparency = 1, Size = UDim2.fromOffset(14, 14), Text = "N",
+		TextColor3 = Color3.fromRGB(255, 120, 120), Font = T.bold, TextSize = 10, ZIndex = 3, Parent = mapFrame })
+	local segs, glow = {}, {}
 	for i = 1, 60 do
-		segs[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = Color3.fromRGB(110, 190, 255), BorderSizePixel = 0,
+		glow[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = T.accent, BackgroundTransparency = .72, BorderSizePixel = 0,
+			Size = UDim2.fromOffset(10, 8), Visible = false, ZIndex = 1, Parent = mapFrame })
+		segs[i] = new("Frame", { AnchorPoint = Vector2.new(.5, .5), BackgroundColor3 = Color3.fromRGB(150, 195, 255), BorderSizePixel = 0,
 			Size = UDim2.fromOffset(10, 3), Visible = false, ZIndex = 2, Parent = mapFrame })
 	end
 	local pois = {}
@@ -186,21 +214,26 @@ function HUD.new(opts)
 		pois[i] = { f = d, t = t }
 	end
 	local me = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromOffset(PX, PY), Size = UDim2.fromOffset(22, 22),
-		BackgroundColor3 = Color3.fromRGB(24, 26, 30), BorderSizePixel = 0, ZIndex = 6, Parent = mapFrame })
+		BackgroundColor3 = T.accent, BorderSizePixel = 0, ZIndex = 6, Parent = mapFrame })
 	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = me })
+	new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, Parent = me })
 	new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "^", TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 16, ZIndex = 7, Parent = me })
 	local destRing = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1, BorderSizePixel = 0,
 		Visible = false, ZIndex = 5, Parent = mapFrame })
 	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = destRing })
 	destRing.BackgroundTransparency = 0.55
 	destRing.BackgroundColor3 = Color3.new(1, 1, 1)
+	-- pulsing destination ring
+	pcall(function()
+		TweenService:Create(destRing, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1), { Size = UDim2.fromOffset(40, 40), BackgroundTransparency = 1 }):Play()
+	end)
 	local statusText = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 3), Size = UDim2.new(1, -12, 0, 14), Text = "",
 		TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 8, Parent = mapFrame })
-	local bar = new("Frame", { Size = UDim2.fromOffset(MAP_W, 22), BackgroundColor3 = Color3.fromRGB(20, 62, 92), BorderSizePixel = 0, LayoutOrder = 101, Parent = farm.frame })
-	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = bar })
-	local barGreen = new("Frame", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(40, 170, 90), BorderSizePixel = 0, Parent = bar })
-	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = barGreen })
+	local bar = new("Frame", { Size = UDim2.fromOffset(MAP_W, 22), BackgroundColor3 = Color3.fromRGB(26, 34, 52), BorderSizePixel = 0, LayoutOrder = 101, Parent = farm.frame })
+	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = bar })
+	local barGreen = new("Frame", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(36, 160, 96), BorderSizePixel = 0, Parent = bar })
+	new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = barGreen })
 	local barEarn = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "+", TextColor3 = Color3.new(1, 1, 1), Font = T.bold, TextSize = 12,
 		ZIndex = 2, Parent = barGreen })
 	local barCar = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.new(0.62, 0, 0, 0), Size = UDim2.new(0.38, 0, 1, 0), Text = "IDLE",
@@ -255,6 +288,11 @@ function HUD.new(opts)
 					sgm.Size = UDim2.fromOffset(len, 3)
 					sgm.Position = UDim2.fromOffset((prev.X + cur.X) / 2, (prev.Y + cur.Y) / 2)
 					sgm.Rotation = math.deg(math.atan2(dv.Y, dv.X))
+					local gl = glow[k]
+					gl.Visible = true
+					gl.Size = UDim2.fromOffset(len, 8)
+					gl.Position = sgm.Position
+					gl.Rotation = sgm.Rotation
 				end
 				prev = cur
 				if cur.X < -300 or cur.X > MAP_W + 300 or cur.Y < -300 or cur.Y > MAP_H + 300 then break end
@@ -265,7 +303,12 @@ function HUD.new(opts)
 		else
 			destRing.Visible = false
 		end
-		for i = k + 1, #segs do segs[i].Visible = false end
+		for i = k + 1, #segs do segs[i].Visible = false; glow[i].Visible = false end
+		do -- north marker on the outer ring, turns with the map
+			local nx, ny = Vector3.new(0, 0, -1):Dot(r), -(Vector3.new(0, 0, -1):Dot(f))
+			local nl = math.sqrt(nx * nx + ny * ny)
+			if nl > 0.01 then northTag.Position = UDim2.fromOffset(PX + nx / nl * 66, PY + ny / nl * 66) end
+		end
 	end
 
 	self.lastFps = 60
