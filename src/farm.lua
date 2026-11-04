@@ -200,6 +200,38 @@ local function walkTo(pos, _, stop, maxLen)
 	if okc and path.Status == Enum.PathStatus.Success then
 		waypoints = path:GetWaypoints()
 	else
+		-- closed doors are walls for the path finder. Plan again with every unlocked door treated as open (only for the planning,
+		-- they are solid again right after): the route then leads through the doors, and walking into a door opens it.
+		local saved = {}
+		pcall(function()
+			for _, tag in ipairs({ "Sliding Door", "Hinge Door" }) do
+				for _, d in ipairs(CS:GetTagged(tag)) do
+					local dp = d:IsA("Model") and d:GetPivot().Position or (d:IsA("BasePart") and d.Position)
+					if dp and d:GetAttribute("Locked") ~= true and ((dp - hrp.Position).Magnitude < 400 or (dp - pos).Magnitude < 400) then
+						for _, bp in ipairs(d:GetDescendants()) do
+							if bp:IsA("BasePart") and bp.CanCollide then saved[#saved + 1] = bp; bp.CanCollide = false end
+						end
+					end
+				end
+			end
+		end)
+		local pd = PFS:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 5 })
+		local okd = pcall(function() pd:ComputeAsync(hrp.Position, pos) end)
+		local gotD = okd and pd.Status == Enum.PathStatus.Success
+		if not gotD then -- the target itself may be inside something: try spots around it, still with the doors open
+			for _, off in ipairs({ V3(4, 0, 0), V3(-4, 0, 0), V3(0, 0, 4), V3(0, 0, -4), V3(8, 0, 0), V3(-8, 0, 0), V3(0, 0, 8), V3(0, 0, -8) }) do
+				local alt = PFS:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 5 })
+				if pcall(function() alt:ComputeAsync(hrp.Position, pos + off) end) and alt.Status == Enum.PathStatus.Success then pd, gotD = alt, true; break end
+			end
+		end
+		for _, bp in ipairs(saved) do pcall(function() bp.CanCollide = true end) end
+		if gotD then
+			waypoints = pd:GetWaypoints()
+			waypoints[#waypoints + 1] = { Position = pos, Action = Enum.PathWaypointAction.Walk }
+			flog(("path found through the doors (%d door parts treated as open for planning)"):format(#saved))
+		end
+	end
+	if not waypoints then
 		local why = okc and tostring(path.Status) or "error"
 		-- the destination may be inside something solid: try spots around it
 		for _, off in ipairs({ V3(4, 0, 0), V3(-4, 0, 0), V3(0, 0, 4), V3(0, 0, -4), V3(8, 0, 0), V3(-8, 0, 0), V3(0, 0, 8), V3(0, 0, -8) }) do
@@ -978,11 +1010,6 @@ local function doBank()
 		if not bombCheck() and not buyBombs(1) then say("could not buy a bomb"); cooldown("bank", 90); return false end
 		if not goNear(BANK.pos, "bank") then cooldown("bank", 90); return false end
 		say("bank: walking in")
-		-- known entrance (measured from logs): terrace -> glass door at x=-1200 -> hall -> vault door
-		for _, w in ipairs({ V3(-1200, 6, 3190), V3(-1200, 9, 3168), V3(-1200, 9, 3146), V3(-1222, 8, 3148) }) do
-			if Farm.Cancel then break end
-			walkTo(w, Farm.WalkSpeed, 4)
-		end
 		local inside = walkTo(BANK.stand + V3(0, 1, 0), Farm.WalkSpeed, 3)
 		if not inside then
 			local _, _, h0 = parts()
