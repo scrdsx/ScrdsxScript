@@ -55,55 +55,75 @@ end
 
 local function posOf(inst)
 	if inst:IsA("BasePart") then return inst.Position end
+	if inst:IsA("Attachment") then return inst.WorldPosition end
+	if inst:IsA("ObjectValue") and inst.Value and inst.Value ~= inst then return posOf(inst.Value) end
 	if inst:IsA("Model") then
 		local ok, cf = pcall(function() return inst:GetBoundingBox() end)
 		if ok then return cf.Position end
 	end
 	local sum, n = Vector3.zero, 0
 	for _, d in ipairs(inst:GetDescendants()) do
-		if d:IsA("BasePart") then sum = sum + d.Position; n = n + 1 end
+		if d:IsA("BasePart") then sum = sum + d.Position; n = n + 1
+		elseif d:IsA("Attachment") then sum = sum + d.WorldPosition; n = n + 1 end
 	end
 	return n > 0 and sum / n or nil
 end
 
--- scan locations (runs in a task: the workspace is big) ---------------------------------
+-- scan locations: the game's own GPS list first (ReplicatedStorage is always loaded, so no map streaming problems),
+-- then robbery folders, built-in fallbacks and your saved spots. Runs in a task: it touches a lot of instances.
 function Tele.Scan(done)
 	task.spawn(function()
-		local list, names = {}, {}
-		local function add(name, pos)
+		local list = {}
+		local function nearExisting(pos)
+			for _, e in ipairs(list) do
+				if (e.pos - pos).Magnitude < 60 then return true end
+			end
+			return false
+		end
+		local function add(name, pos, force)
 			if not pos then return end
+			if not force and nearExisting(pos) then return end -- same place from another source
 			local final, i = name, 2
-			while names[final] do final = name .. " " .. i; i = i + 1 end
-			names[final] = true
+			local function taken(n) for _, e in ipairs(list) do if e.name == n then return true end end return false end
+			while taken(final) do final = name .. " " .. i; i = i + 1 end
 			list[#list + 1] = { name = final, pos = pos }
 		end
-		local rob = workspace:FindFirstChild("Robberies")
 		Tele.Missing = {}
+
+		-- 1) GPS list: defaultNavigationTargets.default[i] = { name, instance = ReplicatedStorage.DefaultNavigationTargets.X }
+		local RS = game:GetService("ReplicatedStorage")
+		local assets = RS:FindFirstChild("Code") and RS.Code:FindFirstChild("assets")
+		local mod = assets and assets:FindFirstChild("defaultNavigationTargets")
+		local okm, data = false, nil
+		if mod then okm, data = pcall(require, mod) end
+		if okm and type(data) == "table" and type(data.default) == "table" then
+			for _, t in ipairs(data.default) do
+				if type(t) == "table" and typeof(t.instance) == "Instance" then
+					local p = posOf(t.instance)
+					if p then add(t.name or t.instance.Name, p) else Tele.Missing[#Tele.Missing + 1] = t.name or t.instance.Name end
+				end
+			end
+		else
+			local folder = RS:FindFirstChild("DefaultNavigationTargets")
+			for _, c in ipairs(folder and folder:GetChildren() or {}) do
+				local nm = c.Name:gsub("(%l)(%u)", "%1 %2")
+				add(nm, posOf(c))
+			end
+		end
+
+		-- 2) robbery folders that are loaded near you
+		local rob = workspace:FindFirstChild("Robberies")
 		if rob then
 			for _, c in ipairs(rob:GetChildren()) do
 				local nm = (c.Name:gsub(" Robbery$", ""):gsub("Robbery$", ""))
-				local p = posOf(c) or KNOWN[nm]
-				if p then add(nm, p)
-				elseif nm ~= "VendingMachines" and nm ~= "ContainerRobberies" then Tele.Missing[#Tele.Missing + 1] = nm end -- not streamed in yet
+				local p = posOf(c)
+				if p then add(nm, p) end
 			end
 		end
-		for nm, p in pairs(KNOWN) do if not names[nm] then add(nm, p) end end
-		for _, s in ipairs(Tele.Saved) do add(s.name, s.pos) end
-		local iter = 0
-		for _, d in ipairs(workspace:GetDescendants()) do
-			iter = iter + 1
-			if iter % 4000 == 0 then task.wait() end
-			local nm = d:GetAttribute("NavigationName")
-			if type(nm) == "string" and nm ~= "" and nm ~= "Vehicle" and #list < 80
-				and not (d.Parent and d.Parent.Name == lp.Name) and not d:IsDescendantOf(workspace:FindFirstChild("Vehicles") or workspace.Terrain) then
-				local p = posOf(d)
-				local dup = false
-				for _, e in ipairs(list) do
-					if p and (e.pos - p).Magnitude < 8 then dup = true break end
-				end
-				if not dup then add(nm, p) end
-			end
-		end
+		-- 3) built-in fallbacks, 4) your saved spots (always listed)
+		for nm, p in pairs(KNOWN) do add(nm, p) end
+		for _, s in ipairs(Tele.Saved) do add(s.name, s.pos, true) end
+
 		table.sort(list, function(a, b) return a.name < b.name end)
 		Tele.Locations = list
 		if done then done(list) end
