@@ -1,23 +1,28 @@
--- Teleports: put you in your own car, then glide the car to a spot on the road in front of a location.
---  1) locations are scanned at runtime: Workspace.Robberies children + map markers (attribute NavigationName)
---  2) "get in": teleports you next to your car (Workspace.Vehicles.<your name>), sits you in DriveSeat
---  3) travel: lifts the car, glides over at high speed with an ease in/out, then settles on asphalt facing the location
--- UNTESTED in game. The server may rubber-band very fast moves: lower Speed if it snaps you back.
+-- Teleports: seat you in your own car, then glide the car to a clear spot on the road IN FRONT of a place.
+--  * locations: the game's GPS list (ReplicatedStorage.DefaultNavigationTargets), robbery folders, fallbacks, saved spots
+--  * travel: the car (and you) turn non-solid for the trip so nothing crashes, ragdolls or kills you, then solidify on arrival
+--  * landing: only asphalt that is at the shop's ground level, open to the sky and with room for the car (never a roof)
+--  * stealth: optionally throttles your outgoing network updates for the trip so other players keep seeing you at the
+--    old spot, then releases them on arrival (needs NetworkClient:SetOutgoingKBPSLimit in your executor)
+-- UNTESTED in game. The server may still rubber-band very fast moves: lower Speed if it snaps you back.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local NetworkClient = game:GetService("NetworkClient")
 
 local Tele = {
-	Speed = 700,     -- studs/s along the whole path
-	Height = 70,     -- how far above the higher end the car cruises (clears buildings)
-	GetIn = true,    -- teleport into your car first
-	Face = true,     -- end facing the location
+	Speed = 900,      -- studs/s along the whole path
+	Height = 25,      -- how far above the higher end the car cruises (it is non-solid, so this can stay low)
+	GetIn = true,     -- put you in your car first
+	Face = true,      -- end facing the location
+	Stealth = true,   -- others keep seeing you at the start until you arrive
 	Busy = false,
-	Locations = {},  -- { name, pos }
+	Cancel = false,
+	Locations = {},   -- { name, pos }
 	Info = "ready",
 }
 local lp = Players.LocalPlayer
 
--- coordinates read by tools/robbery_probe.lua (used when the shop is not streamed in near you)
+-- fallbacks (coordinates read by tools/robbery_probe.lua)
 local KNOWN = {
 	["Bank"] = Vector3.new(-1239, 10, 3120),
 	["JewelleryStore"] = Vector3.new(-412, 12, 3582),
@@ -53,6 +58,7 @@ local function say(msg)
 	if Tele.Changed then Tele.Changed() end
 end
 
+-- locations -------------------------------------------------------------------------------
 local function posOf(inst)
 	if inst:IsA("BasePart") then return inst.Position end
 	if inst:IsA("Attachment") then return inst.WorldPosition end
@@ -69,8 +75,6 @@ local function posOf(inst)
 	return n > 0 and sum / n or nil
 end
 
--- scan locations: the game's own GPS list first (ReplicatedStorage is always loaded, so no map streaming problems),
--- then robbery folders, built-in fallbacks and your saved spots. Runs in a task: it touches a lot of instances.
 function Tele.Scan(done)
 	task.spawn(function()
 		local list = {}
@@ -82,7 +86,7 @@ function Tele.Scan(done)
 		end
 		local function add(name, pos, force)
 			if not pos then return end
-			if not force and nearExisting(pos) then return end -- same place from another source
+			if not force and nearExisting(pos) then return end
 			local final, i = name, 2
 			local function taken(n) for _, e in ipairs(list) do if e.name == n then return true end end return false end
 			while taken(final) do final = name .. " " .. i; i = i + 1 end
@@ -90,7 +94,6 @@ function Tele.Scan(done)
 		end
 		Tele.Missing = {}
 
-		-- 1) GPS list: defaultNavigationTargets.default[i] = { name, instance = ReplicatedStorage.DefaultNavigationTargets.X }
 		local RS = game:GetService("ReplicatedStorage")
 		local assets = RS:FindFirstChild("Code") and RS.Code:FindFirstChild("assets")
 		local mod = assets and assets:FindFirstChild("defaultNavigationTargets")
@@ -106,12 +109,10 @@ function Tele.Scan(done)
 		else
 			local folder = RS:FindFirstChild("DefaultNavigationTargets")
 			for _, c in ipairs(folder and folder:GetChildren() or {}) do
-				local nm = c.Name:gsub("(%l)(%u)", "%1 %2")
-				add(nm, posOf(c))
+				add((c.Name:gsub("(%l)(%u)", "%1 %2")), posOf(c))
 			end
 		end
 
-		-- 2) robbery folders that are loaded near you
 		local rob = workspace:FindFirstChild("Robberies")
 		if rob then
 			for _, c in ipairs(rob:GetChildren()) do
@@ -120,7 +121,6 @@ function Tele.Scan(done)
 				if p then add(nm, p) end
 			end
 		end
-		-- 3) built-in fallbacks, 4) your saved spots (always listed)
 		for nm, p in pairs(KNOWN) do add(nm, p) end
 		for _, s in ipairs(Tele.Saved) do add(s.name, s.pos, true) end
 
@@ -128,6 +128,25 @@ function Tele.Scan(done)
 		Tele.Locations = list
 		if done then done(list) end
 	end)
+end
+
+function Tele.SaveHere()
+	local c = lp.Character
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	if not hrp then say("No character"); return nil end
+	local n = 1
+	while true do
+		local taken = false
+		for _, s in ipairs(Tele.Saved) do if s.name == "Spot " .. n then taken = true break end end
+		if not taken then break end
+		n = n + 1
+	end
+	local loc = { name = "Spot " .. n, pos = hrp.Position }
+	Tele.Saved[#Tele.Saved + 1] = loc
+	persistSaved()
+	table.insert(Tele.Locations, loc)
+	say("Saved " .. loc.name)
+	return loc
 end
 
 -- helpers --------------------------------------------------------------------------------
@@ -160,35 +179,57 @@ local function ensureSeated(car, seat)
 	return hum.SeatPart == seat
 end
 
-local function groundRay(x, z, fromY, ignore)
+local function params(ignore)
 	local rp = RaycastParams.new()
 	rp.FilterType = Enum.RaycastFilterType.Exclude
 	rp.FilterDescendantsInstances = ignore
-	return workspace:Raycast(Vector3.new(x, fromY, z), Vector3.new(0, -700, 0), rp)
+	return rp
 end
 
--- nearest asphalt around the location (rings of 16 directions), nearest to where we start
-local function approachPoint(pos, from, ignore)
-	local top = pos.Y + 120
-	for _, radius in ipairs({ 14, 24, 36, 50, 68, 90 }) do
-		local best, bestD
-		for i = 0, 15 do
-			local a = i / 16 * math.pi * 2
-			local r = groundRay(pos.X + math.cos(a) * radius, pos.Z + math.sin(a) * radius, top, ignore)
-			if r and r.Material == Enum.Material.Asphalt and math.abs(r.Position.Y - pos.Y) < 40 then
-				local d = (r.Position - from).Magnitude
-				if not bestD or d < bestD then best, bestD = r.Position, d end
-			end
-		end
-		if best then return best end
+local function boxFree(cf, size, ignore)
+	local op = OverlapParams.new()
+	op.FilterType = Enum.RaycastFilterType.Exclude
+	op.FilterDescendantsInstances = ignore
+	for _, p in ipairs(workspace:GetPartBoundsInBox(cf, size, op)) do
+		if p.CanCollide and p.Transparency < 1 then return false end
 	end
-	local r = groundRay(pos.X + 25, pos.Z, top, ignore)
-	return r and r.Position or pos
+	return true
+end
+
+-- a spot ON THE GROUND at the location's own level (never a roof), open to the sky, with room for the car
+local function findDestination(pos, from, ignore)
+	local rp = params(ignore)
+	local function candidate(x, z, needAsphalt)
+		local r = workspace:Raycast(Vector3.new(x, pos.Y + 12, z), Vector3.new(0, -40, 0), rp)
+		if not r then return nil end
+		if needAsphalt and r.Material ~= Enum.Material.Asphalt then return nil end
+		if r.Normal.Y < 0.9 or r.Position.Y < pos.Y - 12 or r.Position.Y > pos.Y + 8 then return nil end
+		if workspace:Raycast(r.Position + Vector3.new(0, 2, 0), Vector3.new(0, 25, 0), rp) then return nil end -- under a roof/bridge
+		local face = Vector3.new(pos.X, r.Position.Y + 3, pos.Z)
+		local at = r.Position + Vector3.new(0, 3, 0)
+		local cf = (face - at).Magnitude > 1 and CFrame.lookAt(at, face) or CFrame.new(at)
+		if not boxFree(cf, Vector3.new(9, 4, 17), ignore) then return nil end
+		return r.Position
+	end
+	for pass = 1, 2 do -- pass 1: asphalt only; pass 2: any clear ground
+		for _, radius in ipairs({ 10, 16, 24, 34, 46, 60, 80 }) do
+			local best, bestD
+			for i = 0, 23 do
+				local a = i / 24 * math.pi * 2
+				local p = candidate(pos.X + math.cos(a) * radius, pos.Z + math.sin(a) * radius, pass == 1)
+				if p then
+					local d = (p - from).Magnitude
+					if not bestD or d < bestD then best, bestD = p, d end
+				end
+			end
+			if best then return best, pass == 1 end
+		end
+	end
+	return nil
 end
 
 local function smooth(p) return p * p * (3 - 2 * p) end
 
--- polyline helper: point at distance d along pts
 local function along(pts, lens, d)
 	for i = 1, #lens do
 		if d <= lens[i] or i == #lens then
@@ -200,25 +241,37 @@ local function along(pts, lens, d)
 	return pts[#pts]
 end
 
--- remember where you are standing (or driving) as a named spot; returns the new location
-function Tele.SaveHere()
-	local c = lp.Character
-	local hrp = c and c:FindFirstChild("HumanoidRootPart")
-	if not hrp then say("No character"); return nil end
-	local n = 1
-	while true do
-		local taken = false
-		for _, s in ipairs(Tele.Saved) do if s.name == "Spot " .. n then taken = true break end end
-		if not taken then break end
-		n = n + 1
+-- non-solid for the trip (and restored afterwards, whatever happens)
+local function ghost(car, char, on, store)
+	if on then
+		for _, root in ipairs({ car, char }) do
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("BasePart") then
+					store[d] = { d.CanCollide, d.CanTouch }
+					d.CanCollide = false
+					d.CanTouch = false
+				end
+			end
+		end
+	else
+		for p, o in pairs(store) do
+			if p.Parent then pcall(function() p.CanCollide = o[1]; p.CanTouch = o[2] end) end
+		end
+		table.clear(store)
 	end
-	local loc = { name = "Spot " .. n, pos = hrp.Position }
-	Tele.Saved[#Tele.Saved + 1] = loc
-	persistSaved()
-	table.insert(Tele.Locations, loc)
-	say("Saved " .. loc.name)
-	return loc
 end
+
+local lagOn = false
+local function setLag(on)
+	local ok = pcall(function()
+		if on then NetworkClient:SetOutgoingKBPSLimit(1)
+		else NetworkClient:SetOutgoingKBPSLimit(math.huge) end
+	end)
+	if not on then lagOn = false elseif ok then lagOn = true end
+	return ok
+end
+
+function Tele.Stop() Tele.Cancel = true end
 
 function Tele.GoToCar()
 	if Tele.Busy then return end
@@ -236,29 +289,28 @@ function Tele.GoTo(loc)
 	if Tele.Busy then return end
 	local car, seat = myCar()
 	if not car or not seat then say("Spawn your car first"); return end
-	Tele.Busy = true
+	Tele.Busy, Tele.Cancel = true, false
 	task.spawn(function()
+		local store = {}
+		local c = lp.Character
 		local okRun, err = pcall(function()
-			local c = lp.Character
 			local hum = c and c:FindFirstChildOfClass("Humanoid")
 			if Tele.GetIn and not ensureSeated(car, seat) then say("Could not sit in the car"); return end
 			if not (hum and hum.SeatPart == seat) then say("Sit in your car first (or turn Get in on)"); return end
 
 			local root = seat.AssemblyRootPart or seat
 			local ignore = { car, c }
-			-- how high the seat rides above the ground, so the car lands level
-			local g = groundRay(seat.Position.X, seat.Position.Z, seat.Position.Y + 2, ignore)
-			local seatH = (g and math.clamp(seat.Position.Y - g.Position.Y, 0.8, 8) or 3) + 0.3 -- seat rode 1.18 above asphalt in the dump
+			local g = workspace:Raycast(seat.Position, Vector3.new(0, -30, 0), params(ignore))
+			local seatH = (g and math.clamp(seat.Position.Y - g.Position.Y, 0.8, 8) or 3) + 0.3
 
 			local startCF = seat.CFrame
-			local dest = approachPoint(loc.pos, startCF.Position, ignore)
-			local destPos = dest + Vector3.new(0, seatH, 0)
-			local finalCF
+			local ground, onRoad = findDestination(loc.pos, startCF.Position, ignore)
+			if not ground then say("No clear road spot near " .. loc.name); return end
+			local destPos = ground + Vector3.new(0, seatH, 0)
+			local finalRot = startCF.Rotation
 			if Tele.Face then
 				local lookAt = Vector3.new(loc.pos.X, destPos.Y, loc.pos.Z)
-				finalCF = (lookAt - destPos).Magnitude > 1 and CFrame.lookAt(destPos, lookAt) or startCF.Rotation + destPos
-			else
-				finalCF = startCF.Rotation + destPos
+				if (lookAt - destPos).Magnitude > 1 then finalRot = CFrame.lookAt(destPos, lookAt).Rotation end
 			end
 
 			local cruise = math.max(startCF.Position.Y, destPos.Y) + Tele.Height
@@ -266,33 +318,61 @@ function Tele.GoTo(loc)
 				startCF.Position,
 				Vector3.new(startCF.Position.X, cruise, startCF.Position.Z),
 				Vector3.new(destPos.X, cruise, destPos.Z),
-				destPos,
+				destPos + Vector3.new(0, 0.6, 0), -- arrive just above the road, then settle
 			}
 			local lens, total = {}, 0
 			for i = 1, #pts - 1 do lens[i] = (pts[i + 1] - pts[i]).Magnitude; total = total + lens[i] end
-			local T = math.clamp(total / math.max(Tele.Speed, 50), 0.5, 5)
+			local T = math.clamp(total / math.max(Tele.Speed, 50), 0.45, 5)
 			local startRot = startCF.Rotation
-			local finalRot = finalCF.Rotation
 
-			say(("Going to %s (%.1fs)"):format(loc.name, T))
-			local t0 = os.clock()
+			ghost(car, c, true, store) -- nothing can crash, ragdoll or kill you on the way
+			local stealth = false
+			if Tele.Stealth then stealth = setLag(true) end
+			task.delay(T + 8, function() if lagOn then setLag(false) end end) -- watchdog: never leave the network throttled
+
+			say(("%s %s (%.1fs%s)"):format(onRoad and "Going to" or "Going near", loc.name, T, stealth and ", hidden" or ""))
+			local t0, lostSince, finished = os.clock(), nil, false
 			while true do
-				local dt = RunService.Heartbeat:Wait()
-				if not seat.Parent or hum.SeatPart ~= seat then say("Cancelled (left the car)"); return end
+				RunService.Heartbeat:Wait()
+				if Tele.Cancel then say("Cancelled"); break end
+				if not seat.Parent then say("Car disappeared"); break end
+				if hum.SeatPart ~= seat then
+					lostSince = lostSince or os.clock()
+					if os.clock() - lostSince > 0.4 then say("Cancelled (left the car)"); break end
+					pcall(function() seat:Sit(hum) end)
+				else
+					lostSince = nil
+				end
 				local p = math.clamp((os.clock() - t0) / T, 0, 1)
-				local e = smooth(p)
-				local pos = along(pts, lens, e * total)
+				local pos = along(pts, lens, smooth(p) * total)
 				local rot = startRot:Lerp(finalRot, smooth(math.clamp(p * 1.3, 0, 1)))
-				local desired = rot + pos
-				root.CFrame = (desired * seat.CFrame:Inverse()) * root.CFrame
+				root.CFrame = ((rot + pos) * seat.CFrame:Inverse()) * root.CFrame
 				root.AssemblyLinearVelocity = Vector3.zero
 				root.AssemblyAngularVelocity = Vector3.zero
-				if p >= 1 then break end
+				if p >= 1 then
+					task.wait(0.05)
+					root.AssemblyLinearVelocity = Vector3.zero
+					say("Arrived: " .. loc.name)
+					finished = true
+					break
+				end
 			end
-			task.wait(0.05)
+			if not finished and seat.Parent then
+				-- aborted mid-air: put the car on the ground right below instead of dropping it from cruise height
+				local below = workspace:Raycast(seat.Position, Vector3.new(0, -600, 0), params(ignore))
+				if below then
+					local want = CFrame.new(below.Position + Vector3.new(0, seatH + 0.6, 0)) * seat.CFrame.Rotation
+					root.CFrame = (want * seat.CFrame:Inverse()) * root.CFrame
+				end
+			end
+			ghost(car, c, false, store)       -- solid again, hovering 0.6 above the road: it just settles
 			root.AssemblyLinearVelocity = Vector3.zero
-			say("Arrived: " .. loc.name)
+			root.AssemblyAngularVelocity = Vector3.zero
+			task.wait(0.25)                   -- let the wheels touch down before others get your position
+			if lagOn then setLag(false) end
 		end)
+		if next(store) then ghost(car, c, false, store) end
+		if lagOn then setLag(false) end
 		Tele.Busy = false
 		if not okRun then say("Teleport error: " .. tostring(err):sub(1, 80)) end
 	end)
