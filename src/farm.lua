@@ -237,9 +237,38 @@ local function myCar()
 	return car, car and car:FindFirstChild("DriveSeat")
 end
 
+local hasBomb -- defined further down
+-- get into the car the way a player does: walk up to it, then sit. (A long instant jump into the seat is rejected by the server:
+-- it keeps your body where it last saw it and drags you back when the trip ends.)
+local function ensureInCar()
+	local Tele = Farm.Tele
+	local _, seat = myCar()
+	if not seat then return false end
+	local _, hum, hrp = parts()
+	if not (hum and hrp) then return false end
+	if hum.SeatPart == seat and (hrp.Position - seat.Position).Magnitude < 12 then return true end
+	if (hrp.Position - seat.Position).Magnitude > 14 then
+		say("walking to the car")
+		walkTo(seat.Position + V3(0, 3, 0), nil, 9)
+	end
+	Tele.GoToCar()
+	task.wait(0.3)
+	while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
+	return true
+end
+-- is there a bomb in the inventory? (step out, test, sit back in)
+local function bombCheck()
+	local _, hum = parts()
+	if hum and hum.SeatPart then hum.Sit = false; task.wait(0.6) end
+	local have = hasBomb()
+	ensureInCar()
+	return have
+end
+
 -- drive (Teleports module) to a place and step out of the car
 local function goNear(pos, name)
 	local Tele = Farm.Tele
+	ensureInCar()
 	say("driving to " .. name)
 	stream(pos)
 	Tele.GoTo({ name = name, pos = pos })
@@ -277,11 +306,7 @@ local function backToCar()
 	local _, seat = myCar()
 	if not seat then return false end
 	say("back to the car")
-	local _, _, hrp = parts()
-	if hrp and (hrp.Position - seat.Position).Magnitude > 200 then walkTo(seat.Position + V3(0, 3, 0), Farm.WalkSpeed, 4) end
-	Farm.Tele.GoToCar() -- sits you in the seat directly (that move is accepted)
-	task.wait(0.3)
-	while Farm.Tele.Busy and not Farm.Cancel do task.wait(0.2) end
+	ensureInCar()
 	return true
 end
 
@@ -301,7 +326,7 @@ end
 local function holdBatch(items, hold)
 	for _, it in ipairs(items) do fire(ID.INTERACT, it.part, it.id, "start") end
 	local t = os.clock()
-	while os.clock() - t < (hold or 2.6) do
+	while os.clock() - t < (hold or 2.52) do
 		if Farm.Cancel then
 			for _, it in ipairs(items) do fire(ID.INTERACT, it.part, it.id, "cancel") end
 			return false
@@ -314,9 +339,11 @@ end
 -- the first item plus every other one within 8 studs of it (max 4)
 local function batchAround(list, first)
 	local batch = { first }
+	local _, _, hrp = parts()
+	local here = hrp and hrp.Position or first.part.Position
 	if Farm.Parallel then
 		for _, o in ipairs(list) do
-			if o ~= first and #batch < 4 and (o.part.Position - first.part.Position).Magnitude < 8 then batch[#batch + 1] = o end
+			if o ~= first and #batch < 6 and (o.part.Position - here).Magnitude < 12 then batch[#batch + 1] = o end
 		end
 	end
 	return batch
@@ -351,9 +378,9 @@ local function loot(root, label)
 		local here = hrp.Position
 		table.sort(list, function(a, b) return (a.part.Position - here).Magnitude < (b.part.Position - here).Magnitude end)
 		local it = list[1]
+		walkTo(it.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
 		local batch = batchAround(list, it)
 		say(("%s: collecting %d left (%d at once)"):format(label, #list, #batch))
-		walkTo(it.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
 		holdBatch(batch)
 		task.wait(0.15)
 		got = got + afterBatch(batch, tried)
@@ -361,10 +388,22 @@ local function loot(root, label)
 	return got
 end
 
--- bombs are NOT tools in your backpack until you equip them (the recording shows no backpack change after buying),
--- so the script keeps its own count: +1 per buy message, -1 per throw
-local function hasBomb()
-	return Farm.bombs > 0
+-- Bombs are not tools in your backpack until you equip them, so the only way to know is to try: send the equip message and see
+-- whether a Bomb appears in your hand (only works on foot), then put it away again. Takes about 2 seconds.
+function hasBomb()
+	local c = lp.Character
+	if not c then return false end
+	if c:FindFirstChild("Bomb") then return true end
+	fire(ID.EQUIP, "Bomb")
+	local t = os.clock()
+	while os.clock() - t < 1.6 do
+		if c:FindFirstChild("Bomb") then break end
+		task.wait(0.1)
+	end
+	local have = c:FindFirstChild("Bomb") ~= nil
+	if have then fire(ID.EQUIP, "Bomb"); task.wait(0.5) end -- the message toggles: put it away again
+	flog("bomb check: " .. (have and "you have a bomb" or "no bomb in the inventory"))
+	return have
 end
 
 -- nearest dealer that is loaded (they move around the map)
@@ -632,9 +671,9 @@ local function robRegister(entry)
 			local items = {}
 			for _, dd in ipairs(list) do items[#items + 1] = { part = dd, id = ACT.drop } end
 			local first = items[1]
+			walkTo(first.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
 			local batch = batchAround(items, first)
 			say(("%s: picking up money (%d at once)"):format(entry.key, #batch))
-			walkTo(first.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
 			holdBatch(batch)
 			task.wait(0.15)
 			for _, it in ipairs(batch) do
@@ -684,7 +723,7 @@ local function doBank()
 	return tryRoutine("bank", function()
 		local vault = workspace:FindFirstChild("Robberies") and workspace.Robberies:FindFirstChild("BankRobbery") and workspace.Robberies.BankRobbery:FindFirstChild("VaultDoor")
 		if vault and vault:GetAttribute("Opened") == true then say("bank is already open / robbed"); cooldown("bank", 200); return true end
-		if not hasBomb() and not buyBombs(1) then say("could not buy a bomb"); cooldown("bank", 90); return false end
+		if not bombCheck() and not buyBombs(1) then say("could not buy a bomb"); cooldown("bank", 90); return false end
 		if not goNear(BANK.pos, "bank") then cooldown("bank", 90); return false end
 		say("bank: walking in")
 		walkTo(BANK.stand + V3(0, 1, 0), Farm.WalkSpeed, 2)
@@ -709,7 +748,7 @@ end
 local function doSafeStore(key, label, pos, getFolder, getSafes, statKey)
 	if not ready(key) then return false end
 	return tryRoutine(key, function()
-		if not hasBomb() and not buyBombs(key == "jeweler" and 2 or 1) then say("could not buy a bomb"); cooldown(key, 90); return false end
+		if not bombCheck() and not buyBombs(key == "jeweler" and 2 or 1) then say("could not buy a bomb"); cooldown(key, 90); return false end
 		if not goNear(pos, label) then cooldown(key, 90); return false end
 		local folder, safes
 		for _ = 1, 12 do
@@ -730,8 +769,7 @@ local function doSafeStore(key, label, pos, getFolder, getSafes, statKey)
 				say(label .. ": at the safe")
 				walkTo(stand, Farm.WalkSpeed, 2)
 				face(sp)
-				if not hasBomb() then say(label .. ": no bomb left"); break end
-				throwBomb(sp)
+				if not throwBomb(sp) then say(label .. ": no bomb left"); break end
 				waitAttr(s, "Opened", true, 12)
 			end
 		end
