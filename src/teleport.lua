@@ -17,6 +17,7 @@ local Tele = {
 	LegLen = 800,     -- longer trips are split into legs of at most this many studs: land, rest, go on (non-stop 1500+ stud flights make the server lose the car)
 	LegRest = 3,      -- seconds resting on the ground between legs
 	Chain = false,
+	SitInteract = true, -- get into the seat with the game's own seat interaction when close (false = the old direct way)
 	HopLen = 700,     -- the velocity flight goes in hops of at most this many studs and rests between them (the server drops you out of the car on very long non-stop trips)
 	HopPause = 1.0,   -- seconds hovering between hops
 	FlyMaxSpeed = 500, -- the velocity flight never goes faster than this (very high speeds froze / crashed the game)
@@ -187,7 +188,7 @@ local function ensureSeated(car, seat)
 	-- the game's own way in (the server seats you when you stand within 10 studs of the seat)
 	local mb = game:GetService("ReplicatedStorage"):FindFirstChild("mBd")
 	local interact = mb and mb:FindFirstChild("e3256932-2913-480f-93e8-9cda8c896b14")
-	if interact and (hrp.Position - seat.Position).Magnitude < 9 then
+	if Tele.SitInteract ~= false and interact and (hrp.Position - seat.Position).Magnitude < 9 then
 		pcall(function() interact:FireServer(seat, "B6W", "stop") end)
 		local t0 = os.clock()
 		while hum.SeatPart ~= seat and os.clock() - t0 < 2 do task.wait(0.1) end
@@ -552,7 +553,8 @@ local function tripInner(loc)
 				local seated = hum.SeatPart == seat
 				if os.clock() - traceT >= 0.5 then
 					traceT = os.clock()
-					trace(("t=%.1f seat=%s idx=%d seated=%s assist=%s hrp=%s"):format(os.clock() - t0, v3s(seat.Position), idx, tostring(seated), tostring(assist), hrp and v3s(hrp.Position) or "-"))
+					local okn, own = pcall(function() return isnetworkowner and isnetworkowner(seat) end)
+					trace(("t=%.1f seat=%s idx=%d seated=%s assist=%s owner=%s hrp=%s"):format(os.clock() - t0, v3s(seat.Position), idx, tostring(seated), tostring(assist), okn and tostring(own) or "?", hrp and v3s(hrp.Position) or "-"))
 				end
 				if not seated then
 					if not lostSince then

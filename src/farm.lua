@@ -39,7 +39,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 220, InstantMove = false, Parallel = true, bombs = 0,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 220, InstantMove = false, Parallel = true, bombs = 0, SitInteract = true,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -265,6 +265,19 @@ local function ensureInCar()
 	local _, hum, hrp = parts()
 	if not (hum and hrp) then return false end
 	if hum.SeatPart == seat then return true end
+	if not Farm.SitInteract then
+		-- the direct way (short hop into the seat): walk next to the car first
+		if (hrp.Position - seat.Position).Magnitude > 7 then say("walking to the car"); walkTo(seat.Position, nil, 5) end
+		local Tele = Farm.Tele
+		local prev = Tele.SitInteract
+		Tele.SitInteract = false
+		Tele.GoToCar()
+		task.wait(0.4)
+		while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
+		Tele.SitInteract = prev
+		task.wait(0.7)
+		return hum.SeatPart == seat
+	end
 	for attempt = 1, 3 do
 		if (hrp.Position - seat.Position).Magnitude > 7 then
 			say("walking to the car")
