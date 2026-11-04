@@ -442,6 +442,36 @@ local function locationFor(entry)
 	return nil
 end
 
+-- shops are closed boxes with glass walls: find the entrance (a door near the register) and go in through it
+local function doorsNear(p, radius)
+	local list = {}
+	for _, tag in ipairs({ "Sliding Door", "Hinge Door", "Garage Door" }) do
+		for _, d in ipairs(CS:GetTagged(tag)) do
+			local dp = d:IsA("Model") and d:GetPivot().Position or (d:IsA("BasePart") and d.Position)
+			if dp and (dp - p).Magnitude < radius then list[#list + 1] = { inst = d, pos = dp, dist = (dp - p).Magnitude, tag = tag } end
+		end
+	end
+	table.sort(list, function(a, b) return a.dist < b.dist end)
+	return list
+end
+local function enterShop(rp)
+	local _, _, hrp = parts()
+	local flat = V3(hrp.Position.X - rp.X, 0, hrp.Position.Z - rp.Z)
+	if flat.Magnitude < 12 then return end -- already inside
+	local doors = doorsNear(rp, 60)
+	for i = 1, math.min(#doors, 3) do
+		flog(("door candidate %d: %s (%s) at (%.0f,%.0f,%.0f), %.0f studs from the register"):format(i, doors[i].inst.Name, doors[i].tag, doors[i].pos.X, doors[i].pos.Y, doors[i].pos.Z, doors[i].dist))
+	end
+	local d = doors[1]
+	if not d then flog("no door found near the register"); return end
+	local out = V3(hrp.Position.X - d.pos.X, 0, hrp.Position.Z - d.pos.Z)
+	out = out.Magnitude > 0.1 and out.Unit or V3(1, 0, 0)
+	say("going in through the door")
+	walkTo(d.pos + out * 6 + V3(0, 1, 0), nil, 2.5)  -- in front of the door (it opens when you are close)
+	task.wait(0.8)
+	walkTo(d.pos - out * 5 + V3(0, 1, 0), nil, 2.5)   -- through it
+end
+
 local function robRegister(entry)
 	local pos = locationFor(entry)
 	if not pos then cooldown(entry.key, 300); return false end
@@ -488,6 +518,7 @@ local function robRegister(entry)
 		return a.d < b.d
 	end)
 
+	enterShop(rp)
 	pcall(function() hum:UnequipTools() end)
 	local h0 = model:GetAttribute("Health") or 48
 	local landed = false
