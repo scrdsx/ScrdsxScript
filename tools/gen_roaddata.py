@@ -44,6 +44,27 @@ for r in obs:
                 # the car body occupies roughly 1 .. 4.5 studs above the road surface
                 if cy is not None and ymax > cy + 1.0 and ymin < cy + 4.5:
                     blocked.add(k)
+# barriers (boom gates, retractable bollards, ...): a barrier closes the whole road, so every road cell within ~22 studs of one is blocked.
+# These are the places only police can pass; the autopilot must not route through them.
+barrier_cells = set()
+barriers = []
+for r in obs:
+    nm = (r["name"] + " " + r["parent"]).lower()
+    if ("gate" in nm and "gate base" not in nm and "gated" not in nm) or "gate base" in nm or ("bollard" in nm and r["name"] == "Main") or "roadblock" in nm or "barrier" in nm:
+        x, z = float(r["x"]), float(r["z"])
+        barriers.append((x, z, r["parent"], r["name"]))
+RAD = 22.0
+for (x, z, par, nm) in barriers:
+    hit = 0
+    for i in range(int((x - RAD) // 4), int((x + RAD) // 4) + 1):
+        for j in range(int((z - RAD) // 4), int((z + RAD) // 4) + 1):
+            if math.hypot(i * 4 + 2 - x, j * 4 + 2 - z) <= RAD:
+                for l in range(-20, 21):
+                    if (i, j, l) in grid.cells:
+                        barrier_cells.add((i, j, l)); hit += 1
+    if hit:
+        print("  barrier %-14s %-12s at (%.0f,%.0f): %d road cells closed" % (par[:14], nm[:12], x, z, hit))
+blocked |= barrier_cells
 # inflate by one cell (the car is 6 wide)
 infl = set(blocked)
 for (i, j, l) in blocked:

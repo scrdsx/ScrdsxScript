@@ -166,12 +166,19 @@ function Plan.Route(ax, az, bx, bz, opts)
 	push(s, 0)
 	local expanded = 0
 	local found = (s == g)
+	local nearK, nearD -- the cell closest to the destination that the search reached (used when the destination cannot be reached)
 	while #heap > 0 and not found do
 		local top = pop()
 		local k = top[1]
 		if not closed[k] then
 			closed[k] = true
 			if k == g then found = true; break end
+			do
+				local ki, kj = unK(k)
+				local dxx, dzz = ki * CELL + CELL / 2 - gx, kj * CELL + CELL / 2 - gz
+				local dd = dxx * dxx + dzz * dzz
+				if not nearD or dd < nearD then nearK, nearD = k, dd end
+			end
 			expanded = expanded + 1
 			yield(expanded)
 			if expanded > 120000 then return nil, "search too large" end
@@ -212,7 +219,12 @@ function Plan.Route(ax, az, bx, bz, opts)
 			end
 		end
 	end
-	if not found then return nil, "no road connection" end
+	local partial = false
+	if not found then
+		-- the destination is cut off (barrier, enclosed area): drive to the closest point the road network allows instead
+		if not nearK then return nil, "no road connection" end
+		g, partial = nearK, true
+	end
 
 	local path, cur = {}, g
 	while cur do
@@ -255,7 +267,7 @@ function Plan.Route(ax, az, bx, bz, opts)
 	-- each point as { x, y, z }
 	local res = {}
 	for n, p in ipairs(out) do res[n] = { x = p[1], y = p[2], z = p[3] } end
-	return res, "ok"
+	return res, partial and "partial" or "ok"
 end
 
 return Plan

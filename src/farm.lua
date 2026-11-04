@@ -615,7 +615,9 @@ local function findDealer(skip)
 	local root = workspace:FindFirstChild("Spawned") and workspace.Spawned:FindFirstChild("Dealer")
 	for _, d in ipairs(root and root:GetDescendants() or {}) do
 		if d:IsA("BasePart") and d:GetAttribute("ItemStore") == "Dealer" and not (skip and skip[d]) then
-			local dist = (d.Position - here).Magnitude
+			-- cost = road to drive + 3x the walk from the end of the road (a dealer behind a fence next to a road is cheaper than one far away)
+			local info = Farm.Drive and Farm.Drive.RouteInfo and Farm.Drive.RouteInfo(here, d.Position)
+			local dist = info and (info.len + 3 * info.gap) or (d.Position - here).Magnitude * 3
 			if not bd or dist < bd then best, bd = d, dist end
 		end
 	end
@@ -631,7 +633,7 @@ local function atDealer(fn)
 		skip[d] = true
 		flog(("dealer %d: at (%.0f,%.0f,%.0f)"):format(attempt, d.Position.X, d.Position.Y, d.Position.Z))
 		if not goNear(d.Position, "dealer") then return false end
-		local ok, why = walkTo(d.Position + V3(0, 1, 0), nil, 3, 160)
+		local ok, why = walkTo(d.Position + V3(0, 1, 0), nil, 3, 320)
 		if ok then
 			fire(ID.INTERACT, d, ACT.dealer, "stop") -- opens the shop
 			task.wait(0.4)

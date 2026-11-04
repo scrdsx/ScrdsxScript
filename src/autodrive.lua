@@ -631,6 +631,7 @@ function Drive.To(targetPos, opts)
 				})
 			end
 			local pts, why = plan(2, blockedXZ)
+			if pts and why == "partial" then log("planner: the destination cannot be reached by road (barrier / enclosed area): driving to the closest point") end
 			if not pts and why == "no road connection" then
 				pts, why = plan(1, blockedXZ)
 				if pts then log("planner: narrow roads, keeping 4 studs from the edge") end
@@ -1152,6 +1153,16 @@ function Drive.To(targetPos, opts)
 end
 
 function Drive.Stop() Drive.Cancel = true end
+-- how far is it by road? { len = studs of road to drive, gap = studs left to walk from the end of the road, partial = road does not reach it }
+function Drive.RouteInfo(fromPos, toPos)
+	local ok, pts, why = pcall(function() return RoadPlan.Route(fromPos.X, fromPos.Z, toPos.X, toPos.Z, { ay = fromPos.Y, by = toPos.Y, minEdge = 1 }) end)
+	if not ok or not pts then return nil end
+	local len = 0
+	for i = 2, #pts do len = len + math.sqrt((pts[i].x - pts[i - 1].x) ^ 2 + (pts[i].z - pts[i - 1].z) ^ 2) end
+	local last = pts[#pts]
+	local gap = math.sqrt((last.x - toPos.X) ^ 2 + (last.z - toPos.Z) ^ 2)
+	return { len = len, gap = gap, partial = why == "partial" }
+end
 function Drive.GetGraph() return graph end
 -- writes the road map to ScrdsxScript/roadgraph.json so tools/train_driver.py can train the driving offline
 function Drive.ExportMap()
