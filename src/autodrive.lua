@@ -113,7 +113,7 @@ end
 local function nearestMod(g, pos)
 	local best, bd
 	for _, mod in pairs(g.mods) do
-		local d = V3(mod.pos.X - pos.X, (mod.pos.Y - pos.Y) * 10, mod.pos.Z - pos.Z).Magnitude
+		local d = V3(mod.pos.X - pos.X, (mod.pos.Y - pos.Y) * 0.3, mod.pos.Z - pos.Z).Magnitude
 		if not bd or d < bd then best, bd = mod, d end
 	end
 	return best, bd
@@ -188,6 +188,57 @@ local function route(g, fromPos, toPos)
 	end
 	wps[#wps + 1] = path[#path].pos
 	return wps, path[#path].pos
+end
+
+-- "training": the driving parameters are re-tried with small random changes on every trip; a change that drives better (closer to the
+-- route, fewer stuck / turn-around moments, quicker) is kept. Saved in ScrdsxScript/drivetune.json so it keeps improving between sessions.
+local TUNE_FILE = "ScrdsxScript/drivetune.json"
+local RANGE = { kp = { 1.0, 3.5 }, kd = { 0.05, 0.5 }, lookBase = { 6, 20 }, lookGain = { 0.3, 0.9 }, bendDiv = { 0.9, 2.0 }, speedMul = { 0.7, 1.35 } }
+local best = { p = { kp = 2.0, kd = 0.22, lookBase = 10, lookGain = 0.55, bendDiv = 1.4, speedMul = 1.0 }, cost = nil, trips = 0 }
+local loaded = false
+local function loadTune()
+	if loaded then return end
+	loaded = true
+	pcall(function()
+		if isfile and readfile and isfile(TUNE_FILE) then
+			local d = game:GetService("HttpService"):JSONDecode(readfile(TUNE_FILE))
+			if type(d) == "table" and type(d.p) == "table" then
+				for k, r in pairs(RANGE) do
+					if tonumber(d.p[k]) then best.p[k] = math.clamp(d.p[k], r[1], r[2]) end
+				end
+				best.cost, best.trips = tonumber(d.cost), tonumber(d.trips) or 0
+			end
+		end
+	end)
+end
+local function saveTune()
+	pcall(function()
+		if writefile then
+			pcall(function() if makefolder then makefolder("ScrdsxScript") end end)
+			writefile(TUNE_FILE, game:GetService("HttpService"):JSONEncode(best))
+		end
+	end)
+end
+function Drive.NextParams()
+	loadTune()
+	local explore = best.cost ~= nil and math.random() < 0.7
+	local p = {}
+	for k, v in pairs(best.p) do
+		local r = RANGE[k]
+		p[k] = explore and math.clamp(v * (1 + (math.random() - 0.5) * 0.3), r[1], r[2]) or v
+	end
+	return p, explore
+end
+function Drive.Report(p, explore, cost)
+	best.trips = best.trips + 1
+	if best.cost == nil or (explore and cost < best.cost) then
+		best.p, best.cost = p, cost
+		log(("training: new best settings, cost %.1f (kp %.2f kd %.2f look %.1f+%.2f*v bend %.2f speed x%.2f)"):format(cost, p.kp, p.kd, p.lookBase, p.lookGain, p.bendDiv, p.speedMul))
+	else
+		if not explore then best.cost = best.cost * 0.6 + cost * 0.4 end -- the settings in use again: refresh their score
+		log(("training: this trip cost %.1f (best %.1f), %s"):format(cost, best.cost, explore and "variation rejected" or "best settings"))
+	end
+	saveTune()
 end
 
 -- driving -------------------------------------------------------------------------------------------------------
@@ -351,6 +402,8 @@ function Drive.To(targetPos, opts)
 			if seglen[cur] < 0.01 then return b2, cur end
 			return pos + (b2 - a2).Unit * math.min(dist, left), cur
 		end
+		local P, explore = Drive.NextParams()
+		local offSum, offN, reverses = 0, 0, 0
 		local segIdx, stuckSince, recoveries = 1, nil, 0
 		local reversing, revT, revCool = false, 0, 0
 		Drive.State = { name = opts.name or "destination", wps = wps, idx = 1, spd = 0, remain = 0, err = 0 }
@@ -390,32 +443,38 @@ function Drive.To(targetPos, opts)
 				if d < bestD then bestD, bestI, bestT = d, i, t end
 			end
 			segIdx = math.max(segIdx, bestI)
+			offSum, offN = offSum + bestD, offN + 1
 			local remainRoute = remainingFrom(bestI, bestT)
 			if remainRoute < arrive or (segIdx >= #path - 1 and flat(pos, path[#path]) < arrive) then
 				setCtl("Throttle", -1); setCtl("Steering", 0)
 				local tb = os.clock()
 				while speedFlat() > 2.5 and os.clock() - tb < 4 do task.wait(0.05) end
 				release()
+				if totalD > 250 and offN > 20 then
+					local dur = os.clock() - startT
+					local cost = (offSum / offN) * 1.5 + recoveries * 30 + reverses * 15 + (dur / (totalD / 100)) * 0.8
+					Drive.Report(P, explore, cost)
+				end
 				return true, "arrived"
 			end
 
 			-- aim point on the route, further ahead when faster
-			local look = math.clamp(10 + spd * 0.55, 14, 42)
+			local look = math.clamp(P.lookBase + spd * P.lookGain, 12, 50)
 			local aim = pointAhead(bestI, bestT, look)
 			local dirv = V3(aim.X - pos.X, 0, aim.Z - pos.Z)
 			if dirv.Magnitude < 0.5 then dirv = fwd end
 			local e = wrap(yawOf(dirv) - yaw)
 
 			-- steering: proportional (less at speed) minus damping on the turn rate
-			local kp = 2.0 / (1 + spd / 40)
-			local steerCmd = math.clamp(e * kp - yawRate * 0.22, -1, 1) * steerSign
+			local kp = P.kp / (1 + spd / 40)
+			local steerCmd = math.clamp(e * kp - yawRate * P.kd, -1, 1) * steerSign
 
 			-- speed: look at how much the route bends in the next ~45 studs
 			local ahead1 = pointAhead(bestI, bestT, 8)
-			local ahead2 = pointAhead(bestI, bestT, 50)
+			local ahead2 = pointAhead(bestI, bestT, 60)
 			local bend = math.abs(wrap(yawOf(V3(ahead2.X - ahead1.X, 0, ahead2.Z - ahead1.Z)) - yaw))
-			local corner = (1 - math.clamp(bend / 1.4, 0, 0.62)) * (1 - math.clamp(math.abs(e) / 1.5, 0, 0.5))
-			local target = math.min(Drive.MaxSpeed * corner, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
+			local corner = (1 - math.clamp(bend / P.bendDiv, 0, 0.62)) * (1 - math.clamp(math.abs(e) / 1.5, 0, 0.5))
+			local target = math.min(Drive.MaxSpeed * P.speedMul * corner, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
 			target = math.max(target, 14)
 			local thrCmd = cur.Throttle
 			if spd < target - 3 then thrCmd = 1
@@ -425,6 +484,7 @@ function Drive.To(targetPos, opts)
 			-- the aim point is behind us: do not circle, back up while steering the other way until we point roughly at it
 			if not reversing and math.abs(e) > 2.1 and spd < 18 and nowT - revCool > 2 then
 				reversing, revT = true, nowT
+				reverses = reverses + 1
 				log(("target is behind (error %.2f): backing up to turn around"):format(e))
 			end
 			if reversing then

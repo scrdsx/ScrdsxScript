@@ -39,7 +39,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false, Manual = false, AutoDrive = true, DriveSpeed = 70, ManualRange = 250,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false, Manual = false, AutoDrive = true, DriveSpeed = 100, ManualRange = 250,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -199,6 +199,7 @@ local function walkTo(pos, _, stop, maxLen)
 		flog(("walk: too far to walk (%.0f > %d), not going"):format(plen, maxLen))
 		return false, "toolong"
 	end
+	if Farm.Cancel then flog("walk skipped: the farm was cancelled"); return false end
 	local t0 = os.clock()
 	local budget = plen / 14 + 8
 	for _, wp in ipairs(waypoints) do
@@ -893,7 +894,12 @@ local function doBank()
 		if not bombCheck() and not buyBombs(1) then say("could not buy a bomb"); cooldown("bank", 90); return false end
 		if not goNear(BANK.pos, "bank") then cooldown("bank", 90); return false end
 		say("bank: walking in")
-		walkTo(BANK.stand + V3(0, 1, 0), Farm.WalkSpeed, 2)
+		enterShop(BANK.stand) -- find the bank's door and go through it
+		local inside = walkTo(BANK.stand + V3(0, 1, 0), Farm.WalkSpeed, 3)
+		local _, _, hrpB = parts()
+		if not inside and (not hrpB or (hrpB.Position - BANK.stand).Magnitude > 14) then
+			say("bank: could not get to the vault door"); cooldown("bank", 90); backToCar(); return false
+		end
 		local bank = workspace:FindFirstChild("Robberies") and workspace.Robberies:FindFirstChild("BankRobbery")
 		vault = bank and bank:FindFirstChild("VaultDoor")
 		if vault then waitAttr(vault, "Enabled", true, 6) end
