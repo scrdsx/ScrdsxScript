@@ -73,9 +73,24 @@ function Fly.Start()
 			if aim.Magnitude > 0.05 then
 				aim = aim.Unit * (Fly.ReverseHeading and -1 or 1)
 				local cur = s.CFrame
-				local target = CFrame.lookAt(cur.Position, cur.Position + aim, Vector3.yAxis)
 				local k = 1 - (1 - math.clamp(Fly.TurnSmooth, 0.02, 1)) ^ (dt * 60)
-				root.CFrame = (cur:Lerp(target, k) * cur:Inverse()) * root.CFrame
+				local target
+				if Fly.Tilt then
+					target = CFrame.lookAt(cur.Position, cur.Position + aim, Vector3.yAxis)
+				else
+					-- yaw-only turn: keeps the car's own pitch/roll (the seat's axes may not match the body's)
+					local f = Vector3.new(cur.LookVector.X, 0, cur.LookVector.Z)
+					local w = Vector3.new(aim.X, 0, aim.Z)
+					if f.Magnitude > 0.05 and w.Magnitude > 0.05 then
+						target = (CFrame.lookAt(Vector3.zero, w.Unit) * CFrame.lookAt(Vector3.zero, f.Unit):Inverse() * cur.Rotation) + cur.Position
+					end
+				end
+				if target then
+					-- move the WHOLE car model: the wheels are separate physics assemblies on constraints
+					local car = s:FindFirstAncestorOfClass("Model")
+					while car and car.Parent and car.Parent:IsA("Model") do car = car.Parent end
+					if car then car:PivotTo((cur:Lerp(target, k) * cur:Inverse()) * car:GetPivot()) end
+				end
 				root.AssemblyAngularVelocity = Vector3.zero
 			end
 		elseif turn ~= 0 then
