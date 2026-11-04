@@ -10,6 +10,7 @@ local Speed = __import("speed")
 local Tele = __import("teleport")
 local Hud = __import("hud")
 local Config = __import("config")
+local Farm = __import("farm")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -126,7 +127,25 @@ Tele.Scan(addLocations)
 
 -- AutoFarm tab (modules get added here)
 local tFarm = win:Tab("AutoFarm")
-tFarm:Label({ Name = "Status", Value = "no farms added yet" })
+Farm.Tele = Tele
+local lFarm = tFarm:Label({ Name = "Status", Value = Farm.Info })
+local lFarmStats = tFarm:Label({ Name = "Done", Value = Farm.Stats })
+Farm.Changed = function() lFarm:Set(Farm.Info); lFarmStats:Set(Farm.Stats) end
+local mFarm = tFarm:Module({ Name = "Auto Rob", Default = false, NoSave = true, Callback = function(on)
+	Farm.SetEnabled(on)
+	win:Notify(on and "AutoFarm on" or "AutoFarm stopping...")
+end })
+mFarm:Toggle({ Name = "Cash registers (gas stations, shops)", Default = Farm.Registers, Callback = function(v) Farm.Registers = v end })
+mFarm:Toggle({ Name = "Bank (buys a bomb, takes money + gold)", Default = Farm.Bank, Callback = function(v) Farm.Bank = v end })
+mFarm:Toggle({ Name = "Jeweler safes (experimental)", Default = Farm.Jeweler, Callback = function(v) Farm.Jeweler = v end })
+mFarm:Toggle({ Name = "Club safe (experimental)", Default = Farm.Club, Callback = function(v) Farm.Club = v end })
+mFarm:Toggle({ Name = "Sell gold at the dealer after the bank", Default = Farm.SellGold, Callback = function(v) Farm.SellGold = v end })
+mFarm:Slider({ Name = "Sell calls", Min = 1, Max = 6, Step = 1, Default = Farm.SellCalls, Callback = function(v) Farm.SellCalls = v end })
+mFarm:Slider({ Name = "Walk speed on foot", Min = 20, Max = 120, Step = 5, Default = Farm.WalkSpeed, Suffix = " st/s", Callback = function(v) Farm.WalkSpeed = v end })
+tFarm:Button({ Name = "Rob nearest cash register now", Callback = function() Farm.Once("registers") end })
+tFarm:Button({ Name = "Rob the bank now", Callback = function() Farm.Once("bank") end })
+tFarm:Button({ Name = "Rob the jeweler now (experimental)", Callback = function() Farm.Once("jeweler") end })
+tFarm:Button({ Name = "Stop AutoFarm", Callback = function() mFarm:Set(false, true); Farm.Stop() end })
 
 -- HUD tab: widgets that stay on screen; press / (window closed) to move them
 local hud = Hud.new({
@@ -136,7 +155,7 @@ local hud = Hud.new({
 	GetModules = function()
 		local list = {}
 		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
-			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam }) do
+			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm }) do
 			if m:Get() then list[#list + 1] = name end
 		end
 		return list
@@ -254,6 +273,7 @@ local function unload()
 	Speed.Destroy()
 	Tele.Notify, Tele.Changed = nil, nil
 	hud.EditChanged = nil
+	Farm.Destroy()
 	hud:Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
