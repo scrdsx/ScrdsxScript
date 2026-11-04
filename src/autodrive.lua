@@ -153,7 +153,7 @@ end
 
 local function ignorable(inst)
 	local n = inst.Name
-	return inst == workspace.Terrain or n:find("Road", 1, true) ~= nil or n == "Curb" or n == "Sidewalk" or n:find("Marking", 1, true) ~= nil
+	return inst == workspace.Terrain or inst:FindFirstAncestor("Traffic Lights") ~= nil or n:find("Road", 1, true) ~= nil or n == "Curb" or n == "Sidewalk" or n:find("Marking", 1, true) ~= nil
 end
 
 local function scanParams(car)
@@ -616,7 +616,7 @@ function Drive.To(targetPos, opts)
 			head0 = V3(lv.X, 0, lv.Z)
 			head0 = head0.Magnitude > 0.1 and head0.Unit or nil
 		end
-		for attempt = 1, 6 do
+		for attempt = 1, 3 do
 			wps, endPos, wpKeys = route(graph, seat.Position, targetPos, false, head0)
 			if not wps and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
 				log("every route is blocked somewhere, ignoring the blocked spots")
@@ -627,7 +627,10 @@ function Drive.To(targetPos, opts)
 			if not wps then return false, endPos end
 			local dw, dk = densify(wps, wpKeys, seat.Position)
 			wps, wpKeys = dw, dk
-			local hits = scanRoute(wps, seat.Position, car)
+			local hits = {}
+			for _, h in ipairs(scanRoute(wps, seat.Position, car)) do
+				if flat(h.pos, endPos) > 90 then hits[#hits + 1] = h end -- the last stretch next to the destination always has fences / walls around it
+			end
 			if #hits == 0 then
 				if attempt > 1 then log(("route %d is clear"):format(attempt)) end
 				break
@@ -636,7 +639,7 @@ function Drive.To(targetPos, opts)
 				if i > 3 then break end
 				addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
 			end
-			if attempt == 6 then log("no clear route found, driving the best one") end
+			if attempt == 3 then log("no clear route found, driving the best one") end
 		end
 		if not wps then return false, endPos end
 		saveTune()
