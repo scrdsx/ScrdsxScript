@@ -10,6 +10,7 @@ local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 local V3 = Vector3.new
+local RoadPlan = __import("roadplan")
 
 local REM = {
 	THROTTLE = "e805d6ad-9279-4c0d-8a9d-c12d7342cb1b",
@@ -138,6 +139,11 @@ local function nearSpot(b, x, z) local dx, dz = b.x - x, b.z - z; return math.sq
 local function isBlocked(p)
 	for _, b in ipairs(TRIP_BLOCK) do if nearSpot(b, p.X, p.Z) < 16 then return true end end
 	for _, b in ipairs(PERM_BLOCK) do if (b.n or 0) >= 2 and nearSpot(b, p.X, p.Z) < 16 then return true end end
+	return false
+end
+local function blockedXZ(x, z)
+	for _, b in ipairs(TRIP_BLOCK) do if nearSpot(b, x, z) < 16 then return true end end
+	for _, b in ipairs(PERM_BLOCK) do if (b.n or 0) >= 2 and nearSpot(b, x, z) < 16 then return true end end
 	return false
 end
 local function addBlock(x, z, why)
@@ -604,9 +610,6 @@ function Drive.To(targetPos, opts)
 		local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
 		if not (car and seat and hum and hum.SeatPart == seat) then return false, "sit in your car first" end
 
-		local gerr
-		if not graph then graph, gerr = build() end
-		if not graph then return false, "road graph missing: " .. tostring(gerr) end
 		loadTune()
 		if (opts.replans or 0) == 0 then TRIP_BLOCK = {} end
 		local wps, endPos, wpKeys
@@ -616,30 +619,71 @@ function Drive.To(targetPos, opts)
 			head0 = V3(lv.X, 0, lv.Z)
 			head0 = head0.Magnitude > 0.1 and head0.Unit or nil
 		end
+
+		-- 1) planner on the REAL road surface (src/roadplan.lua, data from the map export): follows the actual asphalt, goes round islands,
+		--    keeps to the middle of the road, never touches a cell with something solid on it
+		RoadPlan.Yield = function() task.wait() end
 		for attempt = 1, 3 do
-			wps, endPos, wpKeys = route(graph, seat.Position, targetPos, false, head0)
-			if not wps and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
-				log("every route is blocked somewhere, ignoring the blocked spots")
-				wps, endPos, wpKeys = route(graph, seat.Position, targetPos, true, head0)
-				if wps then wps, wpKeys = densify(wps, wpKeys, seat.Position) end
+			local t0 = os.clock()
+			local pts, why = RoadPlan.Route(seat.Position.X, seat.Position.Z, targetPos.X, targetPos.Z, {
+				head = head0 and { x = head0.X, z = head0.Z } or nil, ay = seat.Position.Y, by = targetPos.Y, blocked = blockedXZ,
+			})
+			if not pts then
+				log("road-surface planner: " .. tostring(why) .. " (using the minimap graph instead)")
+				wps = nil
 				break
 			end
-			if not wps then return false, endPos end
-			local dw, dk = densify(wps, wpKeys, seat.Position)
-			wps, wpKeys = dw, dk
+			local w, k, len = {}, {}, 0
+			for i, q in ipairs(pts) do
+				w[i] = V3(q.x, q.y, q.z)
+				k[i] = math.floor(q.x / 10) .. "," .. math.floor(q.z / 10)
+				if i > 1 then len = len + flat(w[i], w[i - 1]) end
+			end
+			wps, wpKeys, endPos = w, k, w[#w]
+			log(("route (road surface): %d points, %.0f studs, planned in %.2f s, ends %.0f studs from the target"):format(#w, len, os.clock() - t0, flat(endPos, targetPos)))
 			local hits = {}
 			for _, h in ipairs(scanRoute(wps, seat.Position, car)) do
-				if flat(h.pos, endPos) > 90 then hits[#hits + 1] = h end -- the last stretch next to the destination always has fences / walls around it
+				if flat(h.pos, endPos) > 90 then hits[#hits + 1] = h end
 			end
-			if #hits == 0 then
-				if attempt > 1 then log(("route %d is clear"):format(attempt)) end
-				break
-			end
+			if #hits == 0 then break end
 			for i, h in ipairs(hits) do
 				if i > 3 then break end
 				addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
 			end
 			if attempt == 3 then log("no clear route found, driving the best one") end
+		end
+
+		-- 2) fallback: the minimap's road graph
+		if not wps then
+			local gerr
+			if not graph then graph, gerr = build() end
+			if not graph then return false, "no road route: " .. tostring(gerr) end
+			for attempt = 1, 3 do
+				wps, endPos, wpKeys = route(graph, seat.Position, targetPos, false, head0)
+				if not wps and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
+					log("every route is blocked somewhere, ignoring the blocked spots")
+					wps, endPos, wpKeys = route(graph, seat.Position, targetPos, true, head0)
+					if wps then wps, wpKeys = densify(wps, wpKeys, seat.Position) end
+					break
+				end
+				if not wps then return false, endPos end
+				local dw, dk = densify(wps, wpKeys, seat.Position)
+				wps, wpKeys = dw, dk
+				local hits = {}
+				for _, h in ipairs(scanRoute(wps, seat.Position, car)) do
+					if flat(h.pos, endPos) > 90 then hits[#hits + 1] = h end -- the last stretch next to the destination always has fences / walls around it
+				end
+				if #hits == 0 then
+					if attempt > 1 then log(("route %d is clear"):format(attempt)) end
+					break
+				end
+				for i, h in ipairs(hits) do
+					if i > 3 then break end
+					addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
+				end
+				if attempt == 3 then log("no clear route found, driving the best one") end
+			end
+			if not wps then return false, endPos end
 		end
 		if not wps then return false, endPos end
 		saveTune()

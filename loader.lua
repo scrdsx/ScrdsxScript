@@ -4,7 +4,7 @@
 local env = getgenv and getgenv() or _G
 local BASE = env.ScrdsxBase or "http://localhost:8000/"
 local LOCAL = env.ScrdsxLocal
-local MODULES = { "logo", "ui", "loading", "vehicle", "fly", "player", "anticrash", "antiflat", "speed", "teleport", "hud", "config", "autodrive", "farm", "main" } -- main last
+local MODULES = { "logo", "ui", "loading", "vehicle", "fly", "player", "anticrash", "antiflat", "speed", "teleport", "hud", "config", "roaddata", "roadplan", "autodrive", "farm", "main" } -- main last
 
 -- raw.githubusercontent.com caches files for ~5 minutes (and some executors cache on top), so a plain
 -- fetch can hand back an old release. Pin to the latest commit SHA instead: those URLs never go stale.
