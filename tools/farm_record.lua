@@ -197,9 +197,10 @@ local function mark()
 	end
 end
 conn(UIS.InputBegan:Connect(function(i, gp)
-	if gp or not active then return end
-	if i.KeyCode == Enum.KeyCode.Semicolon then mark()
-	elseif i.KeyCode == Enum.KeyCode.End then finish("End pressed") end
+	if not active then return end
+	-- End works even when the game swallowed the key; ; and Backspace-less marks only when not typing
+	if i.KeyCode == Enum.KeyCode.End then finish("End pressed")
+	elseif i.KeyCode == Enum.KeyCode.Semicolon and not gp then mark() end
 end))
 
 task.delay(900, function() if active then finish("15 minute timeout") end end)
