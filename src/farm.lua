@@ -139,38 +139,48 @@ local function restoreChar()
 		end
 	end)
 end
-local function walkTo(pos, speed, stop)
-	local c, hum, hrp = parts()
-	if not hrp then return false end
-	speed, stop = speed or Farm.WalkSpeed, stop or 2.5
-	local saved = {}
-	for _, d in ipairs(c:GetDescendants()) do
-		if d:IsA("BasePart") and d.CanCollide then saved[#saved + 1] = d; d.CanCollide = false end
-	end
-	local ok = false
-	-- the Humanoid turns body collision back on every physics step: keep it off while moving
-	local nc = RunService.Stepped:Connect(function()
-		for _, p in ipairs(saved) do if p.Parent then p.CanCollide = false end end
-	end)
-	local run, err = pcall(function()
-		local t0 = os.clock()
-		local limit = (hrp.Position - pos).Magnitude / speed * 2 + 4
-		while os.clock() - t0 < limit and not Farm.Cancel and hrp.Parent do
-			local dt = RunService.Heartbeat:Wait()
-			local to = pos - hrp.Position
-			local d = to.Magnitude
-			if d <= stop then ok = true; break end
-			local step = math.min(d, speed * math.min(dt, 0.1))
-			hrp.CFrame = hrp.CFrame + to.Unit * step
-			hrp.AssemblyLinearVelocity = V3()
-			hrp.AssemblyAngularVelocity = V3()
+-- Walk like a player: pathfinding + Humanoid:MoveTo with collisions ON. (Noclip walking was rejected by the server: it put
+-- you back where you had been standing, see the farm log.) Speed is the Humanoid's own walk speed.
+local PFS = game:GetService("PathfindingService")
+local function near(p, target, r)
+	local dx, dz = p.X - target.X, p.Z - target.Z
+	return math.sqrt(dx * dx + dz * dz) <= r and math.abs(p.Y - target.Y) < 9
+end
+local function moveStep(hum, hrp, target, timeout, r)
+	hum:MoveTo(target)
+	local t, lastPos, lastT = os.clock(), hrp.Position, os.clock()
+	while os.clock() - t < timeout and not Farm.Cancel and hrp.Parent do
+		task.wait(0.1)
+		if near(hrp.Position, target, r) then return true end
+		if os.clock() - lastT > 1.2 then
+			if (hrp.Position - lastPos).Magnitude < 1.5 then hum.Jump = true end -- stuck on something: hop
+			lastPos, lastT = hrp.Position, os.clock()
+			hum:MoveTo(target)
 		end
-	end)
-	nc:Disconnect()
-	for _, p in ipairs(saved) do if p.Parent then p.CanCollide = true end end
-	restoreChar()
-	if not run then flog("walkTo error: " .. tostring(err)) end
-	return ok
+	end
+	return near(hrp.Position, target, r)
+end
+local function walkTo(pos, _, stop)
+	local _, hum, hrp = parts()
+	if not (hum and hrp) or hum.Health <= 0 then return false end
+	stop = stop or 3
+	if hum.SeatPart then hum.Sit = false; task.wait(0.4) end
+	local waypoints
+	local path = PFS:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 5 })
+	local okc = pcall(function() path:ComputeAsync(hrp.Position, pos) end)
+	if okc and path.Status == Enum.PathStatus.Success then
+		waypoints = path:GetWaypoints()
+	else
+		flog("no path found, walking straight")
+		waypoints = { { Position = pos, Action = Enum.PathWaypointAction.Walk } }
+	end
+	for _, wp in ipairs(waypoints) do
+		if Farm.Cancel then return false end
+		if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
+		moveStep(hum, hrp, wp.Position, 4, 3)
+	end
+	if not near(hrp.Position, pos, stop) then moveStep(hum, hrp, pos, 5, stop) end
+	return near(hrp.Position, pos, stop + 1.5)
 end
 local function face(pos)
 	local _, _, hrp = parts()
@@ -397,14 +407,21 @@ local function robRegister(entry)
 	end
 	if not model then say(entry.key .. ": register not found"); cooldown(entry.key, 120); return false end
 	if model:GetAttribute("TimedOut") == true then say(entry.key .. " is on cooldown, trying the next one"); cooldown(entry.key, 150); backToCar(); return "skip" end
-	local body = model:FindFirstChild("Body") or model:FindFirstChildWhichIsA("BasePart")
+	-- the register itself: the part with the ItemStore attribute (where you press E), else the model's Body
+	local body
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and d:GetAttribute("ItemStore") ~= nil then body = d; break end
+	end
+	body = body or model:FindFirstChild("Body") or model:FindFirstChildWhichIsA("BasePart")
 	local rp = body and body.Position or where(model)
 	local _, hum, hrp = parts()
 	local away = hrp.Position - rp
 	away = V3(away.X, 0, away.Z)
 	local stand = rp + (away.Magnitude > 0.1 and away.Unit * 3 or V3(3, 0, 0)) + V3(0, 1, 0)
 	say(entry.key .. ": walking to the register")
-	walkTo(stand, Farm.WalkSpeed, 1.5)
+	flog(("register part=%s at (%.0f,%.0f,%.0f), walking to (%.0f,%.0f,%.0f)"):format(body and body.Name or "?", rp.X, rp.Y, rp.Z, stand.X, stand.Y, stand.Z))
+	local arrived = walkTo(stand, Farm.WalkSpeed, 2.5)
+	flog("arrived at the register: " .. tostring(arrived))
 	face(rp)
 	pcall(function() hum:UnequipTools() end)
 	task.wait(0.3)

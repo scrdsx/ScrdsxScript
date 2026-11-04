@@ -143,7 +143,6 @@ mFarm:Toggle({ Name = "Jeweler safes (experimental)", Default = Farm.Jeweler, Ca
 mFarm:Toggle({ Name = "Club safe (experimental)", Default = Farm.Club, Callback = function(v) Farm.Club = v end })
 mFarm:Toggle({ Name = "Sell gold at the dealer after the bank", Default = Farm.SellGold, Callback = function(v) Farm.SellGold = v end })
 mFarm:Slider({ Name = "Sell calls", Min = 1, Max = 6, Step = 1, Default = Farm.SellCalls, Callback = function(v) Farm.SellCalls = v end })
-mFarm:Slider({ Name = "Walk speed on foot", Min = 20, Max = 120, Step = 5, Default = Farm.WalkSpeed, Suffix = " st/s", Callback = function(v) Farm.WalkSpeed = v end })
 tFarm:Button({ Name = "Rob nearest cash register now", Callback = function() Farm.Once("registers") end })
 tFarm:Button({ Name = "Rob the bank now", Callback = function() Farm.Once("bank") end })
 tFarm:Button({ Name = "Rob the jeweler now (experimental)", Callback = function() Farm.Once("jeweler") end })
