@@ -198,7 +198,7 @@ local VIM = game:GetService("VirtualInputManager")
 local function realClick()
 	local cam = workspace.CurrentCamera
 	local v = cam and cam.ViewportSize or V3(1920, 1080, 0)
-	local x, y = v.X * 0.5, v.Y * 0.12 -- near the top, away from the menu in the middle
+	local x, y = v.X * 0.3, v.Y * 0.45 -- left-centre: away from the menu (right) and the HUD (far left)
 	local ok = pcall(function()
 		VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
 		task.wait(0.06)

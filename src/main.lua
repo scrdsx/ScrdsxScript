@@ -142,7 +142,7 @@ mFarm:Toggle({ Name = "Bank (buys a bomb, takes money + gold)", Default = Farm.B
 mFarm:Toggle({ Name = "Jeweler safes (experimental)", Default = Farm.Jeweler, Callback = function(v) Farm.Jeweler = v end })
 mFarm:Toggle({ Name = "Club safe (experimental)", Default = Farm.Club, Callback = function(v) Farm.Club = v end })
 mFarm:Toggle({ Name = "Sell gold at the dealer after the bank", Default = Farm.SellGold, Callback = function(v) Farm.SellGold = v end })
-mFarm:Toggle({ Name = "Instant teleport on foot (off = walk)", Default = Farm.InstantMove, Callback = function(v) Farm.InstantMove = v end })
+mFarm:Toggle({ Name = "Instant teleport on foot (off = walk)", Default = Farm.InstantMove, NoSave = true, Callback = function(v) Farm.InstantMove = v end })
 mFarm:Slider({ Name = "Sell calls", Min = 1, Max = 6, Step = 1, Default = Farm.SellCalls, Callback = function(v) Farm.SellCalls = v end })
 tFarm:Button({ Name = "Rob nearest cash register now", Callback = function() Farm.Once("registers") end })
 tFarm:Button({ Name = "Rob the bank now", Callback = function() Farm.Once("bank") end })
