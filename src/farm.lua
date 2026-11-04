@@ -165,7 +165,7 @@ local function moveStep(hum, hrp, target, timeout, r)
 	end
 	return near(hrp.Position, target, r)
 end
-local function walkTo(pos, _, stop)
+local function walkTo(pos, _, stop, maxLen)
 	local _, hum, hrp = parts()
 	if not (hum and hrp) or hum.Health <= 0 then return false end
 	stop = stop or 3
@@ -190,13 +190,26 @@ local function walkTo(pos, _, stop)
 		flog("no path found, walking straight")
 		waypoints = { { Position = pos, Action = Enum.PathWaypointAction.Walk } }
 	end
+	-- how far is the walk really? (a dealer behind a fence can mean a 300 stud detour)
+	local plen, prev = 0, hrp.Position
+	for _, wp in ipairs(waypoints) do plen = plen + (wp.Position - prev).Magnitude; prev = wp.Position end
+	local straight = (hrp.Position - pos).Magnitude
+	flog(("walk: %d waypoints, %.0f studs to walk (straight line %.0f)"):format(#waypoints, plen, straight))
+	if maxLen and plen > maxLen then
+		flog(("walk: too far to walk (%.0f > %d), not going"):format(plen, maxLen))
+		return false, "toolong"
+	end
+	local t0 = os.clock()
+	local budget = plen / 14 + 8
 	for _, wp in ipairs(waypoints) do
-		if Farm.Cancel then return false end
+		if Farm.Cancel or os.clock() - t0 > budget then break end
 		if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 		moveStep(hum, hrp, wp.Position, 4, 3)
 	end
-	if not near(hrp.Position, pos, stop) then moveStep(hum, hrp, pos, 5, stop) end
-	return near(hrp.Position, pos, stop + 1.5)
+	if not near(hrp.Position, pos, stop) and os.clock() - t0 < budget + 5 then moveStep(hum, hrp, pos, 5, stop) end
+	local ok = near(hrp.Position, pos, stop + 1.5)
+	flog(("walk: %s after %.1fs, %.1f studs from the target"):format(ok and "arrived" or "did NOT arrive", os.clock() - t0, (hrp.Position - pos).Magnitude))
+	return ok
 end
 -- a real left click (what the game's own punch code reacts to), used when the bare punch message does not do damage
 local VIM = game:GetService("VirtualInputManager")
@@ -452,13 +465,13 @@ function hasBomb()
 end
 
 -- nearest dealer that is loaded (they move around the map)
-local function findDealer()
+local function findDealer(skip)
 	local _, _, hrp = parts()
 	local here = hrp and hrp.Position or V3()
 	local best, bd
 	local root = workspace:FindFirstChild("Spawned") and workspace.Spawned:FindFirstChild("Dealer")
 	for _, d in ipairs(root and root:GetDescendants() or {}) do
-		if d:IsA("BasePart") and d:GetAttribute("ItemStore") == "Dealer" then
+		if d:IsA("BasePart") and d:GetAttribute("ItemStore") == "Dealer" and not (skip and skip[d]) then
 			local dist = (d.Position - here).Magnitude
 			if not bd or dist < bd then best, bd = d, dist end
 		end
@@ -468,15 +481,30 @@ end
 
 -- go to the nearest dealer and run `fn(dealerPart)` while standing next to it
 local function atDealer(fn)
-	local d = findDealer()
-	if not d then say("no dealer is loaded nearby"); return false end
-	if not goNear(d.Position, "dealer") then return false end
-	if not walkTo(d.Position + V3(0, 1, 0), Farm.WalkSpeed, 3) then return false end
-	fire(ID.INTERACT, d, ACT.dealer, "stop") -- opens the shop
-	task.wait(0.4)
-	local ok = fn(d)
-	fire(ID.INTERACT, d, ACT.dealer, "cancel")
-	return ok
+	local skip = {}
+	for attempt = 1, 3 do
+		local d = findDealer(skip)
+		if not d then say("no dealer is loaded nearby"); return false end
+		skip[d] = true
+		flog(("dealer %d: at (%.0f,%.0f,%.0f)"):format(attempt, d.Position.X, d.Position.Y, d.Position.Z))
+		if not goNear(d.Position, "dealer") then return false end
+		local ok, why = walkTo(d.Position + V3(0, 1, 0), nil, 3, 160)
+		if ok then
+			fire(ID.INTERACT, d, ACT.dealer, "stop") -- opens the shop
+			task.wait(0.4)
+			local res = fn(d)
+			fire(ID.INTERACT, d, ACT.dealer, "cancel")
+			return res
+		end
+		if why == "toolong" then
+			say("that dealer is behind something (long walk), trying another one")
+			ensureInCar()
+		else
+			say("could not walk to the dealer")
+			return false
+		end
+	end
+	return false
 end
 local function buyBombs(n)
 	say("buying " .. n .. " bomb(s)")
