@@ -709,33 +709,74 @@ local function doorCentre(inst, fallback)
 	local mp = door and door:FindFirstChild("MainPart")
 	return (mp and mp:IsA("BasePart")) and mp.Position or fallback
 end
+-- Closed doors are walls for the path finder, so "is there a path to the target from here?" tells us whether we are on the right side
+-- of the building. Doors are tried one after another (remembered one first); the one after which a path exists is saved.
+local DOOR_FILE = "ScrdsxScript/doors.json"
+local doorMem, doorLoaded = {}, false
+local function loadDoors()
+	if doorLoaded then return end
+	doorLoaded = true
+	pcall(function()
+		if isfile and readfile and isfile(DOOR_FILE) then
+			local d = game:GetService("HttpService"):JSONDecode(readfile(DOOR_FILE))
+			if type(d) == "table" then doorMem = d end
+		end
+	end)
+end
+local function saveDoors()
+	pcall(function()
+		if writefile then
+			pcall(function() if makefolder then makefolder("ScrdsxScript") end end)
+			writefile(DOOR_FILE, game:GetService("HttpService"):JSONEncode(doorMem))
+		end
+	end)
+end
+local function targetKey(rp) return math.floor(rp.X / 20) .. "," .. math.floor(rp.Z / 20) end
+local function pathExists(from, to)
+	local p = PFS:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 5 })
+	local ok = pcall(function() p:ComputeAsync(from, to) end)
+	return ok and p.Status == Enum.PathStatus.Success
+end
 local function enterShop(rp)
+	loadDoors()
 	local _, _, hrp = parts()
-	local flat = V3(hrp.Position.X - rp.X, 0, hrp.Position.Z - rp.Z)
-	if flat.Magnitude < 12 then return end -- already inside
-	local doors = doorsNear(rp, 75)
-	local bestDoor, bestScore
-	for i, d in ipairs(doors) do
+	local flatD = V3(hrp.Position.X - rp.X, 0, hrp.Position.Z - rp.Z).Magnitude
+	if flatD < 12 then return true end -- already inside
+	if pathExists(hrp.Position, rp) then flog("a walking path to the target exists, no door needed"); return true end
+	local mem = doorMem[targetKey(rp)]
+	local cands = {}
+	for _, d in ipairs(doorsNear(rp, 95)) do
 		local n = d.inst.Name:lower()
 		local locked = d.inst:GetAttribute("Locked") == true
-		local staff = n:find("metal", 1, true) or n:find("staff", 1, true) or n:find("back", 1, true) or n:find("service", 1, true)
+		local staff = n:find("metal", 1, true) or n:find("staff", 1, true) or n:find("back", 1, true) or n:find("service", 1, true) or n:find("garage", 1, true)
+		local centre = doorCentre(d.inst, d.pos)
 		local score = d.dist + (locked and 500 or 0) + (staff and 220 or 0) + ((n:find("glass", 1, true) or n:find("sliding", 1, true)) and -20 or 0)
-		if i <= 4 then
-			flog(("door candidate %d: %s (%s) at (%.0f,%.0f,%.0f), %.0f studs from the target, locked=%s staff=%s score %.0f"):format(i, d.inst.Name, d.tag,
-				d.pos.X, d.pos.Y, d.pos.Z, d.dist, tostring(locked), tostring(staff ~= nil), score))
-		end
-		if not bestScore or score < bestScore then bestDoor, bestScore = d, score end
+		if mem and (centre - V3(mem.x, mem.y, mem.z)).Magnitude < 4 then score = score - 2000 end -- the door that worked last time
+		cands[#cands + 1] = { d = d, centre = centre, score = score, locked = locked, staff = staff ~= nil }
 	end
-	local d = bestDoor
-	if not d then flog("no door found near the target"); return end
-	local centre = doorCentre(d.inst, d.pos)
-	local out = V3(hrp.Position.X - centre.X, 0, hrp.Position.Z - centre.Z)
-	out = out.Magnitude > 0.1 and out.Unit or V3(1, 0, 0)
-	say("going in through the " .. d.inst.Name)
-	flog(("door chosen: %s at (%.0f,%.0f,%.0f)"):format(d.inst.Name, centre.X, centre.Y, centre.Z))
-	walkTo(centre + out * 7 + V3(0, 1, 0), nil, 3)      -- in front of the door
-	task.wait(0.4)
-	walkTo(centre - out * 7 + V3(0, 1, 0), nil, 3)      -- push through it
+	table.sort(cands, function(a, b) return a.score < b.score end)
+	for i = 1, math.min(#cands, 5) do
+		local cd = cands[i]
+		flog(("door try %d: %s at (%.0f,%.0f,%.0f), score %.0f%s"):format(i, cd.d.inst.Name, cd.centre.X, cd.centre.Y, cd.centre.Z, cd.score,
+			(mem and cd.score < -1000) and " (worked last time)" or ""))
+		say(("trying door %d/%d: %s"):format(i, math.min(#cands, 5), cd.d.inst.Name))
+		local _, _, h = parts()
+		local out = V3(h.Position.X - cd.centre.X, 0, h.Position.Z - cd.centre.Z)
+		out = out.Magnitude > 0.1 and out.Unit or V3(1, 0, 0)
+		walkTo(cd.centre + out * 9 + V3(0, 1, 0), nil, 3)    -- in front of it
+		task.wait(0.3)
+		walkTo(cd.centre - out * 9 + V3(0, 1, 0), nil, 3)    -- push through it
+		task.wait(0.5)
+		local _, _, h2 = parts()
+		if h2 and pathExists(h2.Position, rp) then
+			flog("door worked: there is a walking path to the target from inside")
+			doorMem[targetKey(rp)] = { x = cd.centre.X, y = cd.centre.Y, z = cd.centre.Z }
+			saveDoors()
+			return true
+		end
+		flog("that door did not lead inside, trying the next one")
+	end
+	return false
 end
 
 local function findRegisterModel(entry)

@@ -594,6 +594,24 @@ end
 
 function Drive.Stop() Drive.Cancel = true end
 function Drive.GetGraph() return graph end
+-- writes the road map to ScrdsxScript/roadgraph.json so tools/train_driver.py can train the driving offline
+function Drive.ExportMap()
+	if not graph then local g = build(); graph = g end
+	if not graph then return false, "road map not found" end
+	local ids, list = {}, {}
+	for _, m in pairs(graph.mods) do list[#list + 1] = m; ids[m] = #list end
+	local out = { pieces = {} }
+	for i, m in ipairs(list) do
+		local e = {}
+		for o, ed in pairs(m.edges) do e[#e + 1] = { to = ids[o], vx = math.floor(ed.via.X * 10) / 10, vz = math.floor(ed.via.Z * 10) / 10 } end
+		out.pieces[i] = { k = math.floor(m.pos.X / 10) .. "," .. math.floor(m.pos.Z / 10), x = math.floor(m.pos.X * 10) / 10, y = math.floor(m.pos.Y * 10) / 10, z = math.floor(m.pos.Z * 10) / 10, e = e }
+	end
+	local ok = pcall(function()
+		pcall(function() if makefolder then makefolder("ScrdsxScript") end end)
+		writefile("ScrdsxScript/roadgraph.json", game:GetService("HttpService"):JSONEncode(out))
+	end)
+	return ok, #list .. " road pieces"
+end
 function Drive.Prepare() if not graph then local g = build(); graph = g end return graph end
 
 return Drive
