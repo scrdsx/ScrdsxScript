@@ -978,8 +978,19 @@ local function doBank()
 		if not bombCheck() and not buyBombs(1) then say("could not buy a bomb"); cooldown("bank", 90); return false end
 		if not goNear(BANK.pos, "bank") then cooldown("bank", 90); return false end
 		say("bank: walking in")
-		enterShop(BANK.stand) -- find the bank's door and go through it
+		-- known entrance (measured from logs): terrace -> glass door at x=-1200 -> hall -> vault door
+		for _, w in ipairs({ V3(-1200, 6, 3190), V3(-1200, 9, 3168), V3(-1200, 9, 3146), V3(-1222, 8, 3148) }) do
+			if Farm.Cancel then break end
+			walkTo(w, Farm.WalkSpeed, 4)
+		end
 		local inside = walkTo(BANK.stand + V3(0, 1, 0), Farm.WalkSpeed, 3)
+		if not inside then
+			local _, _, h0 = parts()
+			if not h0 or (h0.Position - BANK.stand).Magnitude > 14 then
+				enterShop(BANK.stand) -- fallback: try the doors one by one
+				inside = walkTo(BANK.stand + V3(0, 1, 0), Farm.WalkSpeed, 3)
+			end
+		end
 		local _, _, hrpB = parts()
 		if not inside and (not hrpB or (hrpB.Position - BANK.stand).Magnitude > 14) then
 			say("bank: could not get to the vault door"); cooldown("bank", 90); backToCar(); return false
