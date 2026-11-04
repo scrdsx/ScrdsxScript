@@ -388,14 +388,18 @@ local function goNear(pos, name)
 		say("driving to " .. name)
 		Farm.Drive.MaxSpeed = Farm.DriveSpeed
 		local ok, why
-		for attempt = 1, 5 do
-			ok, why = Farm.Drive.To(pos, { arrive = 22, name = name, replans = attempt - 1 })
+		local replans, reroutes = 0, 0
+		for attempt = 1, 9 do
+			ok, why = Farm.Drive.To(pos, { arrive = 22, name = name, replans = replans, reroutes = reroutes })
 			flog(("autopilot result: %s (%s)"):format(tostring(ok), tostring(why)))
-			if ok or Farm.Cancel or (why ~= "left the car" and why ~= "stuck" and why ~= "replan") then break end
-			say(why == "replan" and "taking another route" or "lost the car, getting back in and driving on")
-			Farm.SitInteract = true
-			ensureInCar()
-			Farm.SitInteract = prevSit
+			if ok or Farm.Cancel or (why ~= "left the car" and why ~= "stuck" and why ~= "replan" and why ~= "reroute") then break end
+			if why == "reroute" then reroutes = reroutes + 1 elseif why == "replan" then replans = math.min(replans + 1, 4) end
+			say((why == "replan" or why == "reroute") and "taking another route" or "lost the car, getting back in and driving on")
+			if why ~= "reroute" then
+				Farm.SitInteract = true
+				ensureInCar()
+				Farm.SitInteract = prevSit
+			end
 		end
 		if not ok then say("could not drive to " .. name .. ": " .. tostring(why)); return false end
 		leaveCar()

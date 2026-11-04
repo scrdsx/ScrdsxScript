@@ -481,19 +481,25 @@ function Drive.To(targetPos, opts)
 			down[code] = on
 			pcall(function() VIM:SendKeyEvent(on, code, false, game) end)
 		end
-		local pwmPhase = 0
+		local wheel = 0 -- modelled steering wheel position (same -1..1 space as the Steering attribute)
 		local pwmConn
 		local function pwmStep(dt)
-			local v = cur.Steering
-			pwmPhase = (pwmPhase + dt * 14) % 1
-			local a = math.abs(v)
-			local on = a > 0.12 and (a > 0.85 or pwmPhase < a)
-			key(Enum.KeyCode.D, on and v > 0)
-			key(Enum.KeyCode.A, on and v < 0)
+			dt = math.min(dt, 1 / 20)
+			local want = cur.Steering
+			local bestK, bestErr, bestNext = 0, math.huge, wheel
+			for _, a in ipairs({ 0, 1, -1 }) do
+				local rate = ((wheel * a) <= 0) and 4.5 or 1.5
+				local nxt = wheel + math.clamp(a - wheel, -rate * dt, rate * dt)
+				local err = math.abs(nxt - want)
+				if err < bestErr - 1e-6 then bestK, bestErr, bestNext = a, err, nxt end
+			end
+			wheel = bestNext
+			key(Enum.KeyCode.D, bestK > 0)
+			key(Enum.KeyCode.A, bestK < 0)
 		end
 		local function setCtl(name, value, force)
 			value = math.clamp(value, -1, 1)
-			if name == "Steering" then value = math.floor(value * 10 + 0.5) / 10 end
+			if name == "Steering" then value = math.floor(value * 50 + 0.5) / 50 end
 			if value == cur[name] and not force then return end
 			cur[name] = value
 			if useKeys then
@@ -639,6 +645,8 @@ function Drive.To(targetPos, opts)
 		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
 		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
 		local lastHp, hp0, slowUntil = 0, car:GetAttribute("currentHealth"), 0
+		local tuneT, tuneFlips, tuneCte, tuneN, lastSteerSign = os.clock(), 0, 0, 0, 0
+		local farSince = nil
 		Drive.State = { name = opts.name or "destination", wps = wps, idx = 1, spd = 0, remain = 0, err = 0 }
 		local startT = os.clock()
 		local startPos = seat.Position
@@ -735,6 +743,18 @@ function Drive.To(targetPos, opts)
 				end
 			end
 
+			-- far from the route although on a road: the car took another way. Plan again from here (no blocking, no penalty).
+			if bestD > 32 and not offRoad and spd > 4 then
+				farSince = farSince or nowT
+				if nowT - farSince > 2.5 and (opts.reroutes or 0) < 6 then
+					log(("%.0f studs from the route: planning a new route from here"):format(bestD))
+					release(); closePiece(); saveTune()
+					return false, "reroute"
+				end
+			else
+				farSince = nil
+			end
+
 			-- aim point on the route, further ahead when faster
 			local look = math.clamp(P.lookBase + spd * P.lookGain, 12, 50)
 			local aim = pointAhead(bestI, bestT, look)
@@ -747,6 +767,28 @@ function Drive.To(targetPos, opts)
 			-- steering: proportional (less at speed) minus damping on the turn rate
 			local kp = P.kp / (1 + spd / 40)
 			local steerCmd = math.clamp(e * kp - yawRate * P.kd, -1, 1) * steerSign
+
+			-- online tuning: every 2.5 s look at how the steering behaved. Zig-zagging -> softer gain, more damping.
+			-- Lazy (far from the line on a straight bit) -> more gain. The values are kept in P, which is saved when the trip is scored.
+			do
+				local sg = steerCmd > 0.15 and 1 or (steerCmd < -0.15 and -1 or 0)
+				if sg ~= 0 and lastSteerSign ~= 0 and sg ~= lastSteerSign then tuneFlips = tuneFlips + 1 end
+				if sg ~= 0 then lastSteerSign = sg end
+				tuneCte, tuneN = tuneCte + bestD, tuneN + 1
+				if nowT - tuneT > 2.5 then
+					local rate, mean = tuneFlips / (nowT - tuneT), tuneCte / math.max(tuneN, 1)
+					local kp0, kd0 = P.kp, P.kd
+					if rate > 1.6 and spd > 12 then
+						P.kp = math.clamp(P.kp * 0.92, RANGE.kp[1], RANGE.kp[2]); P.kd = math.clamp(P.kd * 1.06, RANGE.kd[1], RANGE.kd[2])
+					elseif mean > 6 and rate < 0.6 and math.abs(e) < 0.4 and spd > 15 then
+						P.kp = math.clamp(P.kp * 1.07, RANGE.kp[1], RANGE.kp[2])
+					end
+					if P.kp ~= kp0 or P.kd ~= kd0 then
+						log(("online tuning: %.1f steering flips/s, %.1f studs average off the line -> kp %.2f, kd %.2f"):format(rate, mean, P.kp, P.kd))
+					end
+					tuneT, tuneFlips, tuneCte, tuneN = nowT, 0, 0, 0
+				end
+			end
 
 			-- speed: from the curvature of the route ahead (radius -> comfortable speed) and how far away each bend is (braking distance)
 			local ahead1 = pointAhead(bestI, bestT, 8)
