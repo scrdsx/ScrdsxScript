@@ -1,7 +1,7 @@
 -- farm_record.lua : RECORDER for the AutoFarm tab. Run it, then do ONE full robbery by hand while it records:
 --   everything you send to the server (buy bomb, place bomb, rob register, collect money...), what the server sends back,
 --   robbery state changes, inventory changes. Press ;  (semicolon) before each step to put a labelled MARK in the log
---   (it also lists the interactables around you), press End when you are done. Auto-stops after 6 minutes.
+--   (it also lists the interactables around you), press End when you are done. Auto-stops after 15 minutes.
 -- Report -> clipboard + workspace/farm_record.txt
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
@@ -129,7 +129,9 @@ local function watch(inst, label)
 	if watched[inst] then return end
 	watched[inst] = true
 	conn(inst.AttributeChanged:Connect(function(n)
-		if active then log(("ATTR %s.%s = %s"):format(label or full(inst), n, fmt(inst:GetAttribute(n)))) end
+		if active and n ~= "PreviousTransparency" and not (n == "Enabled" and inst:GetAttribute(n) == false) then
+			log(("ATTR %s.%s = %s"):format(label or full(inst), n, fmt(inst:GetAttribute(n))))
+		end
 	end))
 	if inst:IsA("ValueBase") then
 		conn(inst.Changed:Connect(function(v) if active then log(("VALUE %s = %s"):format(full(inst), fmt(v))) end end))
@@ -144,8 +146,7 @@ if rob then
 		watch(d)
 	end
 	watch(rob)
-	conn(rob.DescendantAdded:Connect(function(d) if active then log("ROBBERIES +" .. full(d) .. " (" .. d.ClassName .. ")"); watch(d) end end))
-	conn(rob.DescendantRemoving:Connect(function(d) if active then log("ROBBERIES -" .. full(d) .. " (" .. d.ClassName .. ")") end end))
+	conn(rob.DescendantAdded:Connect(function(d) watch(d) end)) -- (adds/removes are mostly map streaming, not logged)
 end
 watch(lp, "player")
 local ls = lp:FindFirstChild("leaderstats")
@@ -201,6 +202,6 @@ conn(UIS.InputBegan:Connect(function(i, gp)
 	elseif i.KeyCode == Enum.KeyCode.End then finish("End pressed") end
 end))
 
-task.delay(360, function() if active then finish("6 minute timeout") end end)
+task.delay(900, function() if active then finish("15 minute timeout") end end)
 log("recording. ; = mark   End = stop")
 print("[record] recording - do the robbery by hand. Press ; before each step, End when finished.")
