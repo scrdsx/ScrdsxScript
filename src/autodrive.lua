@@ -120,8 +120,68 @@ local function nearestMod(g, pos)
 	return best, bd
 end
 
+-- places where the road is blocked (bollards, gates, walls...): TRIP_BLOCK = found during this destination, PERM_BLOCK = remembered between
+-- sessions (counted; a spot that blocked the car in 2 different trips is avoided for good)
+local TRIP_BLOCK, PERM_BLOCK = {}, {}
+local function nearSpot(b, x, z) local dx, dz = b.x - x, b.z - z; return math.sqrt(dx * dx + dz * dz) end
+local function isBlocked(p)
+	for _, b in ipairs(TRIP_BLOCK) do if nearSpot(b, p.X, p.Z) < 16 then return true end end
+	for _, b in ipairs(PERM_BLOCK) do if (b.n or 0) >= 2 and nearSpot(b, p.X, p.Z) < 16 then return true end end
+	return false
+end
+local function addBlock(x, z, why)
+	for _, b in ipairs(TRIP_BLOCK) do if nearSpot(b, x, z) < 12 then return end end
+	TRIP_BLOCK[#TRIP_BLOCK + 1] = { x = x, z = z }
+	local found = false
+	for _, b in ipairs(PERM_BLOCK) do
+		if nearSpot(b, x, z) < 12 then b.n = (b.n or 0) + 1; found = true; break end
+	end
+	if not found then PERM_BLOCK[#PERM_BLOCK + 1] = { x = math.floor(x), z = math.floor(z), n = 1 } end
+	log(("blocked spot at (%.0f, %.0f): %s"):format(x, z, tostring(why)))
+end
+
+-- drive a box the size of the car along every route segment: anything solid and upright in the way (bollards, gates, walls) is a block.
+-- Floors / ramps / curbs do not count (their surfaces face up).
+local function scanRoute(wps, fromPos, car)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	pcall(function() params.RespectCanCollide = true end)
+	local ex = { lp.Character, car }
+	local vf = workspace:FindFirstChild("Vehicles")
+	if vf then ex[#ex + 1] = vf end
+	params.FilterDescendantsInstances = ex
+	local useBlock = true
+	local hits = {}
+	local prev = fromPos
+	for i, w in ipairs(wps) do
+		local a = prev
+		prev = w
+		local d = V3(w.X - a.X, 0, w.Z - a.Z)
+		local len = d.Magnitude
+		local skip = (i == 1) and 10 or 0
+		if len > skip + 6 then
+			local dir = d.Unit
+			local origin = V3(a.X, a.Y + 3, a.Z) + dir * skip
+			local vec = dir * (len - skip)
+			local res
+			if useBlock then
+				local okb, r = pcall(function() return workspace:Blockcast(CFrame.lookAt(origin, origin + dir), V3(6.5, 3, 1), vec, params) end)
+				if okb then res = r else useBlock = false end
+			end
+			if not useBlock then res = workspace:Raycast(origin, vec, params) end
+			if res and math.abs(res.Normal.Y) < 0.5 then
+				local m = res.Instance:FindFirstAncestorOfClass("Model")
+				if not (m and m:FindFirstChildOfClass("Humanoid")) then
+					hits[#hits + 1] = { pos = res.Position, name = res.Instance:GetFullName(), seg = i }
+				end
+			end
+		end
+	end
+	return hits
+end
+
 -- Dijkstra with a small binary heap
-local function route(g, fromPos, toPos)
+local function route(g, fromPos, toPos, relax)
 	local s, sd = nearestMod(g, fromPos)
 	local t, td = nearestMod(g, toPos)
 	if not (s and t) then return nil, "no road pieces" end
@@ -162,9 +222,11 @@ local function route(g, fromPos, toPos)
 		if not done[n] then
 			done[n] = true
 			for o, e in pairs(n.edges) do
-				local pr = PIECES[math.floor(o.pos.X / 10) .. "," .. math.floor(o.pos.Z / 10)]
-				local nd = d + e.cost * (1 + 3 * math.min((pr and pr.s) or 0, 3))
-				if nd < (dist[o] or math.huge) then dist[o] = nd; prev[o] = n; push(o, nd) end
+				if relax or not (isBlocked(e.via) or isBlocked(o.pos)) then
+					local pr = PIECES[math.floor(o.pos.X / 10) .. "," .. math.floor(o.pos.Z / 10)]
+					local nd = d + e.cost * (1 + 3 * math.min((pr and pr.s) or 0, 3))
+					if nd < (dist[o] or math.huge) then dist[o] = nd; prev[o] = n; push(o, nd) end
+				end
 			end
 		end
 	end
@@ -213,6 +275,7 @@ local function loadTune()
 				end
 				best.cost, best.trips = tonumber(d.cost), tonumber(d.trips) or 0
 				if type(d.pieces) == 'table' then PIECES = d.pieces end
+				if type(d.blocked) == 'table' then PERM_BLOCK = d.blocked end
 			end
 		end
 	end)
@@ -220,6 +283,7 @@ end
 function Drive.PieceCount() local n = 0 for _ in pairs(PIECES) do n = n + 1 end return n end
 local function saveTune()
 	best.pieces = PIECES
+	best.blocked = PERM_BLOCK
 	pcall(function()
 		if writefile then
 			pcall(function() if makefolder then makefolder("ScrdsxScript") end end)
@@ -284,8 +348,27 @@ function Drive.To(targetPos, opts)
 		local gerr
 		if not graph then graph, gerr = build() end
 		if not graph then return false, "road graph missing: " .. tostring(gerr) end
-		local wps, endPos, wpKeys = route(graph, seat.Position, targetPos)
+		loadTune()
+		if (opts.replans or 0) == 0 then TRIP_BLOCK = {} end
+		local wps, endPos, wpKeys
+		for attempt = 1, 6 do
+			wps, endPos, wpKeys = route(graph, seat.Position, targetPos)
+			if not wps and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
+				log("every route is blocked somewhere, ignoring the blocked spots")
+				wps, endPos, wpKeys = route(graph, seat.Position, targetPos, true)
+				break
+			end
+			if not wps then return false, endPos end
+			local hits = scanRoute(wps, seat.Position, car)
+			if #hits == 0 then
+				if attempt > 1 then log(("route %d is clear"):format(attempt)) end
+				break
+			end
+			for _, h in ipairs(hits) do addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route") end
+			if attempt == 6 then log("no clear route found, driving the best one") end
+		end
 		if not wps then return false, endPos end
+		saveTune()
 		log(("route: %d waypoints, ends at (%.0f,%.0f,%.0f)"):format(#wps, endPos.X, endPos.Y, endPos.Z))
 
 		-- Controls. Default = the real keys (W/S throttle, A/D steering, N ignition) pressed through the input system, so the game's own
@@ -442,6 +525,7 @@ function Drive.To(targetPos, opts)
 		local reversing, revT, revCool = false, 0, 0
 		Drive.State = { name = opts.name or "destination", wps = wps, idx = 1, spd = 0, remain = 0, err = 0 }
 		local startT = os.clock()
+		local startPos = seat.Position
 		local totalD = remainingFrom(1, 0)
 		local limit = totalD / math.max(Drive.MaxSpeed * 0.3, 8) + 70
 		local arrive = opts.arrive or 22
@@ -564,8 +648,9 @@ function Drive.To(targetPos, opts)
 					if pStat then pStat.stuck = true; pStat.stuckN = (pStat.stuckN or 0) + 1 end
 					log(("stuck at (%.0f,%.0f,%.0f), backing up (%d)"):format(pos.X, pos.Y, pos.Z, recoveries))
 					if recoveries > 8 then release(); closePiece(); saveTune(); return false, "stuck" end
-					if pStat and pStat.stuckN >= 2 and (opts.replans or 0) < 4 then
-						log("stuck twice on the same road piece: planning another route around it")
+					if flat(pos, startPos) > 30 and (opts.replans or 0) < 5 then
+						addBlock(pos.X + fwd.X * 6, pos.Z + fwd.Z * 6, "the car got stuck here")
+						log("stuck: planning another route around this spot")
 						release(); closePiece(); saveTune()
 						return false, "replan"
 					end
