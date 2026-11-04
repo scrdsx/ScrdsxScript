@@ -1015,8 +1015,10 @@ local function robRegister(entry)
 			if d.Name == lp.Name and d:IsA("BasePart") and (tried[d] or 0) < 3 then list[#list + 1] = d end
 		end
 		if #list == 0 then task.wait(0.3) else
-			idle = os.clock()
 			local items = {}
+			local _, _, me = parts()
+			local here = me and me.Position or V3()
+			table.sort(list, function(a1, b1) return (a1.Position - here).Magnitude < (b1.Position - here).Magnitude end)
 			for _, dd in ipairs(list) do items[#items + 1] = { part = dd, id = ACT.drop } end
 			local first = items[1]
 			walkTo(first.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
@@ -1028,6 +1030,7 @@ local function robRegister(entry)
 				if it.part.Parent then tried[it.part] = (tried[it.part] or 0) + 1 else got = got + 1 end
 			end
 			if #batch > 1 and got == 0 and Farm.Parallel then Farm.Parallel = false; flog("picking up several at once did not work, one at a time from now on") end
+			idle = os.clock() -- the 4 s "nothing left" timer starts AFTER a pickup (it used to start before, so the run ended after 2 pickups)
 		end
 	end
 	Farm.done.registers = Farm.done.registers + 1

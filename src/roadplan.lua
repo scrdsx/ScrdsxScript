@@ -2,7 +2,7 @@
 -- here they are rasterised into 4-stud cells and routes are planned with A*, preferring the middle of the road and never touching a cell that
 -- has something solid on it. Pure Lua (no Roblox API) so tools/roadnet.py can test the very same logic offline.
 --   Plan.Route(ax, az, bx, bz, opts) -> list of { x, y, z } about every 10 studs, or nil, reason
---   opts: head = { x, z } direction the car faces (the first stretch behind the car costs extra), blocked = function(x, z) -> bool,
+--   opts: minEdge (default 2 = keep 8 studs from the road edge), head = { x, z } direction the car faces (the first stretch behind the car costs extra), blocked = function(x, z) -> bool,
 --         snapRadius (studs, default 220), ay / by = heights (to pick the right level on bridges / tunnels)
 local Data = __import("roaddata")
 
@@ -130,6 +130,7 @@ function Plan.Route(ax, az, bx, bz, opts)
 	local gi, gj = unK(g)
 	local gx, gz = gi * CELL + CELL / 2, gj * CELL + CELL / 2
 	local head, blocked = opts.head, opts.blocked
+	local minEdge = opts.minEdge or 2 -- cells (4 studs each) the path keeps away from the road edge (poles, lamps and signs stand there)
 
 	-- binary heap of { key, f }
 	local heap = {}
@@ -182,7 +183,7 @@ function Plan.Route(ax, az, bx, bz, opts)
 						local nk, nl = find(i + di, j + dj, l)
 						if nk and not closed[nk] then
 							local e = edge[nk] or 0
-							if e >= 1 then
+							if e >= minEdge or nk == g then
 								local ok = true
 								if di ~= 0 and dj ~= 0 then
 									ok = find(i + di, j, l) ~= nil and find(i, j + dj, l) ~= nil

@@ -142,8 +142,8 @@ local function isBlocked(p)
 	return false
 end
 local function blockedXZ(x, z)
-	for _, b in ipairs(TRIP_BLOCK) do if nearSpot(b, x, z) < 16 then return true end end
-	for _, b in ipairs(PERM_BLOCK) do if (b.n or 0) >= 2 and nearSpot(b, x, z) < 16 then return true end end
+	for _, b in ipairs(TRIP_BLOCK) do if nearSpot(b, x, z) < 9 then return true end end
+	for _, b in ipairs(PERM_BLOCK) do if (b.n or 0) >= 2 and nearSpot(b, x, z) < 9 then return true end end
 	return false
 end
 local function addBlock(x, z, why)
@@ -625,9 +625,20 @@ function Drive.To(targetPos, opts)
 		RoadPlan.Yield = function() task.wait() end
 		for attempt = 1, 3 do
 			local t0 = os.clock()
-			local pts, why = RoadPlan.Route(seat.Position.X, seat.Position.Z, targetPos.X, targetPos.Z, {
-				head = head0 and { x = head0.X, z = head0.Z } or nil, ay = seat.Position.Y, by = targetPos.Y, blocked = blockedXZ,
-			})
+			local function plan(minEdge, blocked)
+				return RoadPlan.Route(seat.Position.X, seat.Position.Z, targetPos.X, targetPos.Z, {
+					head = head0 and { x = head0.X, z = head0.Z } or nil, ay = seat.Position.Y, by = targetPos.Y, blocked = blocked, minEdge = minEdge,
+				})
+			end
+			local pts, why = plan(2, blockedXZ)
+			if not pts and why == "no road connection" then
+				pts, why = plan(1, blockedXZ)
+				if pts then log("planner: narrow roads, keeping 4 studs from the edge") end
+			end
+			if not pts and why == "no road connection" and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
+				pts, why = plan(1, nil)
+				if pts then log("planner: every route is blocked somewhere, ignoring the blocked spots") end
+			end
 			if not pts then
 				log("road-surface planner: " .. tostring(why) .. " (using the minimap graph instead)")
 				wps = nil
