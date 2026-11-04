@@ -64,7 +64,7 @@ function UI.new(opts)
 	self.gui = gui
 
 	local root = new("CanvasGroup", {
-		Name = "Root", Size = UDim2.fromOffset(600, 390), AnchorPoint = Vector2.new(.5, .5),
+		Name = "Root", Size = UDim2.fromOffset(640, 420), AnchorPoint = Vector2.new(.5, .5),
 		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BorderSizePixel = 0, GroupTransparency = 1,
 	}, { corner(12), stroke(T.stroke) })
 	root.Parent = gui
@@ -72,12 +72,19 @@ function UI.new(opts)
 	self.scale = new("UIScale", { Scale = .9, Parent = root })
 
 	-- top bar
-	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = T.panel, BorderSizePixel = 0, Parent = root })
-	new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = top })
+	local top = new("Frame", { Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = Color3.fromRGB(26, 26, 26), BorderSizePixel = 0, Parent = root })
+	new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(.45, .45, .45)), Rotation = 90, Parent = top })
+	-- hairline under the bar that fades out at both ends
+	local line = new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = Color3.fromRGB(120, 120, 120), BorderSizePixel = 0, Parent = top })
+	new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(.5, .35), NumberSequenceKeypoint.new(1, 1) }), Parent = line })
+	-- logo badge
+	local badge = new("Frame", { Position = UDim2.fromOffset(16, 13), Size = UDim2.fromOffset(26, 26), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = top }, { corner(7) })
+	new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150)), Rotation = 45, Parent = badge })
+	local bl = label("S", 15, Color3.fromRGB(8, 8, 8), T.bold, Enum.TextXAlignment.Center); bl.Size = UDim2.fromScale(1, 1); bl.Parent = badge
 	local title = label(opts.Title or "Window", 15, T.text, T.bold)
-	title.Position = UDim2.fromOffset(18, 9); title.Size = UDim2.fromOffset(200, 18); title.Parent = top
+	title.Position = UDim2.fromOffset(52, 9); title.Size = UDim2.fromOffset(200, 18); title.Parent = top
 	local sub = label(opts.Subtitle or "", 11, T.sub)
-	sub.Position = UDim2.fromOffset(18, 27); sub.Size = UDim2.fromOffset(200, 14); sub.Parent = top
+	sub.Position = UDim2.fromOffset(52, 27); sub.Size = UDim2.fromOffset(200, 14); sub.Parent = top
 
 	-- search bar (grows + brightens on focus)
 	local sb = new("Frame", {
@@ -149,6 +156,9 @@ function UI.new(opts)
 	new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = side })
 	new("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12), Parent = side })
 	self.side = side
+	-- footer hint (on root, the sidebar's list layout would move it)
+	local foot = label("RightShift hide  ·  / search", 10, Color3.fromRGB(78, 78, 78))
+	foot.Position = UDim2.new(0, 16, 1, -26); foot.Size = UDim2.fromOffset(130, 14); foot.ZIndex = 2; foot.Parent = root
 	self.indicator = new("Frame", {
 		Size = UDim2.fromOffset(3, 18), Position = UDim2.fromOffset(0, 52 + 12 + 8), BackgroundColor3 = T.accent,
 		BorderSizePixel = 0, ZIndex = 3, Parent = root, -- not in the sidebar: its UIListLayout would move it
@@ -333,8 +343,13 @@ function M:Toggle(o)
 	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = T.sub, BorderSizePixel = 0, Parent = sw }, { corner(7) })
 	local state = false
 	local obj = {}
+	-- lit-up look when on: brighter outline + a small accent bar on the left edge
+	local rowStroke = f:FindFirstChildOfClass("UIStroke")
+	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 5, .5, 0), Size = UDim2.fromOffset(3, 16), BackgroundColor3 = T.accent, BackgroundTransparency = 1, BorderSizePixel = 0, Parent = f }, { corner(2) })
 	local function apply(v, silent)
 		state = v
+		tween(bar, .22, { BackgroundTransparency = v and 0 or 1 })
+		if rowStroke then tween(rowStroke, .22, { Color = v and Color3.fromRGB(88, 88, 88) or T.stroke }) end
 		tween(sw, .22, { BackgroundColor3 = v and T.accent or Color3.fromRGB(34, 34, 34) })
 		tween(knob, .22, { Position = v and UDim2.new(1, -17, .5, 0) or UDim2.new(0, 3, .5, 0), BackgroundColor3 = v and Color3.fromRGB(8, 8, 8) or T.sub }, Enum.EasingStyle.Back)
 		if not silent and o.Callback then task.spawn(o.Callback, v) end
@@ -398,6 +413,7 @@ function M:Slider(o)
 	local val = label("", 13, T.sub, T.bold, Enum.TextXAlignment.Right); val.Position = UDim2.new(.5, 0, 0, 8); val.Size = UDim2.new(.5, -14, 0, 16); val.Parent = f
 	local track = new("Frame", { Position = UDim2.new(0, 14, 0, 36), Size = UDim2.new(1, -28, 0, 4), BackgroundColor3 = Color3.fromRGB(34, 34, 34), BorderSizePixel = 0, Parent = f }, { corner(2) })
 	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = track }, { corner(2) })
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(120, 120, 120), Color3.new(1, 1, 1)), Parent = fill })
 	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = track }, { corner(6) })
 	local min, max, step = o.Min, o.Max, o.Step or 1
 	local value

@@ -8,6 +8,7 @@ local Anti = __import("anticrash")
 local AntiFlat = __import("antiflat")
 local Speed = __import("speed")
 local Tele = __import("teleport")
+local Hud = __import("hud")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -121,11 +122,41 @@ tTele:Button({ Name = "Save my position as a spot", Callback = function()
 end })
 Tele.Scan(addLocations)
 
+-- HUD tab: widgets that stay on screen; press / (window closed) to move them
+local hud = Hud.new({
+	Title = TITLE,
+	Version = (getgenv and getgenv() or _G).ScrdsxVersion,
+	GetLocations = function() return Tele.Locations end,
+	GetModules = function()
+		local list = {}
+		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
+			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam }) do
+			if m:Get() then list[#list + 1] = name end
+		end
+		return list
+	end,
+})
+local tHud = win:Tab("HUD")
+tHud:Toggle({ Name = "Watermark", Default = hud:IsOn("watermark"), Callback = function(v) hud:SetWidget("watermark", v) end })
+tHud:Toggle({ Name = "Player info (health, position, nearest spot)", Default = hud:IsOn("info"), Callback = function(v) hud:SetWidget("info", v) end })
+tHud:Toggle({ Name = "Vehicle (speed, fuel, health, tires)", Default = hud:IsOn("vehicle"), Callback = function(v) hud:SetWidget("vehicle", v) end })
+tHud:Toggle({ Name = "Active modules list", Default = hud:IsOn("modules"), Callback = function(v) hud:SetWidget("modules", v) end })
+tHud:Slider({ Name = "HUD size", Min = 0.6, Max = 1.6, Step = 0.05, Default = hud.scale, Callback = function(v) hud:SetScale(v) end })
+tHud:Button({ Name = "Move HUD (closes this window; press / when done)", Callback = function()
+	win:SetVisible(false)
+	hud:SetEdit(true)
+end })
+tHud:Button({ Name = "Reset HUD positions", Callback = function() hud:ResetPositions() end })
+hud.EditChanged = function(on)
+	if not on and not win.visible then win:Notify("HUD saved. RightShift opens the menu") end
+end
+
 -- Settings tab
 local tSet = win:Tab("Settings")
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
 tSet:Label({ Name = "Toggle UI", Value = "RightShift" })
-tSet:Label({ Name = "Focus search", Value = "/" })
+tSet:Label({ Name = "Search (menu open)", Value = "/" })
+tSet:Label({ Name = "Move HUD (menu closed)", Value = "/" })
 
 local env = getgenv and getgenv() or _G
 local alive = true
@@ -140,6 +171,8 @@ local function unload()
 	AntiFlat.Destroy()
 	Speed.Destroy()
 	Tele.Notify, Tele.Changed = nil, nil
+	hud.EditChanged = nil
+	hud:Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
@@ -155,10 +188,17 @@ if getgenv then getgenv().__ScrdsxScript = unload end
 
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 	if i.KeyCode == Enum.KeyCode.RightShift then
+		if hud.editing then hud:SetEdit(false) end
 		win:Toggle()
-	elseif not gp and win.visible and i.KeyCode == Enum.KeyCode.Slash then -- only while the window is open (chat uses / too)
-		win.searchBox:CaptureFocus()
-		task.defer(function() win.searchBox.Text = "" end)
+	elseif i.KeyCode == Enum.KeyCode.Slash then
+		if win.visible then
+			if not gp then -- menu open: search (chat uses / too, so not while typing)
+				win.searchBox:CaptureFocus()
+				task.defer(function() win.searchBox.Text = "" end)
+			end
+		elseif hud.editing or not gp then -- menu closed: start / stop moving the HUD
+			hud:ToggleEdit()
+		end
 	end
 end))
 

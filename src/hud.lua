@@ -1,0 +1,326 @@
+-- HUD: small always-on widgets (watermark, vehicle, info, active modules) that you can drag around.
+--   HUD.new({ Version = "0.1", GetModules = function() return { "Vehicle Fly", ... } end, GetLocations = function() return Tele.Locations end })
+--   hud:SetEdit(true)  -> widgets get an outline and can be dragged (main.lua binds "/" to this); positions are saved.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local CAS = game:GetService("ContextActionService")
+local Stats = game:GetService("Stats")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local lp = Players.LocalPlayer
+
+local T = {
+	bg = Color3.fromRGB(10, 10, 10), stroke = Color3.fromRGB(44, 44, 44), text = Color3.fromRGB(235, 235, 235),
+	sub = Color3.fromRGB(130, 130, 130), accent = Color3.fromRGB(255, 255, 255),
+	good = Color3.fromRGB(120, 220, 140), warn = Color3.fromRGB(240, 190, 90), bad = Color3.fromRGB(240, 100, 100),
+	font = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold,
+}
+
+local SAVE_FILE = "ScrdsxScript_hud.json"
+local DEFAULTS = {
+	watermark = { x = 0.010, y = 0.015 },
+	info = { x = 0.010, y = 0.090 },
+	vehicle = { x = 0.010, y = 0.600 },
+	modules = { x = 0.880, y = 0.015 },
+}
+
+local function new(class, props, children)
+	local i = Instance.new(class)
+	for k, v in pairs(props or {}) do i[k] = v end
+	for _, c in ipairs(children or {}) do c.Parent = i end
+	return i
+end
+local function guiParent()
+	local ok, h = pcall(function() return gethui and gethui() end)
+	if ok and h then return h end
+	ok, h = pcall(function() return game:GetService("CoreGui") end)
+	if ok and h then return h end
+	return lp:WaitForChild("PlayerGui")
+end
+local function tween(o, t, p) TweenService:Create(o, TweenInfo.new(t, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), p):Play() end
+
+local HUD = {}
+HUD.__index = HUD
+
+function HUD.new(opts)
+	opts = opts or {}
+	local self = setmetatable({ widgets = {}, order = {}, conns = {}, editing = false, scale = 1, opts = opts }, HUD)
+
+	local gui = new("ScreenGui", { Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 990 })
+	pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+	gui.Parent = guiParent()
+	self.gui = gui
+
+	-- saved layout
+	self.saved = { pos = {}, on = {}, scale = 1 }
+	pcall(function()
+		if isfile and readfile and isfile(SAVE_FILE) then
+			local d = HttpService:JSONDecode(readfile(SAVE_FILE))
+			if type(d) == "table" then
+				self.saved.pos = type(d.pos) == "table" and d.pos or {}
+				self.saved.on = type(d.on) == "table" and d.on or {}
+				self.saved.scale = tonumber(d.scale) or 1
+			end
+		end
+	end)
+	self.scale = math.clamp(self.saved.scale, 0.6, 1.6)
+
+	-- edit-mode banner
+	local banner = new("TextLabel", {
+		AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 18), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = T.bg, BackgroundTransparency = .1, BorderSizePixel = 0, Text = "  HUD EDIT MODE   drag the widgets   press / when done  ",
+		TextColor3 = T.text, Font = T.bold, TextSize = 13, Visible = false, ZIndex = 50, Parent = gui,
+	}, { new("UICorner", { CornerRadius = UDim.new(0, 8) }), new("UIStroke", { Color = T.accent, Thickness = 1 }) })
+	self.banner = banner
+
+	-- one widget = a card with an optional title and a list of rows
+	local function widget(id, title)
+		local f = new("Frame", {
+			Name = id, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = T.bg, BackgroundTransparency = .18,
+			BorderSizePixel = 0, Active = false, Parent = gui,
+		})
+		new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = f })
+		local st = new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = f })
+		new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7), Parent = f })
+		local sc = new("UIScale", { Scale = self.scale, Parent = f })
+		new("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = f })
+		local w = { id = id, frame = f, stroke = st, scale = sc, rows = {}, title = title }
+		if title then
+			local tl = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, Text = title:upper(),
+				TextColor3 = T.sub, Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 0, Parent = f })
+			w.titleLabel = tl
+		end
+		-- position (stored as a fraction of the screen so it survives resolution changes)
+		local p = self.saved.pos[id] or DEFAULTS[id] or { x = 0.1, y = 0.1 }
+		f.Position = UDim2.fromScale(math.clamp(tonumber(p.x) or 0.1, 0, 0.98), math.clamp(tonumber(p.y) or 0.1, 0, 0.98))
+		w.enabled = self.saved.on[id] ~= false
+		f.Visible = w.enabled
+		self.widgets[id] = w
+		self.order[#self.order + 1] = id
+
+		-- dragging (only does anything in edit mode: Active is false otherwise, so the game still gets the click)
+		local dragging, startMouse, startPos
+		table.insert(self.conns, f.InputBegan:Connect(function(i)
+			if not self.editing then return end
+			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+				dragging, startMouse, startPos = true, i.Position, f.AbsolutePosition
+			end
+		end))
+		table.insert(self.conns, UIS.InputChanged:Connect(function(i)
+			if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+				local screen = gui.AbsoluteSize
+				local np = startPos + (i.Position - startMouse)
+				local x = math.clamp(np.X / math.max(screen.X, 1), 0, 0.98)
+				local y = math.clamp(np.Y / math.max(screen.Y, 1), 0, 0.98)
+				f.Position = UDim2.fromScale(x, y)
+			end
+		end))
+		table.insert(self.conns, UIS.InputEnded:Connect(function(i)
+			if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+				dragging = false
+				self.saved.pos[id] = { x = f.Position.X.Scale, y = f.Position.Y.Scale }
+				self:Save()
+			end
+		end))
+		return w
+	end
+
+	-- rows: { key, value, color } ; creates / reuses TextLabels
+	local function setRows(w, list)
+		for i, r in ipairs(list) do
+			local row = w.rows[i]
+			if not row then
+				local line = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i, Parent = w.frame })
+				new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), VerticalAlignment = Enum.VerticalAlignment.Center, Parent = line })
+				local k = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, TextColor3 = T.sub,
+					Font = T.font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Parent = line })
+				local v = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, TextColor3 = T.text,
+					Font = T.bold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, Parent = line })
+				row = { line = line, k = k, v = v }
+				w.rows[i] = row
+			end
+			local ts = r.ts or 12 -- text size (the speed readout is big)
+			row.line.Size = UDim2.fromOffset(0, ts + 2)
+			row.k.Size = UDim2.fromOffset(0, ts + 2); row.v.Size = UDim2.fromOffset(0, ts + 2); row.v.TextSize = ts
+			local key = r[1] or ""
+			if row.k.Text ~= key then row.k.Text = key end
+			row.k.Visible = key ~= ""
+			local val = tostring(r[2] or "")
+			if row.v.Text ~= val then row.v.Text = val end
+			row.v.TextColor3 = r[3] or T.text
+			row.line.Visible = true
+		end
+		for i = #list + 1, #w.rows do w.rows[i].line.Visible = false end
+	end
+
+	local wm = widget("watermark", nil)
+	local info = widget("info", "Player")
+	local veh = widget("vehicle", "Vehicle")
+	local mods = widget("modules", "Active")
+	self.lastFps = 60
+
+	-- data ----------------------------------------------------------------------------------------------------
+	local function ping()
+		local ok, v = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() end)
+		return ok and math.floor(v + .5) or nil
+	end
+	local function myCar()
+		local v = workspace:FindFirstChild("Vehicles")
+		local car = v and v:FindFirstChild(lp.Name)
+		return car, car and car:FindFirstChild("DriveSeat")
+	end
+	local function hpColor(f) return f > .6 and T.good or (f > .3 and T.warn or T.bad) end
+
+	local function refresh()
+		local char = lp.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+		if wm.enabled then
+			local p = ping()
+			setRows(wm, { { (opts.Title or "Scrdsx Solutions"), ("v%s   %d fps%s   %s"):format(tostring(opts.Version or "?"), math.floor(self.lastFps + .5),
+				p and ("   " .. p .. " ms") or "", os.date("%H:%M")), nil } })
+		end
+
+		if info.enabled then
+			local rows = {}
+			if hum then
+				local f = hum.MaxHealth > 0 and hum.Health / hum.MaxHealth or 0
+				rows[#rows + 1] = { "Health", ("%d / %d"):format(math.floor(hum.Health + .5), math.floor(hum.MaxHealth + .5)), hpColor(f) }
+			end
+			if hrp then
+				local pos = hrp.Position
+				rows[#rows + 1] = { "Position", ("%d, %d, %d"):format(pos.X, pos.Y, pos.Z) }
+				local best, bd
+				for _, loc in ipairs(opts.GetLocations and opts.GetLocations() or {}) do
+					local d = (loc.pos - pos).Magnitude
+					if not bd or d < bd then best, bd = loc, d end
+				end
+				if best then rows[#rows + 1] = { "Nearest", ("%s  %d st"):format(best.name, bd) } end
+				local np, nd
+				for _, pl in ipairs(Players:GetPlayers()) do
+					local oc = pl ~= lp and pl.Character
+					local oh = oc and oc:FindFirstChild("HumanoidRootPart")
+					if oh then
+						local d = (oh.Position - pos).Magnitude
+						if not nd or d < nd then np, nd = pl, d end
+					end
+				end
+				rows[#rows + 1] = { "Players", ("%d%s"):format(#Players:GetPlayers(), np and ("   closest " .. np.Name .. " " .. math.floor(nd) .. " st") or "") }
+			end
+			setRows(info, rows)
+		end
+
+		if veh.enabled then
+			local car, seat = myCar()
+			if not car or not seat then
+				setRows(veh, { { "", "no car spawned", T.sub } })
+			else
+				local kmh = seat.AssemblyLinearVelocity.Magnitude * 1.008
+				local fuel = car:GetAttribute("currentFuel")
+				local hp = car:GetAttribute("currentHealth")
+				local flats = car:GetAttribute("flatTires")
+				local lvl = ("%s / %s / %s"):format(tostring(car:GetAttribute("engineLevel") or 0), tostring(car:GetAttribute("brakesLevel") or 0), tostring(car:GetAttribute("armorLevel") or 0))
+				local seated = hum and hum.SeatPart == seat
+				local rows = { { "", ("%d km/h"):format(kmh), T.text, ts = 22 } }
+				rows[#rows + 1] = { "Fuel", type(fuel) == "number" and ("%.1f"):format(fuel) or "-" }
+				rows[#rows + 1] = { "Car health", type(hp) == "number" and ("%d"):format(hp) or "-" }
+				rows[#rows + 1] = { "Tires", (type(flats) == "string" and flats ~= "") and ("flat: " .. flats) or "ok", (type(flats) == "string" and flats ~= "") and T.bad or T.good }
+				rows[#rows + 1] = { "Eng / Brk / Arm", lvl }
+				rows[#rows + 1] = { "Seat", seated and "in car" or "out", seated and T.good or T.sub }
+				setRows(veh, rows)
+			end
+		end
+
+		if mods.enabled then
+			local list = opts.GetModules and opts.GetModules() or {}
+			table.sort(list, function(a, b) return #a > #b end)
+			local rows = {}
+			for _, n in ipairs(list) do rows[#rows + 1] = { "", n, T.text } end
+			if #rows == 0 then rows[1] = { "", "none on", T.sub } end
+			setRows(mods, rows)
+		end
+	end
+
+	local acc = 0
+	table.insert(self.conns, RunService.RenderStepped:Connect(function(dt)
+		if dt > 0 then self.lastFps = self.lastFps + (1 / dt - self.lastFps) * 0.08 end
+		acc = acc + dt
+		if acc >= 0.15 then acc = 0; pcall(refresh) end
+	end))
+	pcall(refresh)
+	return self
+end
+
+function HUD:Save()
+	local d = { pos = self.saved.pos, on = self.saved.on, scale = self.scale }
+	pcall(function() if writefile then writefile(SAVE_FILE, HttpService:JSONEncode(d)) end end)
+end
+
+function HUD:SetWidget(id, on)
+	local w = self.widgets[id]
+	if not w then return end
+	w.enabled = on
+	w.frame.Visible = on
+	self.saved.on[id] = on
+	self:Save()
+end
+
+function HUD:IsOn(id) return self.widgets[id] and self.widgets[id].enabled end
+
+function HUD:SetScale(s)
+	self.scale = s
+	for _, w in pairs(self.widgets) do w.scale.Scale = s end
+	self:Save()
+end
+
+function HUD:ResetPositions()
+	for id, w in pairs(self.widgets) do
+		local p = DEFAULTS[id] or { x = 0.1, y = 0.1 }
+		w.frame.Position = UDim2.fromScale(p.x, p.y)
+	end
+	self.saved.pos = {}
+	self:Save()
+end
+
+function HUD:SetEdit(v)
+	if v == self.editing then return end
+	self.editing = v
+	self.banner.Visible = v
+	for _, w in pairs(self.widgets) do
+		w.frame.Active = v
+		w.frame.Visible = w.enabled
+		tween(w.stroke, .2, { Color = v and T.accent or T.stroke })
+		tween(w.frame, .2, { BackgroundTransparency = v and .05 or .18 })
+	end
+	if v then
+		-- swallow "/" so it does not open the chat while you are moving things
+		pcall(function()
+			CAS:BindActionAtPriority("ScrdsxHudSlash", function() return Enum.ContextActionResult.Sink end, false, 3000, Enum.KeyCode.Slash)
+		end)
+	else
+		pcall(function() CAS:UnbindAction("ScrdsxHudSlash") end)
+		self:Save()
+	end
+	-- if "/" still opened the chat bar, let go of it again
+	task.defer(function()
+		pcall(function()
+			local tcs = game:GetService("TextChatService")
+			local bar = tcs:FindFirstChildOfClass("ChatInputBarConfiguration")
+			if bar and bar.TextBox then bar.TextBox:ReleaseFocus() end
+		end)
+	end)
+	if self.EditChanged then task.defer(self.EditChanged, v) end
+end
+
+function HUD:ToggleEdit() self:SetEdit(not self.editing) end
+
+function HUD:Destroy()
+	pcall(function() CAS:UnbindAction("ScrdsxHudSlash") end)
+	for _, c in ipairs(self.conns) do pcall(function() c:Disconnect() end) end
+	self.gui:Destroy()
+end
+
+return HUD
