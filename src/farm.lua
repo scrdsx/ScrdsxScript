@@ -308,12 +308,12 @@ local function goNear(pos, name)
 	stream(pos)
 	-- farm trips are slower and gentler than the Teleports tab: the server drops you out of the car on fast / long ones
 	-- stay low and slow, like a real car: the server threw you out of the seat ~1.3 s after takeoff at 220 st/s and 50 studs up
-	local oldMax, oldAccel, oldLift, oldH = Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift, Tele.Height
-	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift, Tele.Height = Farm.TravelSpeed, 150, 4, 4
+	local oldMax, oldAccel, oldLift, oldH, oldG = Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift, Tele.Height, Tele.GroundFollow
+	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift, Tele.Height, Tele.GroundFollow = Farm.TravelSpeed, 150, 4, 4, true
 	Tele.GoTo({ name = name, pos = pos })
 	task.wait(0.4)
 	while (Tele.Busy or Tele.Chain) and not Farm.Cancel do task.wait(0.2) end
-	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift, Tele.Height = oldMax, oldAccel, oldLift, oldH
+	Tele.FlyMaxSpeed, Tele.Accel, Tele.FlyMinLift, Tele.Height, Tele.GroundFollow = oldMax, oldAccel, oldLift, oldH, oldG
 	if tostring(Tele.Info):find("setback") then
 		flog("SETBACK: stopping the farm so nothing else goes wrong")
 		Farm.Stop()

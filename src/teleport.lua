@@ -17,6 +17,7 @@ local Tele = {
 	LegLen = 800,     -- longer trips are split into legs of at most this many studs: land, rest, go on (non-stop 1500+ stud flights make the server lose the car)
 	LegRest = 3,      -- seconds resting on the ground between legs
 	Chain = false,
+	GroundFollow = false, -- fly like a car: stay a couple of studs above the road / terrain the whole way (the server ejects you from a car that flies 10+ studs up)
 	SitInteract = true, -- get into the seat with the game's own seat interaction when close (false = the old direct way)
 	HopLen = 700,     -- the velocity flight goes in hops of at most this many studs and rests between them (the server drops you out of the car on very long non-stop trips)
 	HopPause = 1.0,   -- seconds hovering between hops
@@ -283,6 +284,26 @@ local function along(pts, lens, d)
 	return pts[#pts]
 end
 
+-- height of the road / terrain under (x, z): roofs, trees and fences are looked through
+local function roadY(x, y, z, ignore)
+	local roads = workspace:FindFirstChild("Roads")
+	local list = {}
+	for _, i in ipairs(ignore) do list[#list + 1] = i end
+	local origin = Vector3.new(x, y + 60, z)
+	for _ = 1, 6 do
+		local rp = RaycastParams.new()
+		rp.FilterType = Enum.RaycastFilterType.Exclude
+		rp.FilterDescendantsInstances = list
+		local hit = workspace:Raycast(origin, Vector3.new(0, -400, 0), rp)
+		if not hit then return nil end
+		local inst = hit.Instance
+		if inst == workspace.Terrain or (roads and inst:IsDescendantOf(roads)) then return hit.Position.Y end
+		list[#list + 1] = inst
+		origin = hit.Position - Vector3.new(0, 0.1, 0)
+	end
+	return nil
+end
+
 -- non-solid for the trip (and restored afterwards, whatever happens)
 local function ghost(car, char, on, store)
 	if on then
@@ -546,6 +567,8 @@ local function tripInner(loc)
 			local traceT = 0
 			local stallPos, stallT = seat.Position, os.clock()
 			local pauseUntil, pauseDone = 0, {}
+			local lastY
+			local dh0 = Vector3.new(destPos.X - seat.Position.X, 0, destPos.Z - seat.Position.Z).Magnitude
 			trace(("start seat=%s dest=%s loc=%s total=%.0f speed=%d mode=%s ghost=%s"):format(v3s(seat.Position), v3s(destPos), v3s(loc.pos), total, Tele.Speed, tostring(Tele.Mode), tostring(Tele.Ghost)))
 			while true do
 				local dt = RunService.Heartbeat:Wait()
@@ -592,6 +615,39 @@ local function tripInner(loc)
 				if not seated then
 					lostAccum = lostAccum + dt
 					zero() -- hover while we get you back in
+				elseif flyMode and Tele.GroundFollow then
+					-- road-hugging flight: horizontal speed toward the destination, height follows the road under the car
+					local sp = seat.Position
+					local hvec = Vector3.new(destPos.X - sp.X, 0, destPos.Z - sp.Z)
+					local dh = hvec.Magnitude
+					if hrp and (hrp.Position - sp).Magnitude > 40 then
+						trace(("SETBACK: hrp=%s seat=%s"):format(v3s(hrp.Position), v3s(sp)))
+						say("The server moved you out of the car (setback)")
+						pcall(function() hrp.Anchored = true; hrp.AssemblyLinearVelocity = Vector3.zero end)
+						break
+					end
+					if dh < 3 then
+						zero()
+						if Tele.Face then pcall(function() car:PivotTo((finalRot + seat.Position) * rel) end) end
+						task.wait(0.05)
+						zero()
+						say("Arrived: " .. loc.name)
+						finished = true
+						Tele.LastResult = "ok"
+						break
+					end
+					if os.clock() - t0 - lostAccum > dh0 / math.max(math.min(Tele.Speed, Tele.FlyMaxSpeed), 40) + 14 then say("Took too long, stopped"); break end
+					local dir = hvec.Unit
+					local speed = math.min(Tele.Speed, Tele.FlyMaxSpeed, 30 + (os.clock() - t0 - lostAccum) * Tele.Accel, math.sqrt(2 * 300 * dh) + 6, dh / math.max(dt, 0.008))
+					local gy = roadY(sp.X + dir.X * 10, sp.Y, sp.Z + dir.Z * 10, ignore)
+					local tY = gy and (gy + seatH + 0.3) or lastY or sp.Y
+					lastY = tY
+					local vy = math.clamp((tY - sp.Y) * 6, -40, 40)
+					local v = dir * speed + Vector3.new(0, vy, 0)
+					for _, r in ipairs(roots) do
+						r.AssemblyLinearVelocity = v
+						r.AssemblyAngularVelocity = Vector3.zero
+					end
 				elseif flyMode then
 					-- velocity flight: set the speed of every physics piece of the car, like Vehicle Fly does
 					local sp = seat.Position
