@@ -176,10 +176,20 @@ local function goNear(pos, name)
 	task.wait(0.2)
 	while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
 	if Farm.Cancel then return false end
-	local _, hum, hrp = parts()
+	for _, l in ipairs(Tele.Trace or {}) do flog("  tele: " .. l) end
 	flog(("teleport result=%s info=%s"):format(tostring(Tele.LastResult), tostring(Tele.Info)))
 	if Tele.LastResult ~= "ok" then say("could not drive to " .. name .. ": " .. tostring(Tele.Info)); return false end
-	if not hrp or (hrp.Position - pos).Magnitude > 250 then say("arrived too far from " .. name); return false end
+	local car, seat = myCar()
+	if not seat or (seat.Position - pos).Magnitude > 250 then say("the car is not at " .. name); return false end
+	local _, hum, hrp = parts()
+	-- thrown out during the trip? sit back in before doing anything else
+	if hum and hum.SeatPart ~= seat then
+		flog("not in the car after the trip, sitting back in")
+		Tele.GoToCar()
+		task.wait(0.3)
+		while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
+		_, hum, hrp = parts()
+	end
 	if hum and hum.SeatPart then
 		hum.Sit = false
 		task.wait(0.35)

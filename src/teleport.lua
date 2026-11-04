@@ -302,6 +302,15 @@ end
 
 function Tele.Stop() Tele.Cancel = true end
 
+-- short trip log (also printed): what the car really did, for debugging
+Tele.Trace = {}
+local function trace(msg)
+	Tele.Trace[#Tele.Trace + 1] = msg
+	if #Tele.Trace > 60 then table.remove(Tele.Trace, 1) end
+	print("[teleport] " .. msg)
+end
+local function v3s(v) return ("(%.0f,%.0f,%.0f)"):format(v.X, v.Y, v.Z) end
+
 -- Seat guard. Seating ourselves skips the game's normal "interact" flow; its interaction UI then unmounts and the game's
 -- own client sends FireServer(seat, <id>, "cancel"), and the server throws you out of the seat (seen in tools/seatloss_probe.lua,
 -- caller Code.layout.guis.interactionSystem -> interactable.interactCancel). We drop that one message for our own seat.
@@ -355,6 +364,7 @@ function Tele.GoTo(loc)
 	if not car or not seat then say("Spawn your car first"); return end
 	Tele.Busy, Tele.Cancel = true, false
 	Tele.LastResult = nil -- becomes "ok" only when the car really arrived
+	Tele.Trace = {}
 	guard(seat, 1e9) -- from before we sit until a few seconds after we arrive
 	task.spawn(function()
 		local store = {}
@@ -467,11 +477,17 @@ function Tele.GoTo(loc)
 			local idx = 1
 			local lostAccum = 0
 			local assist, slow, sampleT, samplePos = false, 0, os.clock(), seat.Position
+			local traceT = 0
+			trace(("start seat=%s dest=%s loc=%s total=%.0f speed=%d mode=%s ghost=%s"):format(v3s(seat.Position), v3s(destPos), v3s(loc.pos), total, Tele.Speed, tostring(Tele.Mode), tostring(Tele.Ghost)))
 			while true do
 				local dt = RunService.Heartbeat:Wait()
 				if Tele.Cancel then say("Cancelled"); break end
 				if not seat.Parent then say("Car disappeared"); break end
 				local seated = hum.SeatPart == seat
+				if os.clock() - traceT >= 0.5 then
+					traceT = os.clock()
+					trace(("t=%.1f seat=%s idx=%d seated=%s assist=%s hrp=%s"):format(os.clock() - t0, v3s(seat.Position), idx, tostring(seated), tostring(assist), hrp and v3s(hrp.Position) or "-"))
+				end
 				if not seated then
 					if not lostSince then
 						lostSince = os.clock()
@@ -564,6 +580,7 @@ function Tele.GoTo(loc)
 					end
 				end
 			end
+			trace(("end finished=%s seat=%s hrp=%s seated=%s"):format(tostring(finished), v3s(seat.Position), hrp and v3s(hrp.Position) or "-", tostring(hum.SeatPart == seat)))
 			zero()
 			ghost(car, c, false, store)       -- solid again, hovering 0.6 above the road: it just settles
 			zero()
