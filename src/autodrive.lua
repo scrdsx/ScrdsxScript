@@ -151,6 +151,11 @@ local function addBlock(x, z, why)
 	log(("blocked spot at (%.0f, %.0f): %s"):format(x, z, tostring(why)))
 end
 
+local function ignorable(inst)
+	local n = inst.Name
+	return inst == workspace.Terrain or n:find("Road", 1, true) ~= nil or n == "Curb" or n == "Sidewalk" or n:find("Marking", 1, true) ~= nil
+end
+
 local function scanParams(car)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -177,7 +182,7 @@ local function roadParams()
 end
 local function roadAt(x, z, y)
 	local res = workspace:Raycast(V3(x, (y or 10) + 40, z), V3(0, -160, 0), roadParams())
-	if res and res.Instance.Name == "Road" then return res.Position end
+	if res and res.Instance.Name:find("Road", 1, true) then return res.Position end
 	return nil
 end
 local function snapRoad(x, z, y)
@@ -193,42 +198,210 @@ local function snapRoad(x, z, y)
 	return nil
 end
 
--- the route as a dense polyline (a point every ~12 studs), each point moved onto the real road surface
+-- A* over a grid of road cells. passable(x, z) says whether a point is on clear road. Returns a list of {x, z} from near (ax,az) to near (bx,bz),
+-- shortened by line-of-sight, or nil. This is what takes the car around a roundabout island instead of across it.
+local function gridPath(passable, ax, az, bx, bz, cell, pad)
+	local minX, maxX = math.min(ax, bx) - pad, math.max(ax, bx) + pad
+	local minZ, maxZ = math.min(az, bz) - pad, math.max(az, bz) + pad
+	local nx, nz = math.ceil((maxX - minX) / cell), math.ceil((maxZ - minZ) / cell)
+	if nx * nz > 9000 then return nil end
+	local function cellOf(x, z)
+		return math.clamp(math.floor((x - minX) / cell), 0, nx - 1), math.clamp(math.floor((z - minZ) / cell), 0, nz - 1)
+	end
+	local function centre(ix, iz) return minX + (ix + 0.5) * cell, minZ + (iz + 0.5) * cell end
+	local memo = {}
+	local function ok(ix, iz)
+		if ix < 0 or iz < 0 or ix >= nx or iz >= nz then return false end
+		local k = iz * nx + ix
+		local v = memo[k]
+		if v == nil then
+			local cx, cz = centre(ix, iz)
+			v = passable(cx, cz) and true or false
+			memo[k] = v
+		end
+		return v
+	end
+	local function snapCell(x, z)
+		local ix, iz = cellOf(x, z)
+		if ok(ix, iz) then return ix, iz end
+		for r = 1, 6 do
+			local best, bd
+			for dx = -r, r do
+				for dz = -r, r do
+					if math.max(math.abs(dx), math.abs(dz)) == r and ok(ix + dx, iz + dz) then
+						local d = dx * dx + dz * dz
+						if not bd or d < bd then best, bd = { ix + dx, iz + dz }, d end
+					end
+				end
+			end
+			if best then return best[1], best[2] end
+		end
+		return nil
+	end
+	local sx, sz = snapCell(ax, az)
+	local gx, gz = snapCell(bx, bz)
+	if not (sx and gx) then return nil end
+	local startK, goalK = sz * nx + sx, gz * nx + gx
+	local g, parent, closed = { [startK] = 0 }, {}, {}
+	local heap = {}
+	local function push(k, f)
+		heap[#heap + 1] = { k, f }
+		local i = #heap
+		while i > 1 do
+			local p = math.floor(i / 2)
+			if heap[p][2] <= heap[i][2] then break end
+			heap[p], heap[i] = heap[i], heap[p]
+			i = p
+		end
+	end
+	local function pop()
+		local top = heap[1]
+		local last = table.remove(heap)
+		if #heap > 0 then
+			heap[1] = last
+			local i = 1
+			while true do
+				local l, r, m = i * 2, i * 2 + 1, i
+				if l <= #heap and heap[l][2] < heap[m][2] then m = l end
+				if r <= #heap and heap[r][2] < heap[m][2] then m = r end
+				if m == i then break end
+				heap[m], heap[i] = heap[i], heap[m]
+				i = m
+			end
+		end
+		return top
+	end
+	local function h(ix, iz) local dx, dz = ix - gx, iz - gz; return math.sqrt(dx * dx + dz * dz) end
+	push(startK, h(sx, sz))
+	local expanded = 0
+	local found = false
+	local dirs = { { 1, 0, 1 }, { -1, 0, 1 }, { 0, 1, 1 }, { 0, -1, 1 }, { 1, 1, 1.4142 }, { 1, -1, 1.4142 }, { -1, 1, 1.4142 }, { -1, -1, 1.4142 } }
+	while #heap > 0 do
+		local top = pop()
+		local k = top[1]
+		if k == goalK then found = true; break end
+		if not closed[k] then
+			closed[k] = true
+			expanded = expanded + 1
+			if expanded > 5000 then return nil end
+			local ix, iz = k % nx, math.floor(k / nx)
+			for _, d in ipairs(dirs) do
+				local jx, jz = ix + d[1], iz + d[2]
+				if ok(jx, jz) and (d[3] == 1 or (ok(ix + d[1], iz) and ok(ix, iz + d[2]))) then
+					local nk = jz * nx + jx
+					local ng = g[k] + d[3]
+					if ng < (g[nk] or math.huge) then
+						g[nk], parent[nk] = ng, k
+						push(nk, ng + h(jx, jz))
+					end
+				end
+			end
+		end
+	end
+	if not found then return nil end
+	local cells, cur = {}, goalK
+	while cur do
+		table.insert(cells, 1, { centre(cur % nx, math.floor(cur / nx)) })
+		cur = parent[cur]
+	end
+	-- string pulling: drop cells while the straight line stays on road
+	local function lineOk(x1, z1, x2, z2)
+		local len = math.sqrt((x2 - x1) ^ 2 + (z2 - z1) ^ 2)
+		local steps = math.max(1, math.ceil(len / (cell * 0.5)))
+		for s = 1, steps - 1 do
+			local t = s / steps
+			local ix, iz = cellOf(x1 + (x2 - x1) * t, z1 + (z2 - z1) * t)
+			if not ok(ix, iz) then return false end
+		end
+		return true
+	end
+	local out = { cells[1] }
+	local i = 1
+	while i < #cells do
+		local j = #cells
+		while j > i + 1 and not lineOk(cells[i][1], cells[i][2], cells[j][1], cells[j][2]) do j = j - 1 end
+		out[#out + 1] = cells[j]
+		i = j
+	end
+	return out
+end
+
+local CLEAR, rayCount = {}, 0
+-- is (x, z) clear road: asphalt here and 3.5 studs to every side (so the car does not scrape the edge)? remembered between trips
+local function clearAt(x, z)
+	local k = math.floor(x / 4) .. "," .. math.floor(z / 4)
+	local v = CLEAR[k]
+	if v ~= nil then return v end
+	rayCount = rayCount + 1
+	if rayCount % 250 == 0 then task.wait() end
+	v = (roadAt(x, z, 5) and roadAt(x + 3.5, z, 5) and roadAt(x - 3.5, z, 5) and roadAt(x, z + 3.5, 5) and roadAt(x, z - 3.5, 5)) and true or false
+	CLEAR[k] = v
+	return v
+end
+local function lineClear(ax, az, bx, bz)
+	local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+	local steps = math.max(1, math.ceil(len / 5))
+	for i = 0, steps do
+		local t = i / steps
+		if not clearAt(ax + (bx - ax) * t, az + (bz - az) * t) then return false end
+	end
+	return true
+end
+
+-- the route as a dense polyline (a point every ~10-12 studs) lying on the real road surface
 local function densify(wps, keys, fromPos)
 	local dense, dkeys = {}, {}
-	local prev = fromPos
-	local snapped, missing, shiftSum, n = 0, 0, 0, 0
+	local nStraight, nGrid, nFail, nOnRoad = 0, 0, 0, 0
+	local function add(x, z, y, key)
+		dense[#dense + 1] = V3(x, y, z)
+		dkeys[#dense] = key
+	end
+	local function sample(ax, ay, az, bx, by, bz, key, step)
+		local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+		local n = math.max(1, math.floor(len / step + 0.5))
+		for k = 1, n do
+			local t = k / n
+			add(ax + (bx - ax) * t, az + (bz - az) * t, ay + (by - ay) * t, key)
+		end
+	end
+	local px, py, pz = fromPos.X, fromPos.Y, fromPos.Z
 	for i, w in ipairs(wps) do
-		local len = flat(prev, w)
-		local steps = math.max(1, math.floor(len / 12 + 0.5))
-		for k = 1, steps do
-			local t = k / steps
-			local x, z, y = prev.X + (w.X - prev.X) * t, prev.Z + (w.Z - prev.Z) * t, prev.Y + (w.Y - prev.Y) * t
-			local p, shift = snapRoad(x, z, y)
-			if p then
-				snapped = snapped + 1; shiftSum = shiftSum + shift
-				dense[#dense + 1] = V3(p.X, p.Y, p.Z)
+		local key = keys and keys[i] or false
+		if lineClear(px, pz, w.X, w.Z) then
+			nStraight = nStraight + 1
+			sample(px, py, pz, w.X, w.Y, w.Z, key, 12)
+			px, py, pz = w.X, w.Y, w.Z
+		else
+			local pts = gridPath(clearAt, px, pz, w.X, w.Z, 6, 45)
+			if pts then
+				nGrid = nGrid + 1
+				local lx, ly, lz = px, py, pz
+				for j, q in ipairs(pts) do
+					local hit = roadAt(q[1], q[2], 5)
+					local qy = hit and hit.Y or w.Y
+					sample(lx, ly, lz, q[1], qy, q[2], key, 10)
+					lx, ly, lz = q[1], qy, q[2]
+				end
+				px, py, pz = lx, ly, lz
 			else
-				missing = missing + 1
-				dense[#dense + 1] = V3(x, y, z)
+				-- no road path found (or the road has another name): straight line, each point moved onto the nearest road surface
+				nFail = nFail + 1
+				local len = math.sqrt((w.X - px) ^ 2 + (w.Z - pz) ^ 2)
+				local n = math.max(1, math.floor(len / 12 + 0.5))
+				for k = 1, n do
+					local t = k / n
+					local x, z, y = px + (w.X - px) * t, pz + (w.Z - pz) * t, py + (w.Y - py) * t
+					local sp = snapRoad(x, z, y)
+					if sp then add(sp.X, sp.Z, sp.Y, key) else add(x, z, y, key) end
+				end
+				px, py, pz = w.X, w.Y, w.Z
 			end
-			dkeys[#dense] = keys and keys[i] or false
-			n = n + 1
-			if n % 20 == 0 then task.wait() end
 		end
-		prev = w
+		if #dense % 30 == 0 then task.wait() end
 	end
-	-- light smoothing so the line does not jump between lanes
-	if #dense > 4 then
-		local sm = {}
-		for i = 1, #dense do
-			if i == 1 or i == #dense then sm[i] = dense[i]
-			else sm[i] = V3((dense[i - 1].X + 2 * dense[i].X + dense[i + 1].X) / 4, dense[i].Y, (dense[i - 1].Z + 2 * dense[i].Z + dense[i + 1].Z) / 4) end
-		end
-		dense = sm
-	end
-	if snapped > 0 then roadsKnown = true end
-	log(("route: %d points, %d put on the real road surface (average shift %.1f studs), %d not found"):format(#dense, snapped, snapped > 0 and shiftSum / snapped or 0, missing))
+	for _, v in pairs(CLEAR) do if v then nOnRoad = nOnRoad + 1; break end end
+	if nOnRoad > 0 then roadsKnown = true end
+	log(("route: %d points: %d straight stretches, %d planned around obstacles on the road, %d without a road path"):format(#dense, nStraight, nGrid, nFail))
 	return dense, dkeys
 end
 
@@ -255,7 +428,7 @@ local function scanRoute(wps, fromPos, car)
 				if okb then res = r else useBlock = false end
 			end
 			if not useBlock then res = workspace:Raycast(origin, vec, params) end
-			if res and math.abs(res.Normal.Y) < 0.5 and res.Instance ~= workspace.Terrain and res.Instance.Name ~= "Road" then
+			if res and math.abs(res.Normal.Y) < 0.5 and not ignorable(res.Instance) then
 				local m = res.Instance:FindFirstAncestorOfClass("Model")
 				if not (m and m:FindFirstChildOfClass("Humanoid")) then
 					hits[#hits + 1] = { pos = res.Position, name = res.Instance:GetFullName(), seg = i }
@@ -332,7 +505,7 @@ local function route(g, fromPos, toPos, relax, head)
 			local ap = V3(m.pos.X - last.X, 0, m.pos.Z - last.Z)
 			local proj = math.clamp(ap:Dot(ab.Unit), 0, ab.Magnitude)
 			local lateral = (ap - ab.Unit * proj).Magnitude
-			if lateral > 4 then wps[#wps + 1] = m.pos; keys[#wps] = keyOf(m) end
+			-- (piece centres are no longer added: in a roundabout that is the island. densify() plans along the real road.)
 		end
 		wps[#wps + 1] = via
 		keys[#wps] = keyOf(m)
@@ -827,7 +1000,7 @@ function Drive.To(targetPos, opts)
 				local origin = V3(pos.X, pos.Y - 0.5, pos.Z) + fwd * 3
 				local okb, r = pcall(function() return workspace:Blockcast(CFrame.lookAt(origin, origin + fwd), V3(6, 3, 1), fwd * L, scanPar) end)
 				danger = nil
-				if okb and r and math.abs(r.Normal.Y) < 0.5 and r.Instance ~= workspace.Terrain and r.Instance.Name ~= "Road" then
+				if okb and r and math.abs(r.Normal.Y) < 0.5 and not ignorable(r.Instance) then
 					local m = r.Instance:FindFirstAncestorOfClass("Model")
 					if not (m and m:FindFirstChildOfClass("Humanoid")) then danger = { dist = r.Distance, pos = r.Position, name = r.Instance:GetFullName() } end
 				end
@@ -842,7 +1015,7 @@ function Drive.To(targetPos, opts)
 					dangerStopT = dangerStopT or nowT
 					if nowT - dangerStopT > 1.3 then
 						dangerStopT = nil
-						if flat(pos, startPos) > 30 and (opts.replans or 0) < 5 then
+						if (flat(pos, startPos) > 30 or nowT - startT > 8) and (opts.replans or 0) < 5 then
 							addBlock(danger.pos.X, danger.pos.Z, "solid " .. danger.name .. " in front of the car")
 							release(); closePiece(); saveTune()
 							return false, "replan"
@@ -891,7 +1064,7 @@ function Drive.To(targetPos, opts)
 					if pStat then pStat.stuck = true; pStat.stuckN = (pStat.stuckN or 0) + 1 end
 					log(("stuck at (%.0f,%.0f,%.0f), backing up (%d)"):format(pos.X, pos.Y, pos.Z, recoveries))
 					if recoveries > 8 then release(); closePiece(); saveTune(); return false, "stuck" end
-					if flat(pos, startPos) > 30 and (opts.replans or 0) < 5 then
+					if (flat(pos, startPos) > 30 or nowT - startT > 8) and (opts.replans or 0) < 5 then
 						addBlock(pos.X + fwd.X * 6, pos.Z + fwd.Z * 6, "the car got stuck here")
 						log("stuck: planning another route around this spot")
 						release(); closePiece(); saveTune()
