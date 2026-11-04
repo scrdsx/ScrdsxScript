@@ -193,6 +193,29 @@ local function walkTo(pos, _, stop)
 	if not near(hrp.Position, pos, stop) then moveStep(hum, hrp, pos, 5, stop) end
 	return near(hrp.Position, pos, stop + 1.5)
 end
+-- a real left click (what the game's own punch code reacts to), used when the bare punch message does not do damage
+local VIM = game:GetService("VirtualInputManager")
+local function realClick()
+	local cam = workspace.CurrentCamera
+	local v = cam and cam.ViewportSize or V3(1920, 1080, 0)
+	local x, y = v.X * 0.5, v.Y * 0.12 -- near the top, away from the menu in the middle
+	local ok = pcall(function()
+		VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
+		task.wait(0.06)
+		VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+	end)
+	if not ok and mouse1click then pcall(mouse1click) end
+end
+local function playerState()
+	local c, hum, hrp = parts()
+	local tracks = 0
+	pcall(function() tracks = #hum:FindFirstChildOfClass("Animator"):GetPlayingAnimationTracks() end)
+	local tools = {}
+	for _, ch in ipairs(c and c:GetChildren() or {}) do if ch:IsA("Tool") then tools[#tools + 1] = ch.Name end end
+	return ("state=%s visible=%s seatPart=%s tools=[%s] anims=%d"):format(tostring(hum and hum:GetState()), tostring(c and c:GetAttribute("Visible")),
+		tostring(hum and hum.SeatPart), table.concat(tools, ","), tracks)
+end
+
 local function face(pos)
 	local _, _, hrp = parts()
 	if hrp then hrp.CFrame = CFrame.lookAt(hrp.Position, V3(pos.X, hrp.Position.Y, pos.Z)) end
@@ -230,6 +253,13 @@ local function goNear(pos, name)
 		hum.Sit = false
 		task.wait(0.35)
 		if hum.SeatPart then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end); task.wait(0.4) end
+	end
+	-- the server shows "Visible" again once it knows you are out of the car
+	local c = parts()
+	if c and c:GetAttribute("Visible") == false then
+		local t = os.clock()
+		while c:GetAttribute("Visible") == false and os.clock() - t < 3 do task.wait(0.1) end
+		flog("out of the car, Visible=" .. tostring(c:GetAttribute("Visible")))
 	end
 	return true
 end
@@ -457,6 +487,13 @@ local function robRegister(entry)
 		local arrived = walkTo(sd.pos, nil, 2.5)
 		face(rp)
 		task.wait(0.3)
+		do
+			local _, _, h2 = parts()
+			local to = rp - h2.Position
+			local flat = V3(to.X, 0, to.Z)
+			local dot = flat.Magnitude > 0.1 and h2.CFrame.LookVector:Dot(flat.Unit) or 0
+			flog(("before punching: distance %.1f, facing the register %.2f (1 = straight at it), %s"):format(flat.Magnitude, dot, playerState()))
+		end
 		local echoes = 0
 		local pr = remote(ID.PUNCH)
 		local conn = pr and pr.OnClientEvent:Connect(function(p) if p == lp then echoes = echoes + 1 end end)
@@ -464,6 +501,15 @@ local function robRegister(entry)
 			fire(ID.PUNCH)
 			task.wait(0.62)
 			if (model:GetAttribute("Health") or h0) < h0 or model:GetAttribute("TimedOut") == true then landed = true; break end
+		end
+		if not landed and i <= 2 then
+			-- the bare message did nothing: do it like a player (left click) and see if that hurts the register
+			for _ = 1, 4 do
+				realClick()
+				task.wait(0.7)
+				if (model:GetAttribute("Health") or h0) < h0 or model:GetAttribute("TimedOut") == true then landed = true; Farm.UseClick = true; break end
+			end
+			flog("real clicks on this side: " .. (landed and "they hurt the register" or "no damage either") .. ", " .. playerState())
 		end
 		if conn then conn:Disconnect() end
 		flog(("side %d (arrived=%s): health %s -> %s, server answered %d punches"):format(i, tostring(arrived), tostring(h0), tostring(model:GetAttribute("Health")), echoes))
@@ -475,7 +521,7 @@ local function robRegister(entry)
 	say(entry.key .. ": breaking the register")
 	local t0 = os.clock()
 	while not Farm.Cancel and os.clock() - t0 < 20 and model:GetAttribute("TimedOut") ~= true do
-		fire(ID.PUNCH)
+		if Farm.UseClick then realClick() else fire(ID.PUNCH) end
 		task.wait(0.62)
 	end
 	task.wait(0.6)
