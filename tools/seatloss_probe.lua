@@ -64,7 +64,11 @@ pcall(function()
 	old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
 		local m = getnamecallmethod()
 		if active and (m == "FireServer" or m == "InvokeServer") then
-			queue[#queue + 1] = { os.clock(), self, m, table.pack(...) }
+			local cs, tb
+			if getcallingscript then local ok, r = pcall(getcallingscript); if ok then cs = r end end
+			local ok2, t2 = pcall(debug.traceback, "", 2)
+			if ok2 then tb = t2 end
+			queue[#queue + 1] = { os.clock(), self, m, table.pack(...), cs, tb }
 		end
 		setnamecallmethod(m)
 		return old(self, ...)
@@ -75,7 +79,8 @@ task.spawn(function()
 		task.wait(0.1)
 		while #queue > 0 do
 			local q = table.remove(queue, 1)
-			log(("CLIENT>SERVER %s %s (%s)"):format(q[3], full(q[2]), fmtArgs(q[4])))
+			log(("CLIENT>SERVER %s %s (%s) caller=%s"):format(q[3], full(q[2]), fmtArgs(q[4]), q[5] and full(q[5]) or "?"))
+			if q[6] and q[4][3] == "cancel" then log("traceback: " .. tostring(q[6]):gsub("\n", " | ")) end
 		end
 	end
 end)
@@ -198,6 +203,14 @@ local function watchCar()
 		pcall(function() watchProp(seat, "seat", "Occupant") end)
 		pcall(function() watchProp(seat, "seat", "Disabled") end)
 		conn(seat.Destroying:Connect(function() if active then log("SEAT DESTROYING") end end))
+	end
+	for _, d in ipairs(car:GetDescendants()) do
+		if d:IsA("ProximityPrompt") then
+			log(("PROMPT %s action=%q hold=%s dist=%s enabled=%s"):format(full(d), d.ActionText, tostring(d.HoldDuration), tostring(d.MaxActivationDistance), tostring(d.Enabled)))
+			for _, ev in ipairs({ "Triggered", "TriggerEnded", "PromptButtonHoldBegan", "PromptButtonHoldEnded" }) do
+				conn(d[ev]:Connect(function() if active then log(("PROMPT EVENT %s %s"):format(ev, full(d))) end end))
+			end
+		end
 	end
 	conn(car.Destroying:Connect(function() if active then log("CAR DESTROYING") end end))
 end
