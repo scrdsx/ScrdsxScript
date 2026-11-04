@@ -167,7 +167,7 @@ function UI.new(opts)
 
 	-- toast holder
 	self.toasts = new("Frame", {
-		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -18), Size = UDim2.fromOffset(240, 300),
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -18), Size = UDim2.fromOffset(560, 300),
 		BackgroundTransparency = 1, Parent = gui,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 6), VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = self.toasts })
@@ -262,7 +262,9 @@ function UI:Notify(text, seconds)
 		BackgroundTransparency = 1, BorderSizePixel = 0, Parent = self.toasts,
 	}, { corner(8), new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) }) })
 	local st = stroke(T.stroke); st.Transparency = 1; st.Parent = f
-	local l = label(text, 13, T.text); l.AutomaticSize = Enum.AutomaticSize.X; l.Size = UDim2.fromOffset(0, 34); l.TextTransparency = 1; l.Parent = f
+	local l = label(text, 13, T.text); l.AutomaticSize = Enum.AutomaticSize.X; l.Size = UDim2.fromOffset(0, 34); l.TextTransparency = 1
+	l.TextTruncate = Enum.TextTruncate.None -- toasts show their whole message (they used to end in "...")
+	l.Parent = f
 	tween(f, .3, { BackgroundTransparency = 0 }); tween(st, .3, { Transparency = 0 }); tween(l, .3, { TextTransparency = 0 })
 	task.delay(seconds or 2.5, function()
 		if not f.Parent then return end

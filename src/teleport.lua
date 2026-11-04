@@ -209,24 +209,32 @@ end
 -- a spot ON THE GROUND at the location's own level (never a roof), open to the sky, with room for the car
 local function findDestination(pos, from, ignore)
 	local rp = params(ignore)
-	local function candidate(x, z, needAsphalt)
-		local r = workspace:Raycast(Vector3.new(x, pos.Y + 12, z), Vector3.new(0, -40, 0), rp)
-		if not r then return nil end
-		if needAsphalt and r.Material ~= Enum.Material.Asphalt then return nil end
-		if r.Normal.Y < 0.9 or r.Position.Y < pos.Y - 12 or r.Position.Y > pos.Y + 8 then return nil end
-		if workspace:Raycast(r.Position + Vector3.new(0, 2, 0), Vector3.new(0, 25, 0), rp) then return nil end -- under a roof/bridge
+	local why = { noGround = 0, wrongHeight = 0, notAsphalt = 0, steep = 0, roof = 0, blocked = 0 }
+	-- pass 1: asphalt, strict; pass 2: any clear ground; pass 3: relaxed heights / no sky test / smaller box
+	local function candidate(x, z, pass)
+		local relaxed = pass == 3
+		local r = workspace:Raycast(Vector3.new(x, pos.Y + (relaxed and 30 or 12), z), Vector3.new(0, relaxed and -90 or -40, 0), rp)
+		if not r then why.noGround = why.noGround + 1; return nil end
+		if pass == 1 and r.Material ~= Enum.Material.Asphalt then why.notAsphalt = why.notAsphalt + 1; return nil end
+		if r.Normal.Y < (relaxed and 0.8 or 0.9) then why.steep = why.steep + 1; return nil end
+		local lo, hi = relaxed and -30 or -12, relaxed and 25 or 8
+		if r.Position.Y < pos.Y + lo or r.Position.Y > pos.Y + hi then why.wrongHeight = why.wrongHeight + 1; return nil end
+		if not relaxed and workspace:Raycast(r.Position + Vector3.new(0, 2, 0), Vector3.new(0, 25, 0), rp) then
+			why.roof = why.roof + 1; return nil -- under a roof/bridge
+		end
 		local face = Vector3.new(pos.X, r.Position.Y + 3, pos.Z)
 		local at = r.Position + Vector3.new(0, 3, 0)
 		local cf = (face - at).Magnitude > 1 and CFrame.lookAt(at, face) or CFrame.new(at)
-		if not boxFree(cf, Vector3.new(9, 4, 17), ignore) then return nil end
+		local size = relaxed and Vector3.new(7, 3, 12) or Vector3.new(9, 4, 17)
+		if not boxFree(cf, size, ignore) then why.blocked = why.blocked + 1; return nil end
 		return r.Position
 	end
-	for pass = 1, 2 do -- pass 1: asphalt only; pass 2: any clear ground
-		for _, radius in ipairs({ 10, 16, 24, 34, 46, 60, 80 }) do
+	for pass = 1, 3 do
+		for _, radius in ipairs({ 10, 16, 24, 34, 46, 60, 80, 110 }) do
 			local best, bestD
 			for i = 0, 23 do
 				local a = i / 24 * math.pi * 2
-				local p = candidate(pos.X + math.cos(a) * radius, pos.Z + math.sin(a) * radius, pass == 1)
+				local p = candidate(pos.X + math.cos(a) * radius, pos.Z + math.sin(a) * radius, pass)
 				if p then
 					local d = (p - from).Magnitude
 					if not bestD or d < bestD then best, bestD = p, d end
@@ -235,7 +243,10 @@ local function findDestination(pos, from, ignore)
 			if best then return best, pass == 1 end
 		end
 	end
-	return nil
+	local parts = {}
+	for k, v in pairs(why) do if v > 0 then parts[#parts + 1] = k .. " " .. v end end
+	table.sort(parts)
+	return nil, table.concat(parts, ", ")
 end
 
 local function smooth(p) return p * p * (3 - 2 * p) end
@@ -319,8 +330,21 @@ function Tele.GoTo(loc)
 			local seatH = (g and math.clamp(seat.Position.Y - g.Position.Y, 0.8, 8) or 3) + 0.3
 
 			local startCF = seat.CFrame
-			local ground, onRoad = findDestination(loc.pos, startCF.Position, ignore)
-			if not ground then say("No clear road spot near " .. loc.name); return end
+			-- the map streams in around you: ask for the destination area first, or the road there does not exist yet
+			say("Loading the area near " .. loc.name .. "...")
+			pcall(function() lp:RequestStreamAroundAsync(loc.pos, 8) end)
+			local ground, onRoad
+			for attempt = 1, 3 do
+				ground, onRoad = findDestination(loc.pos, startCF.Position, ignore)
+				if ground then break end
+				pcall(function() lp:RequestStreamAroundAsync(loc.pos, 5) end)
+				task.wait(0.6)
+			end
+			if not ground then
+				print("[teleport] no spot near " .. loc.name .. " (" .. tostring(onRoad) .. ")")
+				say("No spot near " .. loc.name .. ": " .. tostring(onRoad))
+				return
+			end
 			local destPos = ground + Vector3.new(0, seatH, 0)
 			local finalRot = startCF.Rotation
 			if Tele.Face then
