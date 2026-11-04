@@ -38,7 +38,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = false, Parallel = true,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = false, Parallel = true, bombs = 0,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -361,10 +361,10 @@ local function loot(root, label)
 	return got
 end
 
+-- bombs are NOT tools in your backpack until you equip them (the recording shows no backpack change after buying),
+-- so the script keeps its own count: +1 per buy message, -1 per throw
 local function hasBomb()
-	local c = lp.Character
-	local bp = lp:FindFirstChild("Backpack")
-	return (bp and bp:FindFirstChild("Bomb") ~= nil) or (c and c:FindFirstChild("Bomb") ~= nil)
+	return Farm.bombs > 0
 end
 
 -- nearest dealer that is loaded (they move around the map)
@@ -400,9 +400,11 @@ local function buyBombs(n)
 		for i = 1, n do
 			if Farm.Cancel then return false end
 			fire(ID.BUY, "Bomb", "Dealer")
+			Farm.bombs = Farm.bombs + 1
+			flog("bought a bomb (counting " .. Farm.bombs .. ")")
 			task.wait(0.9)
 		end
-		return hasBomb()
+		return true
 	end)
 	return ok
 end
@@ -422,22 +424,24 @@ end
 local function throwBomb(target)
 	local c, hum = parts()
 	if not c then return false end
-	fire(ID.EQUIP, "Bomb")
-	local t = os.clock()
-	local tool
-	while os.clock() - t < 2.5 do
-		tool = c:FindFirstChild("Bomb")
-		if tool then break end
-		task.wait(0.1)
+	local tool = c:FindFirstChild("Bomb")
+	if not tool then
+		fire(ID.EQUIP, "Bomb") -- the equip message toggles, so only send it when the bomb is not already in your hand
+		local t = os.clock()
+		while os.clock() - t < 2.5 do
+			tool = c:FindFirstChild("Bomb")
+			if tool then break end
+			task.wait(0.1)
+		end
 	end
 	if not tool then
-		fire(ID.EQUIP, "Bomb") -- it may have toggled off
-		task.wait(0.8)
-		tool = c:FindFirstChild("Bomb")
+		Farm.bombs = 0 -- the game did not give us a bomb: the count was wrong
+		flog("equipping the bomb failed: no bomb in the inventory")
+		return false
 	end
-	if not tool then return false end
 	task.wait(0.8)
 	fire(ID.THROW, tool, target.X, target.Y, target.Z)
+	Farm.bombs = math.max(0, Farm.bombs - 1)
 	task.wait(0.9)
 	fire(ID.THROWDONE)
 	task.wait(0.5)
@@ -538,13 +542,33 @@ local function robRegister(entry)
 		if d:IsA("BasePart") then pl[#pl + 1] = ("%s@(%.0f,%.0f,%.0f)"):format(d.Name, d.Position.X, d.Position.Y, d.Position.Z) end
 	end
 	flog("register parts: " .. table.concat(pl, "; "):sub(1, 420))
+	-- is the shop open? log every attribute that could say so (register, shop part, the folder, the doors, the building)
+	local function attrs(i)
+		local t = {}
+		for k, v in pairs(i:GetAttributes()) do t[#t + 1] = k .. "=" .. tostring(v):sub(1, 30) end
+		table.sort(t)
+		return table.concat(t, ", ")
+	end
+	flog("shop attrs: model[" .. attrs(model) .. "] folder[" .. attrs(model.Parent) .. "] part[" .. (body and attrs(body) or "") .. "]")
+	for i, dd in ipairs(doorsNear(rp, 60)) do
+		if i > 2 then break end
+		local chain, cur = {}, dd.inst
+		for _ = 1, 4 do
+			if not cur or cur == workspace then break end
+			chain[#chain + 1] = cur.Name .. "[" .. attrs(cur) .. "]"
+			cur = cur.Parent
+		end
+		flog("door chain: " .. table.concat(chain, " < "))
+	end
+	local lt = game:GetService("Lighting")
+	flog(("clock: Lighting.ClockTime=%.2f  workspace attrs[%s]"):format(lt.ClockTime, attrs(workspace)))
 
 	-- standing spots around the register; the ones with a clear line to it come first (the counter may block one side)
 	local rparams = RaycastParams.new()
 	rparams.FilterType = Enum.RaycastFilterType.Exclude
 	rparams.FilterDescendantsInstances = { lp.Character, (myCar()) }
 	local sides = {}
-	for _, off in ipairs({ V3(-3, 0, 0), V3(3, 0, 0), V3(0, 0, -3), V3(0, 0, 3) }) do
+	for _, off in ipairs({ V3(-1.6, 0, 0), V3(1.6, 0, 0), V3(0, 0, -1.6), V3(0, 0, 1.6) }) do
 		local sp = rp + off
 		local origin = V3(sp.X, rp.Y, sp.Z)
 		local hit = workspace:Raycast(origin, rp - origin, rparams)
@@ -562,7 +586,7 @@ local function robRegister(entry)
 	for i, sd in ipairs(sides) do
 		if Farm.Cancel then break end
 		say(("%s: trying side %d/%d (%s)"):format(entry.key, i, #sides, sd.clear and "clear" or "blocked"))
-		local arrived = walkTo(sd.pos, nil, 2.5)
+		local arrived = walkTo(sd.pos, nil, 1.2)
 		face(rp)
 		task.wait(0.3)
 		do
@@ -585,7 +609,7 @@ local function robRegister(entry)
 		if landed then break end
 	end
 	if not landed then
-		say(entry.key .. ": punches do not hit from any side"); cooldown(entry.key, 120); backToCar(); return false
+		say(entry.key .. ": punches do not hurt it (closed?), skipping it for 10 min"); cooldown(entry.key, 600); backToCar(); return false
 	end
 	say(entry.key .. ": breaking the register")
 	local t0 = os.clock()
