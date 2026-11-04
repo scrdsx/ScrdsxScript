@@ -38,7 +38,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = true,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = false,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -426,27 +426,57 @@ local function robRegister(entry)
 	body = body or model:FindFirstChild("Body") or model:FindFirstChildWhichIsA("BasePart")
 	local rp = body and body.Position or where(model)
 	local _, hum, hrp = parts()
-	local away = hrp.Position - rp
-	away = V3(away.X, 0, away.Z)
-	local stand = rp + (away.Magnitude > 0.1 and away.Unit * 3 or V3(3, 0, 0)) + V3(0, 1, 0)
-	say(entry.key .. ": walking to the register")
-	flog(("register part=%s at (%.0f,%.0f,%.0f), walking to (%.0f,%.0f,%.0f)"):format(body and body.Name or "?", rp.X, rp.Y, rp.Z, stand.X, stand.Y, stand.Z))
-	local arrived = walkTo(stand, Farm.WalkSpeed, 2.5)
-	flog("arrived at the register: " .. tostring(arrived))
-	face(rp)
+	local pl = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then pl[#pl + 1] = ("%s@(%.0f,%.0f,%.0f)"):format(d.Name, d.Position.X, d.Position.Y, d.Position.Z) end
+	end
+	flog("register parts: " .. table.concat(pl, "; "):sub(1, 420))
+
+	-- standing spots around the register; the ones with a clear line to it come first (the counter may block one side)
+	local rparams = RaycastParams.new()
+	rparams.FilterType = Enum.RaycastFilterType.Exclude
+	rparams.FilterDescendantsInstances = { lp.Character, (myCar()) }
+	local sides = {}
+	for _, off in ipairs({ V3(-3, 0, 0), V3(3, 0, 0), V3(0, 0, -3), V3(0, 0, 3) }) do
+		local sp = rp + off
+		local origin = V3(sp.X, rp.Y, sp.Z)
+		local hit = workspace:Raycast(origin, rp - origin, rparams)
+		sides[#sides + 1] = { pos = sp + V3(0, 1, 0), clear = hit == nil or hit.Instance:IsDescendantOf(model), d = (sp - hrp.Position).Magnitude }
+	end
+	table.sort(sides, function(a, b)
+		if a.clear ~= b.clear then return a.clear end
+		return a.d < b.d
+	end)
+
 	pcall(function() hum:UnequipTools() end)
-	task.wait(0.3)
-	local h0 = model:GetAttribute("Health")
-	local t0, swings = os.clock(), 0
-	say(entry.key .. ": breaking the register")
-	while not Farm.Cancel and os.clock() - t0 < 25 do
-		if model:GetAttribute("TimedOut") == true then break end
-		fire(ID.PUNCH)
-		swings = swings + 1
-		task.wait(0.62)
-		if swings == 5 and model:GetAttribute("Health") == h0 then
-			say(entry.key .. ": punches do not hit (too far?)"); cooldown(entry.key, 120); backToCar(); return false
+	local h0 = model:GetAttribute("Health") or 48
+	local landed = false
+	for i, sd in ipairs(sides) do
+		if Farm.Cancel then break end
+		say(("%s: trying side %d/%d (%s)"):format(entry.key, i, #sides, sd.clear and "clear" or "blocked"))
+		local arrived = walkTo(sd.pos, nil, 2.5)
+		face(rp)
+		task.wait(0.3)
+		local echoes = 0
+		local pr = remote(ID.PUNCH)
+		local conn = pr and pr.OnClientEvent:Connect(function(p) if p == lp then echoes = echoes + 1 end end)
+		for _ = 1, 5 do
+			fire(ID.PUNCH)
+			task.wait(0.62)
+			if (model:GetAttribute("Health") or h0) < h0 or model:GetAttribute("TimedOut") == true then landed = true; break end
 		end
+		if conn then conn:Disconnect() end
+		flog(("side %d (arrived=%s): health %s -> %s, server answered %d punches"):format(i, tostring(arrived), tostring(h0), tostring(model:GetAttribute("Health")), echoes))
+		if landed then break end
+	end
+	if not landed then
+		say(entry.key .. ": punches do not hit from any side"); cooldown(entry.key, 120); backToCar(); return false
+	end
+	say(entry.key .. ": breaking the register")
+	local t0 = os.clock()
+	while not Farm.Cancel and os.clock() - t0 < 20 and model:GetAttribute("TimedOut") ~= true do
+		fire(ID.PUNCH)
+		task.wait(0.62)
 	end
 	task.wait(0.6)
 	-- money drops are MeshParts named after you in Workspace.Drops
