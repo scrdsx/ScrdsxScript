@@ -181,6 +181,15 @@ local function ensureSeated(car, seat)
 	local hrp = c and c:FindFirstChild("HumanoidRootPart")
 	if not (hum and hrp) or hum.Health <= 0 then return false end
 	if hum.SeatPart == seat and (hrp.Position - seat.Position).Magnitude < 12 then return true end -- (seated on paper but left behind = not seated)
+	-- the game's own way in (the server seats you when you stand within 10 studs of the seat)
+	local mb = game:GetService("ReplicatedStorage"):FindFirstChild("mBd")
+	local interact = mb and mb:FindFirstChild("e3256932-2913-480f-93e8-9cda8c896b14")
+	if interact and (hrp.Position - seat.Position).Magnitude < 9 then
+		pcall(function() interact:FireServer(seat, "B6W", "stop") end)
+		local t0 = os.clock()
+		while hum.SeatPart ~= seat and os.clock() - t0 < 2 do task.wait(0.1) end
+		if hum.SeatPart == seat then return true end
+	end
 	hrp.CFrame = seat.CFrame * CFrame.new(0, 3, 0)
 	task.wait(0.15)
 	pcall(function() seat:Sit(hum) end)

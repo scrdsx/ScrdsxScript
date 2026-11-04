@@ -15,9 +15,10 @@ local ID = {
 	INTERACT = "e3256932-2913-480f-93e8-9cda8c896b14", -- (target, actionId, "start" | "stop" | "cancel")
 	BUY = "1c8bfd0c-2399-477f-8eac-fec0ba502317",      -- ("Bomb", "Dealer")
 	SELL = "eee773c0-a099-46cc-b27c-44f7c84c0324",     -- ("Gold", "Dealer")
-	EQUIP = "910a8b37-75ee-42aa-897a-ad920fa54120",    -- ("Bomb")  toggles the tool
-	THROW = "78362192-b9dc-4744-9e59-0d72a5b791cf",    -- (tool, x, y, z)
-	THROWDONE = "d1152c57-eaab-4cb4-8861-404a5640d434", -- ()
+	EQUIP = "910a8b37-75ee-42aa-897a-ad920fa54120",    -- ("Bomb")  equips that item (the game's inventoryController.equipTool)
+	UNEQUIP = "22bad4a5-9dc6-4362-ab06-c24b29951bfd",  -- ()  puts the item away = hands (inventoryController.unequipTool)
+	THROW = "78362192-b9dc-4744-9e59-0d72a5b791cf",    -- (tool, x, y, z)  throws the bomb in an arc to that point
+	DETONATE = "d1152c57-eaab-4cb4-8861-404a5640d434", -- ()  blows up the bombs you threw (inventoryController.detonateBombs)
 	PUNCH = "cc21144d-23ac-4754-8144-1a3f985e016a",    -- ()  one swing, ~6 damage to a register in reach
 }
 local ACT = { dealer = "Omm", money = "2vd", item = "7Rm", drop = "P11" }
@@ -73,9 +74,13 @@ function Farm.CopyLog()
 end
 local function changed() if Farm.Changed then task.defer(Farm.Changed) end end
 local function say(s) Farm.Info = s; flog(s); changed() end
+local startMoney
 local function stats()
 	local d = Farm.done
-	Farm.Stats = ("reg %d  bank %d  jewel %d  club %d  fails %d"):format(d.registers, d.bank, d.jeweler, d.club, d.fails)
+	local m = Farm.moneyNow and Farm.moneyNow()
+	if m and not startMoney then startMoney = m end
+	Farm.Stats = ("reg %d  bank %d  jewel %d  club %d  fails %d%s"):format(d.registers, d.bank, d.jeweler, d.club, d.fails,
+		(m and startMoney) and ("  +" .. math.floor(m - startMoney) .. " EUR") or "")
 end
 
 -- remotes -------------------------------------------------------------------------------------------------
@@ -238,31 +243,35 @@ local function myCar()
 end
 
 local hasBomb -- defined further down
--- get into the car the way a player does: walk up to it, then sit. (A long instant jump into the seat is rejected by the server:
--- it keeps your body where it last saw it and drags you back when the trip ends.)
+-- Get into the car the way the game does it: walk up to it, then send the seat interaction ("B6W", stop). The SERVER seats you if
+-- you stand within 10 studs of the seat (see driveSeatInteractable). Jumping your body into the seat with a CFrame is what made
+-- the server drag you back afterwards.
 local function ensureInCar()
-	local Tele = Farm.Tele
 	local _, seat = myCar()
-	if not seat then return false end
+	if not seat then say("spawn your car first"); return false end
 	local _, hum, hrp = parts()
 	if not (hum and hrp) then return false end
-	if hum.SeatPart == seat and (hrp.Position - seat.Position).Magnitude < 12 then return true end
-	if (hrp.Position - seat.Position).Magnitude > 14 then
-		say("walking to the car")
-		walkTo(seat.Position + V3(0, 3, 0), nil, 9)
+	if hum.SeatPart == seat then return true end
+	for attempt = 1, 3 do
+		if (hrp.Position - seat.Position).Magnitude > 7 then
+			say("walking to the car")
+			walkTo(seat.Position, nil, 5)
+		end
+		fire(ID.INTERACT, seat, "B6W", "stop")
+		local t = os.clock()
+		while os.clock() - t < 2.2 and hum.SeatPart ~= seat do task.wait(0.1) end
+		if hum.SeatPart == seat then
+			task.wait(0.7) -- let the server finish seating you before the car moves
+			return true
+		end
+		flog(("the seat interaction did not seat us (try %d), distance %.1f"):format(attempt, (hrp.Position - seat.Position).Magnitude))
+		hum.Sit = false
 	end
-	Tele.GoToCar()
-	task.wait(0.3)
-	while Tele.Busy and not Farm.Cancel do task.wait(0.2) end
-	return true
+	return false
 end
--- is there a bomb in the inventory? (step out, test, sit back in)
+-- is there a bomb in the inventory?  (reads the game's own player data, no stepping out of the car)
 local function bombCheck()
-	local _, hum = parts()
-	if hum and hum.SeatPart then hum.Sit = false; task.wait(0.6) end
-	local have = hasBomb()
-	ensureInCar()
-	return have
+	return hasBomb()
 end
 
 -- drive (Teleports module) to a place and step out of the car
@@ -401,7 +410,32 @@ end
 
 -- Bombs are not tools in your backpack until you equip them, so the only way to know is to try: send the equip message and see
 -- whether a Bomb appears in your hand (only works on foot), then put it away again. Takes about 2 seconds.
+-- The game keeps your inventory / money in a client-side state store (Code.producer -> playerData). Read it directly.
+local function playerData()
+	local ok, pd = pcall(function() return require(lp.PlayerScripts.Code.producer).producer:getState().playerData end)
+	return (ok and type(pd) == "table") and pd or nil
+end
+local function bombCount()
+	local pd = playerData()
+	if not pd or type(pd.inventory) ~= "table" then return nil end
+	local n = 0
+	for _, list in pairs(pd.inventory) do
+		if type(list) == "table" then
+			for _, it in pairs(list) do
+				if type(it) == "table" and it.name == "Bomb" then n = n + (tonumber(it.count) or 1) end
+			end
+		end
+	end
+	return n
+end
+Farm.moneyNow = function() local pd = playerData(); return pd and tonumber(pd.money) or nil end
 function hasBomb()
+	local n = bombCount()
+	if n ~= nil then
+		flog("inventory: " .. n .. " bomb(s)")
+		return n > 0
+	end
+	-- state store not reachable: test by equipping (only works on foot)
 	local c = lp.Character
 	if not c then return false end
 	if c:FindFirstChild("Bomb") then return true end
@@ -412,8 +446,8 @@ function hasBomb()
 		task.wait(0.1)
 	end
 	local have = c:FindFirstChild("Bomb") ~= nil
-	if have then fire(ID.EQUIP, "Bomb"); task.wait(0.5) end -- the message toggles: put it away again
-	flog("bomb check: " .. (have and "you have a bomb" or "no bomb in the inventory"))
+	if have then fire(ID.UNEQUIP); task.wait(0.5) end
+	flog("bomb check by equipping: " .. tostring(have))
 	return have
 end
 
@@ -485,16 +519,12 @@ local function throwBomb(target)
 		end
 	end
 	if not tool then
-		Farm.bombs = 0 -- the game did not give us a bomb: the count was wrong
 		flog("equipping the bomb failed: no bomb in the inventory")
 		return false
 	end
 	task.wait(0.8)
 	fire(ID.THROW, tool, target.X, target.Y, target.Z)
-	Farm.bombs = math.max(0, Farm.bombs - 1)
-	task.wait(0.9)
-	fire(ID.THROWDONE)
-	task.wait(0.5)
+	task.wait(0.4)
 	return true
 end
 local function waitAttr(inst, name, want, seconds)
@@ -648,6 +678,8 @@ local function robRegister(entry)
 
 	enterShop(rp)
 	pcall(function() hum:UnequipTools() end)
+	fire(ID.UNEQUIP) -- the server must see empty hands too
+	task.wait(0.4)
 	local h0 = model:GetAttribute("Health") or 48
 	local landed = false
 	for i, sd in ipairs(sides) do
@@ -761,8 +793,15 @@ local function doBank()
 		face(BANK.target)
 		say("bank: throwing the bomb")
 		if not throwBomb(BANK.target) then say("bank: could not throw"); cooldown("bank", 90); backToCar(); return false end
-		say("bank: waiting for the vault")
-		if not (vault and waitAttr(vault, "Opened", true, 15)) then say("bank: vault did not open"); cooldown("bank", 120); backToCar(); return false end
+		-- a thrown bomb does nothing until YOU detonate it (the game's "Detonate Bombs" button); in your recordings that was 1.6 to 2.5 s later
+		local opened = false
+		for i = 1, 4 do
+			task.wait(i == 1 and 1.9 or 1.2)
+			say("bank: detonating (try " .. i .. ")")
+			fire(ID.DETONATE)
+			if vault and waitAttr(vault, "Opened", true, 4) then opened = true; break end
+		end
+		if not opened then say("bank: vault did not open"); cooldown("bank", 120); backToCar(); return false end
 		loot(bank, "bank")
 		Farm.done.bank = Farm.done.bank + 1
 		cooldown("bank", 580)
@@ -798,7 +837,11 @@ local function doSafeStore(key, label, pos, getFolder, getSafes, statKey)
 				walkTo(stand, Farm.WalkSpeed, 2)
 				face(sp)
 				if not throwBomb(sp) then say(label .. ": no bomb left"); break end
-				waitAttr(s, "Opened", true, 12)
+				for i = 1, 3 do -- the bomb only goes off when you detonate it
+					task.wait(i == 1 and 1.9 or 1.2)
+					fire(ID.DETONATE)
+					if waitAttr(s, "Opened", true, 4) then break end
+				end
 			end
 		end
 		loot(folder, label)
@@ -836,8 +879,17 @@ local function runOnce(kind)
 	elseif kind == "club" then Farm.cool.club = nil; return doClub() end
 end
 
+local function wrongTeam()
+	local t = lp.Team
+	if t and t.Name ~= "Citizen" then
+		say("switch to the Citizen team first (only citizens can rob and collect)")
+		return true
+	end
+	return false
+end
+
 function Farm.Once(kind)
-	if Farm.Busy then return end
+	if Farm.Busy or wrongTeam() then return end
 	Farm.Busy, Farm.Cancel = true, false
 	task.spawn(function()
 		pcall(runOnce, kind)
@@ -848,6 +900,7 @@ end
 
 function Farm.SetEnabled(v)
 	if v == Farm.Enabled then return end
+	if v and wrongTeam() then if Farm.Stopped then task.defer(Farm.Stopped) end return end
 	Farm.Enabled = v
 	if not v then
 		Farm.Cancel = true
