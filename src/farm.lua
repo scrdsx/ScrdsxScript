@@ -206,6 +206,16 @@ local function realClick()
 	end)
 	if not ok and mouse1click then pcall(mouse1click) end
 end
+-- the game punches with the F key (recorded with tools/punch_probe.lua): its own handler plays the swing animation first and
+-- only then tells the server, and the server only damages things for a real swing. Sending the bare message did nothing.
+local function punch()
+	local ok = pcall(function()
+		VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+		task.wait(0.06)
+		VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+	end)
+	if not ok then fire(ID.PUNCH) end
+end
 local function playerState()
 	local c, hum, hrp = parts()
 	local tracks = 0
@@ -498,18 +508,9 @@ local function robRegister(entry)
 		local pr = remote(ID.PUNCH)
 		local conn = pr and pr.OnClientEvent:Connect(function(p) if p == lp then echoes = echoes + 1 end end)
 		for _ = 1, 5 do
-			fire(ID.PUNCH)
+			punch()
 			task.wait(0.62)
 			if (model:GetAttribute("Health") or h0) < h0 or model:GetAttribute("TimedOut") == true then landed = true; break end
-		end
-		if not landed and i <= 2 then
-			-- the bare message did nothing: do it like a player (left click) and see if that hurts the register
-			for _ = 1, 4 do
-				realClick()
-				task.wait(0.7)
-				if (model:GetAttribute("Health") or h0) < h0 or model:GetAttribute("TimedOut") == true then landed = true; Farm.UseClick = true; break end
-			end
-			flog("real clicks on this side: " .. (landed and "they hurt the register" or "no damage either") .. ", " .. playerState())
 		end
 		if conn then conn:Disconnect() end
 		flog(("side %d (arrived=%s): health %s -> %s, server answered %d punches"):format(i, tostring(arrived), tostring(h0), tostring(model:GetAttribute("Health")), echoes))
@@ -521,7 +522,7 @@ local function robRegister(entry)
 	say(entry.key .. ": breaking the register")
 	local t0 = os.clock()
 	while not Farm.Cancel and os.clock() - t0 < 20 and model:GetAttribute("TimedOut") ~= true do
-		if Farm.UseClick then realClick() else fire(ID.PUNCH) end
+		punch()
 		task.wait(0.62)
 	end
 	task.wait(0.6)
