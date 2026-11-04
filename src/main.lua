@@ -124,6 +124,10 @@ tTele:Button({ Name = "Save my position as a spot", Callback = function()
 end })
 Tele.Scan(addLocations)
 
+-- AutoFarm tab (modules get added here)
+local tFarm = win:Tab("AutoFarm")
+tFarm:Label({ Name = "Status", Value = "no farms added yet" })
+
 -- HUD tab: widgets that stay on screen; press / (window closed) to move them
 local hud = Hud.new({
 	Title = TITLE,
