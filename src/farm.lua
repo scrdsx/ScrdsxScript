@@ -38,7 +38,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = false,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, InstantMove = false, Parallel = true,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -277,8 +277,9 @@ local function backToCar()
 	local _, seat = myCar()
 	if not seat then return false end
 	say("back to the car")
-	walkTo(seat.Position + V3(0, 3, 0), Farm.WalkSpeed, 4)
-	Farm.Tele.GoToCar()
+	local _, _, hrp = parts()
+	if hrp and (hrp.Position - seat.Position).Magnitude > 200 then walkTo(seat.Position + V3(0, 3, 0), Farm.WalkSpeed, 4) end
+	Farm.Tele.GoToCar() -- sits you in the seat directly (that move is accepted)
 	task.wait(0.3)
 	while Farm.Tele.Busy and not Farm.Cancel do task.wait(0.2) end
 	return true
@@ -296,7 +297,43 @@ local function holdInteract(part, id, hold)
 	return true
 end
 
--- pick up everything under `root` that is switched on (money = id 2vd, items/gold = id 7Rm)
+-- hold several pickups at the same time (they all take the same ~2.5 s): start them all, wait, stop them all
+local function holdBatch(items, hold)
+	for _, it in ipairs(items) do fire(ID.INTERACT, it.part, it.id, "start") end
+	local t = os.clock()
+	while os.clock() - t < (hold or 2.6) do
+		if Farm.Cancel then
+			for _, it in ipairs(items) do fire(ID.INTERACT, it.part, it.id, "cancel") end
+			return false
+		end
+		task.wait(0.1)
+	end
+	for _, it in ipairs(items) do fire(ID.INTERACT, it.part, it.id, "stop") end
+	return true
+end
+-- the first item plus every other one within 8 studs of it (max 4)
+local function batchAround(list, first)
+	local batch = { first }
+	if Farm.Parallel then
+		for _, o in ipairs(list) do
+			if o ~= first and #batch < 4 and (o.part.Position - first.part.Position).Magnitude < 8 then batch[#batch + 1] = o end
+		end
+	end
+	return batch
+end
+local function afterBatch(batch, tried)
+	local got = 0
+	for _, it in ipairs(batch) do
+		if not it.part.Parent or it.part:GetAttribute("Enabled") ~= true then got = got + 1 else tried[it.part] = (tried[it.part] or 0) + 1 end
+	end
+	if #batch > 1 and got == 0 and Farm.Parallel then
+		Farm.Parallel = false
+		flog("picking up several at once did not work, one at a time from now on")
+	end
+	return got
+end
+
+-- pick up everything under `root' that is switched on (money = id 2vd, items/gold = id 7Rm)
 local function loot(root, label)
 	local tried, got = {}, 0
 	while not Farm.Cancel do
@@ -314,12 +351,12 @@ local function loot(root, label)
 		local here = hrp.Position
 		table.sort(list, function(a, b) return (a.part.Position - here).Magnitude < (b.part.Position - here).Magnitude end)
 		local it = list[1]
-		say(("%s: collecting %d left"):format(label, #list))
+		local batch = batchAround(list, it)
+		say(("%s: collecting %d left (%d at once)"):format(label, #list, #batch))
 		walkTo(it.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
-		holdInteract(it.part, it.id)
+		holdBatch(batch)
 		task.wait(0.15)
-		tried[it.part] = (tried[it.part] or 0) + 1
-		if not it.part.Parent or it.part:GetAttribute("Enabled") ~= true then got = got + 1 end
+		got = got + afterBatch(batch, tried)
 	end
 	return got
 end
@@ -568,12 +605,18 @@ local function robRegister(entry)
 		end
 		if #list == 0 then task.wait(0.3) else
 			idle = os.clock()
-			local d = list[1]
-			say(entry.key .. ": picking up money")
-			walkTo(d.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
-			holdInteract(d, ACT.drop)
-			tried[d] = (tried[d] or 0) + 1
-			got = got + 1
+			local items = {}
+			for _, dd in ipairs(list) do items[#items + 1] = { part = dd, id = ACT.drop } end
+			local first = items[1]
+			local batch = batchAround(items, first)
+			say(("%s: picking up money (%d at once)"):format(entry.key, #batch))
+			walkTo(first.part.Position + V3(0, 1.5, 0), Farm.WalkSpeed, 2.5)
+			holdBatch(batch)
+			task.wait(0.15)
+			for _, it in ipairs(batch) do
+				if it.part.Parent then tried[it.part] = (tried[it.part] or 0) + 1 else got = got + 1 end
+			end
+			if #batch > 1 and got == 0 and Farm.Parallel then Farm.Parallel = false; flog("picking up several at once did not work, one at a time from now on") end
 		end
 	end
 	Farm.done.registers = Farm.done.registers + 1
