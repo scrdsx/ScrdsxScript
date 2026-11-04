@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local lp = Players.LocalPlayer
 local Logo = __import("logo")
+local UIlib = __import("ui")
 
 local T = {
 	bg = Color3.fromRGB(9, 9, 11), stroke = Color3.fromRGB(36, 36, 42), text = Color3.fromRGB(245, 245, 248),
@@ -440,6 +441,17 @@ function HUD.new(opts)
 	end))
 	pcall(refresh)
 	return self
+end
+
+-- follow a UI theme change: map = colour map from UI:ApplyPalette, P = the new palette
+function HUD:ApplyTheme(map, P)
+	local old = { stroke = T.stroke, accentSoft = T.accentSoft, route = Color3.fromRGB(150, 195, 255), mapBg = Color3.fromRGB(16, 17, 21), barBg = Color3.fromRGB(24, 30, 46) }
+	local m = {}
+	for k, v in pairs(map) do m[k] = v end
+	local function add(c, n) m[math.floor(c.R * 255 + .5) .. "," .. math.floor(c.G * 255 + .5) .. "," .. math.floor(c.B * 255 + .5)] = n end
+	add(old.stroke, P.stroke); add(old.accentSoft, P.chip); add(old.route, P.chip)
+	T.accent, T.accentSoft, T.bg, T.stroke = P.accent, P.chip, P.bg, P.stroke
+	UIlib.Remap(self.gui, m)
 end
 
 function HUD:Save()

@@ -274,6 +274,50 @@ end
 -- Settings tab
 local tSet = win:Tab("Settings")
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
+-- theme: accent + background as hex, applied to the window and the HUD, remembered between sessions
+local THEME_FILE = "ScrdsxScript/theme.json"
+local theme = { accent = "", bg = "" }
+local function parseHex(t)
+	t = tostring(t or ""):gsub("[#%s]", "")
+	if #t == 3 then t = t:sub(1, 1):rep(2) .. t:sub(2, 2):rep(2) .. t:sub(3, 3):rep(2) end
+	if #t ~= 6 or not t:match("^%x+$") then return nil end
+	return Color3.fromRGB(tonumber(t:sub(1, 2), 16), tonumber(t:sub(3, 4), 16), tonumber(t:sub(5, 6), 16))
+end
+local accentBox, bgBox
+local function applyTheme(save)
+	local P = UI.Palette(parseHex(theme.accent), parseHex(theme.bg))
+	local map = win:ApplyPalette(P)
+	pcall(function() hud:ApplyTheme(map, P) end)
+	if save then
+		pcall(function()
+			if writefile then
+				pcall(function() if makefolder then makefolder("ScrdsxScript") end end)
+				writefile(THEME_FILE, game:GetService("HttpService"):JSONEncode(theme))
+			end
+		end)
+	end
+end
+pcall(function()
+	if isfile and readfile and isfile(THEME_FILE) then
+		local d = game:GetService("HttpService"):JSONDecode(readfile(THEME_FILE))
+		if type(d) == "table" then theme.accent, theme.bg = tostring(d.accent or ""), tostring(d.bg or "") end
+	end
+end)
+tSet:Section("Theme")
+accentBox = tSet:TextBox({ Name = "Accent colour (hex)", Placeholder = "#4084FF", Default = theme.accent, Callback = function(t)
+	if t ~= "" and not parseHex(t) then win:Notify("That is not a hex colour (example: #4084FF)"); return end
+	theme.accent = t; applyTheme(true)
+end })
+bgBox = tSet:TextBox({ Name = "Background (hex)", Placeholder = "#09090B", Default = theme.bg, Callback = function(t)
+	if t ~= "" and not parseHex(t) then win:Notify("That is not a hex colour (example: #09090B)"); return end
+	theme.bg = t; applyTheme(true)
+end })
+for _, pr in ipairs({ { "Blue", "#4084FF" }, { "Purple", "#8B5CF6" }, { "Green", "#22C55E" }, { "Red", "#EF4444" }, { "Pink", "#EC4899" }, { "White", "#E8E8EE" } }) do
+	tSet:Button({ Name = "Accent preset: " .. pr[1], Callback = function() theme.accent = pr[2]; accentBox:Set(pr[2]); applyTheme(true) end })
+end
+tSet:Button({ Name = "Reset theme", Callback = function() theme.accent, theme.bg = "", ""; accentBox:Set(""); bgBox:Set(""); applyTheme(true); win:Notify("Theme reset") end })
+if theme.accent ~= "" or theme.bg ~= "" then task.defer(applyTheme, false) end
+tSet:Section("Keys")
 tSet:Label({ Name = "Toggle UI", Value = "RightShift" })
 tSet:Label({ Name = "Search (menu open)", Value = "/" })
 tSet:Label({ Name = "Move HUD (menu closed)", Value = "/" })

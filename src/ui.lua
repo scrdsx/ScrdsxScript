@@ -15,6 +15,10 @@ local T = {
 	accent = Color3.fromRGB(64, 132, 255),
 	accentDim = Color3.fromRGB(22, 38, 76),
 	off = Color3.fromRGB(46, 46, 55),
+	chip = Color3.fromRGB(130, 176, 255),
+	gradA = Color3.fromRGB(48, 92, 220),
+	gradB = Color3.fromRGB(110, 170, 255),
+	strokeOn = Color3.fromRGB(46, 78, 150),
 	font = Enum.Font.GothamMedium,
 	bold = Enum.Font.GothamBold,
 }
@@ -458,7 +462,7 @@ function M:Toggle(o)
 	local function apply(v, silent)
 		state = v
 		tween(bar, .25, { Size = UDim2.fromOffset(3, v and 20 or 0) }, Enum.EasingStyle.Back)
-		if rowStroke then tween(rowStroke, .22, { Color = v and Color3.fromRGB(46, 78, 150) or T.stroke }) end
+		if rowStroke then tween(rowStroke, .22, { Color = v and T.strokeOn or T.stroke }) end
 		tween(sw, .22, { BackgroundColor3 = v and T.accent or T.off })
 		tween(knob, .25, { Position = v and UDim2.new(1, -21, .5, 0) or UDim2.new(0, 3, .5, 0), BackgroundColor3 = Color3.new(1, 1, 1) }, Enum.EasingStyle.Back)
 		if not silent and o.Callback then task.spawn(o.Callback, v) end
@@ -521,10 +525,10 @@ function M:Slider(o)
 	local f = row(self, o.Name, 62)
 	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(16, 10); n.Size = UDim2.new(.6, 0, 0, 16); n.Parent = f
 	local chip = new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.accentDim, BorderSizePixel = 0, Parent = f }, { corner(6), new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }) })
-	local val = label("", 12, Color3.fromRGB(130, 176, 255), T.bold, Enum.TextXAlignment.Center); val.Size = UDim2.fromOffset(0, 20); val.AutomaticSize = Enum.AutomaticSize.X; val.TextTruncate = Enum.TextTruncate.None; val.Parent = chip
+	local val = label("", 12, T.chip, T.bold, Enum.TextXAlignment.Center); val.Size = UDim2.fromOffset(0, 20); val.AutomaticSize = Enum.AutomaticSize.X; val.TextTruncate = Enum.TextTruncate.None; val.Parent = chip
 	local track = new("Frame", { Position = UDim2.new(0, 16, 0, 42), Size = UDim2.new(1, -32, 0, 5), BackgroundColor3 = T.off, BorderSizePixel = 0, Parent = f }, { corner(3) })
 	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = track }, { corner(3) })
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(48, 92, 220), Color3.fromRGB(110, 170, 255)), Parent = fill })
+	new("UIGradient", { Color = ColorSequence.new(T.gradA, T.gradB), Parent = fill })
 	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track }, { corner(7), stroke(T.accent, 2) })
 	local min, max, step = o.Min, o.Max, o.Step or 1
 	local value
@@ -597,6 +601,76 @@ function M:Keybind(o)
 	show()
 	register(self, o, "key", obj)
 	return obj
+end
+
+-- theme -------------------------------------------------------------------
+local PALETTE_KEYS = { "accent", "accentDim", "chip", "gradA", "gradB", "strokeOn", "bg", "panel", "elem", "hover", "stroke", "off" }
+local function lift(c, d) return Color3.fromRGB(math.clamp(c.R * 255 + d, 0, 255), math.clamp(c.G * 255 + d, 0, 255), math.clamp(c.B * 255 + d, 0, 255)) end
+local DEFAULT_P = {}
+for _, k in ipairs(PALETTE_KEYS) do DEFAULT_P[k] = T[k] end
+local curP = {}
+for k, v in pairs(DEFAULT_P) do curP[k] = v end
+
+-- every colour of the theme derived from two picked colours
+function UI.Palette(accent, bg)
+	if not accent and not bg then return DEFAULT_P end
+	accent, bg = accent or DEFAULT_P.accent, bg or DEFAULT_P.bg
+	local white, black = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
+	return {
+		accent = accent, accentDim = bg:Lerp(accent, .22), chip = accent:Lerp(white, .35), gradA = accent:Lerp(black, .2),
+		gradB = accent:Lerp(white, .25), strokeOn = bg:Lerp(accent, .5),
+		bg = bg, panel = lift(bg, 5), elem = lift(bg, 11), hover = lift(bg, 20), stroke = lift(bg, 25), off = lift(bg, 37),
+	}
+end
+
+local function ckey(c) return math.floor(c.R * 255 + .5) .. "," .. math.floor(c.G * 255 + .5) .. "," .. math.floor(c.B * 255 + .5) end
+
+-- recolour everything under root whose colour is a key of map (key -> new Color3)
+function UI.Remap(root, map)
+	local function fix(c) return map[ckey(c)] end
+	local function visit(o)
+		pcall(function()
+			if o:IsA("GuiObject") then
+				local n = fix(o.BackgroundColor3); if n then o.BackgroundColor3 = n end
+				if o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox") then
+					local t = fix(o.TextColor3); if t then o.TextColor3 = t end
+				end
+				if o:IsA("ScrollingFrame") then
+					local sbc = fix(o.ScrollBarImageColor3); if sbc then o.ScrollBarImageColor3 = sbc end
+				end
+			elseif o:IsA("UIStroke") then
+				local n = fix(o.Color); if n then o.Color = n end
+			elseif o:IsA("UIGradient") then
+				local kps, changed = o.Color.Keypoints, false
+				local out = {}
+				for i, kp in ipairs(kps) do
+					local n = fix(kp.Value)
+					if n then changed = true end
+					out[i] = ColorSequenceKeypoint.new(kp.Time, n or kp.Value)
+				end
+				if changed then o.Color = ColorSequence.new(out) end
+			end
+		end)
+	end
+	visit(root)
+	for _, o in ipairs(root:GetDescendants()) do visit(o) end
+end
+
+-- old palette -> new palette as a colour map
+function UI.PaletteMap(old, new)
+	local map = {}
+	for _, k in ipairs(PALETTE_KEYS) do
+		if ckey(old[k]) ~= ckey(new[k]) then map[ckey(old[k])] = new[k] end
+	end
+	return map
+end
+
+-- applies a palette to the UI window (and later-created elements); returns the colour map so the HUD can follow
+function UI:ApplyPalette(P)
+	local map = UI.PaletteMap(curP, P)
+	for _, k in ipairs(PALETTE_KEYS) do T[k] = P[k]; curP[k] = P[k] end
+	UI.Remap(self.gui, map)
+	return map
 end
 
 UI.Theme = T
