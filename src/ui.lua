@@ -1,6 +1,7 @@
 -- Dark sidebar UI library: brand card, grouped nav, player card, header search, rows with pill toggles, sliders with value chips, toasts.
 local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local Logo = __import("logo")
 
@@ -326,6 +327,7 @@ end
 
 function UI:SetVisible(v)
 	self.visible = v
+	if not v and self.openPicker then pcall(function() self.openPicker:Close() end) end
 	if v then
 		self.root.Visible = true
 		tween(self.root, .3, { GroupTransparency = 0 }); tween(self.scale, .35, { Scale = self.baseScale }, Enum.EasingStyle.Back)
@@ -600,6 +602,126 @@ function M:Keybind(o)
 	end)
 	show()
 	register(self, o, "key", obj)
+	return obj
+end
+
+-- Colour picker row: a swatch that opens a popup with a saturation/brightness square and a hue bar. Drag to choose; Callback(color, final)
+-- runs while dragging (throttled, final=false) and once more on release / close (final=true).
+function M:ColorPicker(o)
+	local win = self.win
+	local f = row(self, o.Name, 46)
+	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(16, 0); n.Size = UDim2.new(1, -110, 1, 0); n.Parent = f
+	local color = o.Default or T.accent
+	local h, s, v = color:ToHSV()
+	local hit = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", Parent = f })
+	local sw = new("Frame", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -14, .5, 0), Size = UDim2.fromOffset(52, 26), BackgroundColor3 = color, BorderSizePixel = 0, Parent = f },
+		{ corner(8), stroke(Color3.fromRGB(255, 255, 255), 1) })
+	sw:FindFirstChildOfClass("UIStroke").Transparency = .75
+
+	local obj = {}
+	local pop, svBox, svCur, hueCur, hexLbl, prev, hueBar
+	local lastFire = 0
+	local function hex() return string.format("#%02X%02X%02X", math.floor(color.R * 255 + .5), math.floor(color.G * 255 + .5), math.floor(color.B * 255 + .5)) end
+	local function fire(final)
+		if not o.Callback then return end
+		if final or os.clock() - lastFire > 0.08 then
+			lastFire = os.clock()
+			task.spawn(o.Callback, color, final == true)
+		end
+	end
+	local function refresh()
+		color = Color3.fromHSV(h, s, v)
+		sw.BackgroundColor3 = color
+		if pop then
+			svBox.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+			svCur.Position = UDim2.fromScale(s, 1 - v)
+			hueCur.Position = UDim2.fromScale(h, .5)
+			hexLbl.Text = hex()
+			prev.BackgroundColor3 = color
+		end
+	end
+	function obj:Get() return color end
+	function obj:Set(c, silent) h, s, v = c:ToHSV(); refresh(); if not silent then fire(true) end end
+
+	local function build()
+		pop = new("Frame", { Size = UDim2.fromOffset(236, 262), BackgroundColor3 = T.panel, BorderSizePixel = 0, ZIndex = 30, Visible = false, Parent = win.gui }, { corner(14), stroke(T.stroke) })
+		local ttl = label(o.Name, 13, T.text, T.bold); ttl.Position = UDim2.fromOffset(14, 10); ttl.Size = UDim2.new(1, -50, 0, 18); ttl.Parent = pop
+		local x = new("TextButton", { Position = UDim2.new(1, -32, 0, 6), Size = UDim2.fromOffset(26, 26), BackgroundColor3 = T.hover, BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = pop }, { corner(8) })
+		local xl = label("×", 18, T.sub, T.bold, Enum.TextXAlignment.Center); xl.Size = UDim2.fromScale(1, 1); xl.Parent = x
+		x.MouseButton1Click:Connect(function() obj:Close() end)
+
+		svBox = new("Frame", { Position = UDim2.fromOffset(12, 38), Size = UDim2.fromOffset(212, 140), BackgroundColor3 = Color3.fromHSV(h, 1, 1), BorderSizePixel = 0, ClipsDescendants = true, Parent = pop }, { corner(8) })
+		local white = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = svBox })
+		new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }), Parent = white })
+		local black = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Parent = svBox })
+		new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }), Parent = black })
+		svCur = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = svBox },
+			{ corner(7), stroke(Color3.new(1, 1, 1), 2) })
+
+		hueBar = new("Frame", { Position = UDim2.fromOffset(12, 190), Size = UDim2.fromOffset(212, 14), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = pop }, { corner(7) })
+		new("UIGradient", { Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)), ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
+			ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)), ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
+			ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)), ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)) }), Parent = hueBar })
+		hueCur = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(8, 22), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 2, Parent = hueBar }, { corner(4), stroke(Color3.fromRGB(0, 0, 0), 1) })
+
+		prev = new("Frame", { Position = UDim2.fromOffset(12, 218), Size = UDim2.fromOffset(36, 30), BackgroundColor3 = color, BorderSizePixel = 0, Parent = pop }, { corner(8) })
+		hexLbl = label(hex(), 13, T.text, T.bold); hexLbl.Position = UDim2.fromOffset(58, 218); hexLbl.Size = UDim2.fromOffset(90, 30); hexLbl.Parent = pop
+		local rs = new("TextButton", { Position = UDim2.fromOffset(150, 218), Size = UDim2.fromOffset(74, 30), BackgroundColor3 = T.hover, BorderSizePixel = 0, AutoButtonColor = false, Text = "Reset", TextColor3 = T.text, Font = T.font, TextSize = 12, Parent = pop }, { corner(8) })
+		rs.MouseButton1Click:Connect(function()
+			if o.Default then h, s, v = o.Default:ToHSV(); refresh(); fire(true) end
+		end)
+
+		-- dragging (GetMouseLocation matches the ScreenGui's coordinates, which ignore the top bar inset)
+		local mode
+		local function mousePos(i)
+			if i.UserInputType == Enum.UserInputType.Touch then return Vector2.new(i.Position.X, i.Position.Y + GuiService:GetGuiInset().Y) end
+			return UIS:GetMouseLocation()
+		end
+		local function pick(i)
+			local m = mousePos(i)
+			if mode == "sv" then
+				s = math.clamp((m.X - svBox.AbsolutePosition.X) / math.max(svBox.AbsoluteSize.X, 1), 0, 1)
+				v = 1 - math.clamp((m.Y - svBox.AbsolutePosition.Y) / math.max(svBox.AbsoluteSize.Y, 1), 0, 1)
+			elseif mode == "hue" then
+				h = math.clamp((m.X - hueBar.AbsolutePosition.X) / math.max(hueBar.AbsoluteSize.X, 1), 0, 0.999)
+			end
+			refresh(); fire(false)
+		end
+		local function grab(target, name)
+			local b = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 3, Parent = target })
+			b.InputBegan:Connect(function(i)
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then mode = name; pick(i) end
+			end)
+		end
+		grab(svBox, "sv"); grab(hueBar, "hue")
+		table.insert(win.conns, UIS.InputChanged:Connect(function(i)
+			if mode and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then pick(i) end
+		end))
+		table.insert(win.conns, UIS.InputEnded:Connect(function(i)
+			if mode and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then mode = nil; fire(true) end
+		end))
+		refresh()
+	end
+
+	function obj:Close()
+		if pop and pop.Visible then
+			pop.Visible = false
+			fire(true)
+		end
+		if win.openPicker == obj then win.openPicker = nil end
+	end
+	local function open()
+		if win.openPicker and win.openPicker ~= obj then win.openPicker:Close() end
+		if not pop then build() end
+		local sp, ss = sw.AbsolutePosition, win.gui.AbsoluteSize
+		pop.Position = UDim2.fromOffset(math.clamp(sp.X + sw.AbsoluteSize.X - 236, 8, math.max(ss.X - 244, 8)), math.clamp(sp.Y + sw.AbsoluteSize.Y + 8, 8, math.max(ss.Y - 270, 8)))
+		pop.Visible = true
+		refresh()
+		win.openPicker = obj
+	end
+	hit.MouseButton1Click:Connect(function() if pop and pop.Visible then obj:Close() else open() end end)
 	return obj
 end
 

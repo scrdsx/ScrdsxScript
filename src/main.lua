@@ -283,7 +283,6 @@ local function parseHex(t)
 	if #t ~= 6 or not t:match("^%x+$") then return nil end
 	return Color3.fromRGB(tonumber(t:sub(1, 2), 16), tonumber(t:sub(3, 4), 16), tonumber(t:sub(5, 6), 16))
 end
-local accentBox, bgBox
 local function applyTheme(save)
 	local P = UI.Palette(parseHex(theme.accent), parseHex(theme.bg))
 	local map = win:ApplyPalette(P)
@@ -304,18 +303,15 @@ pcall(function()
 	end
 end)
 tSet:Section("Theme")
-accentBox = tSet:TextBox({ Name = "Accent colour (hex)", Placeholder = "#4084FF", Default = theme.accent, Callback = function(t)
-	if t ~= "" and not parseHex(t) then win:Notify("That is not a hex colour (example: #4084FF)"); return end
-	theme.accent = t; applyTheme(true)
+local function toHex(c) return string.format("#%02X%02X%02X", math.floor(c.R * 255 + .5), math.floor(c.G * 255 + .5), math.floor(c.B * 255 + .5)) end
+local accentPick = tSet:ColorPicker({ Name = "Accent colour", Default = UI.Palette().accent, Callback = function(col, final)
+	theme.accent = toHex(col); applyTheme(final)
 end })
-bgBox = tSet:TextBox({ Name = "Background (hex)", Placeholder = "#09090B", Default = theme.bg, Callback = function(t)
-	if t ~= "" and not parseHex(t) then win:Notify("That is not a hex colour (example: #09090B)"); return end
-	theme.bg = t; applyTheme(true)
+local bgPick = tSet:ColorPicker({ Name = "Background colour", Default = UI.Palette().bg, Callback = function(col, final)
+	theme.bg = toHex(col); applyTheme(final)
 end })
-for _, pr in ipairs({ { "Blue", "#4084FF" }, { "Purple", "#8B5CF6" }, { "Green", "#22C55E" }, { "Red", "#EF4444" }, { "Pink", "#EC4899" }, { "White", "#E8E8EE" } }) do
-	tSet:Button({ Name = "Accent preset: " .. pr[1], Callback = function() theme.accent = pr[2]; accentBox:Set(pr[2]); applyTheme(true) end })
-end
-tSet:Button({ Name = "Reset theme", Callback = function() theme.accent, theme.bg = "", ""; accentBox:Set(""); bgBox:Set(""); applyTheme(true); win:Notify("Theme reset") end })
+if parseHex(theme.accent) then accentPick:Set(parseHex(theme.accent), true) end
+if parseHex(theme.bg) then bgPick:Set(parseHex(theme.bg), true) end
 if theme.accent ~= "" or theme.bg ~= "" then task.defer(applyTheme, false) end
 tSet:Section("Keys")
 tSet:Label({ Name = "Toggle UI", Value = "RightShift" })
