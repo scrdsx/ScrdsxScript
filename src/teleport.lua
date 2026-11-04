@@ -541,6 +541,7 @@ local function tripInner(loc)
 			local t0, lostSince, finished = os.clock(), nil, false
 			local idx = 1
 			local lostAccum = 0
+			local lastReseat
 			local assist, slow, sampleT, samplePos = false, 0, os.clock(), seat.Position
 			local traceT = 0
 			local stallPos, stallT = seat.Position, os.clock()
@@ -550,11 +551,13 @@ local function tripInner(loc)
 				local dt = RunService.Heartbeat:Wait()
 				if Tele.Cancel then say("Cancelled"); break end
 				if not seat.Parent then say("Car disappeared"); break end
-				local seated = hum.SeatPart == seat
+				-- "seated" = the SERVER says so too (seat.Occupant is the server's word; hum.SeatPart can be faked by the client)
+				local serverOcc = seat.Occupant == hum
+				local seated = hum.SeatPart == seat and (serverOcc or Tele.SitInteract == false)
 				if os.clock() - traceT >= 0.5 then
 					traceT = os.clock()
 					local okn, own = pcall(function() return isnetworkowner and isnetworkowner(seat) end)
-					trace(("t=%.1f seat=%s idx=%d seated=%s assist=%s owner=%s hrp=%s"):format(os.clock() - t0, v3s(seat.Position), idx, tostring(seated), tostring(assist), okn and tostring(own) or "?", hrp and v3s(hrp.Position) or "-"))
+					trace(("t=%.1f seat=%s idx=%d seated=%s srv=%s assist=%s owner=%s hrp=%s"):format(os.clock() - t0, v3s(seat.Position), idx, tostring(seated), tostring(serverOcc), tostring(assist), okn and tostring(own) or "?", hrp and v3s(hrp.Position) or "-"))
 				end
 				if not seated then
 					if not lostSince then
@@ -567,11 +570,22 @@ local function tripInner(loc)
 					end
 					-- the car waits, you are put back in the seat; give up only after 2s
 					if os.clock() - lostSince > 2 then say("Cancelled (left the car, keys: " .. tostring(Tele.LastLoss) .. ")"); break end
-					pcall(function()
-						hrp.CFrame = seat.CFrame * CFrame.new(0, 2, 0)
-						hrp.AssemblyLinearVelocity = Vector3.zero
-					end)
-					pcall(function() seat:Sit(hum) end)
+					if Tele.SitInteract ~= false then
+						-- the server unseated you: ask it to seat you again (the game's own interaction), do NOT fake it on the client
+						if os.clock() - (lastReseat or 0) > 0.5 then
+							lastReseat = os.clock()
+							trace("server says you are not in the seat (occupant gone): asking it to seat you again")
+							local mb = game:GetService("ReplicatedStorage"):FindFirstChild("mBd")
+							local inter = mb and mb:FindFirstChild("e3256932-2913-480f-93e8-9cda8c896b14")
+							if inter then pcall(function() inter:FireServer(seat, "B6W", "stop") end) end
+						end
+					else
+						pcall(function()
+							hrp.CFrame = seat.CFrame * CFrame.new(0, 2, 0)
+							hrp.AssemblyLinearVelocity = Vector3.zero
+						end)
+						pcall(function() seat:Sit(hum) end)
+					end
 				else
 					lostSince = nil
 				end
