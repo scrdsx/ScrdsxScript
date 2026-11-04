@@ -57,60 +57,66 @@ task.spawn(function()
 				p.Size.X, p.Size.Y, p.Size.Z, math.deg(rx), math.deg(ry), math.deg(rz), p.CanCollide and 1 or 0, extra or "")
 		end
 
-		-- 1) roads + a spatial hash of road positions
+		-- 1) roads + a list of the 60-stud cells that contain road
 		say("exporting roads...")
-		local roadRows, grid = {}, {}
+		local roadRows, cells, cellList = {}, {}, {}
 		local n = 0
 		for _, d in ipairs(roadsRoot:GetDescendants()) do
 			if d:IsA("BasePart") then
 				roadRows[#roadRows + 1] = row(d)
 				local gx, gz = math.floor(d.Position.X / 60), math.floor(d.Position.Z / 60)
-				grid[gx .. "," .. gz] = true
+				local k = gx .. "," .. gz
+				if not cells[k] then cells[k] = true; cellList[#cellList + 1] = { gx, gz, d.Position.Y } end
 				n = n + 1
-				if n % 2000 == 0 then task.wait() end
+				if n % 1500 == 0 then task.wait() end
 			end
 		end
 		local rf = writeChunks("roads", "name,parent,x,y,z,sx,sy,sz,rx,ry,rz,collide", roadRows)
 
-		-- 2) obstacles near roads
-		say(("exporting obstacles... (%d road parts done)"):format(#roadRows), Color3.fromRGB(255, 220, 120))
-		local function nearRoad(pos)
-			local gx, gz = math.floor(pos.X / 60), math.floor(pos.Z / 60)
-			for dx = -1, 1 do
-				for dz = -1, 1 do
-					if grid[(gx + dx) .. "," .. (gz + dz)] then return true end
+		-- 2) solid things near the road: ask the engine for the parts inside a box around each road cell (no walk over the whole workspace:
+		--    that is millions of objects and can freeze or close the game)
+		local op = OverlapParams.new()
+		op.FilterType = Enum.RaycastFilterType.Exclude
+		local ex = { roadsRoot, lp.Character }
+		if workspace:FindFirstChild("Vehicles") then ex[#ex + 1] = workspace.Vehicles end
+		op.FilterDescendantsInstances = ex
+		op.MaxParts = 600
+		local seen, obsRows, files, queries = {}, {}, 0, 0
+		local function flush(force)
+			if #obsRows >= 12000 or (force and #obsRows > 0) then
+				files = files + 1
+				writefile(("ScrdsxScript/mapexport/obstacles_%d.csv"):format(files), "name,parent,x,y,z,sx,sy,sz,rx,ry,rz,collide\n" .. table.concat(obsRows, "\n") .. "\n")
+				obsRows = {}
+			end
+		end
+		local total = 0
+		for i, c in ipairs(cellList) do
+			local ok2, parts = pcall(function()
+				return workspace:GetPartBoundsInBox(CFrame.new(c[1] * 60 + 30, c[3] + 20, c[2] * 60 + 30), Vector3.new(72, 80, 72), op)
+			end)
+			if ok2 then
+				for _, d in ipairs(parts) do
+					if not seen[d] and d.CanCollide and d.Anchored and d.Size.Magnitude > 1.2 and d.Transparency < 0.95 then
+						seen[d] = true
+						local m = d:FindFirstAncestorOfClass("Model")
+						if not (m and m:FindFirstChildOfClass("Humanoid")) then
+							obsRows[#obsRows + 1] = row(d)
+							total = total + 1
+						end
+					end
 				end
 			end
-			return false
-		end
-		local skip = {}
-		for _, nm in ipairs({ "Vehicles", "Terrain" }) do
-			local inst = workspace:FindFirstChild(nm)
-			if inst then skip[inst] = true end
-		end
-		local obsRows, seen = {}, 0
-		for _, d in ipairs(workspace:GetDescendants()) do
-			seen = seen + 1
-			if seen % 3000 == 0 then
+			queries = queries + 1
+			flush(false)
+			if i % 3 == 0 then
 				task.wait()
-				say(("exporting obstacles... %d parts looked at, %d kept"):format(seen, #obsRows), Color3.fromRGB(255, 220, 120))
-			end
-			if d:IsA("BasePart") and d.CanCollide and d.Anchored and not d:IsDescendantOf(roadsRoot) and d.Size.Magnitude > 1.2 and d.Transparency < 0.95 then
-				local bad = false
-				for s in pairs(skip) do if d:IsDescendantOf(s) then bad = true; break end end
-				if not bad then
-					local m = d:FindFirstAncestorOfClass("Model")
-					if m and m:FindFirstChildOfClass("Humanoid") then bad = true end
-				end
-				if not bad and nearRoad(d.Position) then
-					obsRows[#obsRows + 1] = row(d)
-				end
+				say(("exporting obstacles... cell %d/%d, %d kept"):format(i, #cellList, total), Color3.fromRGB(255, 220, 120))
 			end
 		end
-		local of = writeChunks("obstacles", "name,parent,x,y,z,sx,sy,sz,rx,ry,rz,collide", obsRows)
-		writefile("ScrdsxScript/mapexport/meta.txt", ("place %s\nroad parts %d (%d files)\nobstacle parts %d (%d files)\nparts looked at %d\n"):format(
-			tostring(game.PlaceId), #roadRows, rf, #obsRows, of, seen))
-		say(("Map exported: %d road parts, %d obstacles -> ScrdsxScript/mapexport/"):format(#roadRows, #obsRows), Color3.fromRGB(120, 230, 150))
+		flush(true)
+		writefile("ScrdsxScript/mapexport/meta.txt", ("place %s\nroad parts %d (%d files)\nobstacle parts %d (%d files)\ncells %d\n"):format(
+			tostring(game.PlaceId), #roadRows, rf, total, files, #cellList))
+		say(("Map exported: %d road parts, %d obstacles -> ScrdsxScript/mapexport/"):format(#roadRows, total), Color3.fromRGB(120, 230, 150))
 	end)
 	if not ok then say("Export failed: " .. tostring(err), Color3.fromRGB(255, 110, 110)) end
 	env.MapExport.running = false
