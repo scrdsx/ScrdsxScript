@@ -14,7 +14,8 @@ local Tele = {
 	Height = 25,      -- how far above the higher end the car cruises (it is non-solid, so this can stay low)
 	GetIn = true,     -- put you in your car first
 	Face = true,      -- end facing the location
-	Stealth = true,   -- others keep seeing you at the start until you arrive
+	Stealth = false,  -- others keep seeing you at the start until you arrive (can make the server think you are still there)
+	Ghost = true,     -- non-solid while travelling so nothing crashes / ragdolls you
 	Busy = false,
 	Cancel = false,
 	Locations = {},   -- { name, pos }
@@ -272,11 +273,16 @@ end
 
 local lagOn = false
 local function setLag(on)
-	local ok = pcall(function()
-		if on then NetworkClient:SetOutgoingKBPSLimit(1)
-		else NetworkClient:SetOutgoingKBPSLimit(math.huge) end
-	end)
-	if not on then lagOn = false elseif ok then lagOn = true end
+	local ok
+	if on then
+		ok = pcall(function() NetworkClient:SetOutgoingKBPSLimit(1) end)
+		if ok then lagOn = true end
+	else
+		-- release with a big finite limit first (an infinite one is not accepted everywhere), then the unlimited value
+		ok = pcall(function() NetworkClient:SetOutgoingKBPSLimit(1e7) end)
+		pcall(function() NetworkClient:SetOutgoingKBPSLimit(math.huge) end)
+		lagOn = false
+	end
 	return ok
 end
 
@@ -358,7 +364,7 @@ function Tele.GoTo(loc)
 				end
 			end
 
-			ghost(car, c, true, store) -- nothing can crash, ragdoll or kill you on the way
+			if Tele.Ghost then ghost(car, c, true, store) end -- nothing can crash, ragdoll or kill you on the way
 			local stealth = false
 			if Tele.Stealth then stealth = setLag(true) end
 			task.delay(T + 8, function() if lagOn then setLag(false) end end) -- watchdog: never leave the network throttled
@@ -402,6 +408,16 @@ function Tele.GoTo(loc)
 			zero()
 			task.wait(0.25)                   -- let the wheels touch down before others get your position
 			if lagOn then setLag(false) end
+			if stealth then task.wait(1.5) end -- let the server catch up with where the car now is before you can get out
+			if finished then
+				-- did the server move us back? (anti-teleport): tell the user instead of leaving them guessing
+				task.spawn(function()
+					task.wait(2.5)
+					if seat.Parent and (seat.Position - destPos).Magnitude > 60 and (seat.Position - startCF.Position).Magnitude < 60 then
+						say("The server put you back at the start. Try Stealth off and a lower travel speed.")
+					end
+				end)
+			end
 		end)
 		if next(store) then ghost(car, c, false, store) end
 		if lagOn then setLag(false) end
