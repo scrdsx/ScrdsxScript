@@ -39,7 +39,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false, Manual = true, ManualRange = 250,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false, Manual = false, AutoDrive = true, DriveSpeed = 70, ManualRange = 250,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -301,9 +301,38 @@ local function bombCheck()
 end
 
 -- drive (Teleports module) to a place and step out of the car
+local function leaveCar()
+	local _, hum = parts()
+	if hum and hum.SeatPart then
+		hum.Sit = false
+		task.wait(0.35)
+		if hum.SeatPart then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end); task.wait(0.4) end
+	end
+	local c = parts()
+	if c and c:GetAttribute("Visible") == false then
+		local t = os.clock()
+		while c:GetAttribute("Visible") == false and os.clock() - t < 3 do task.wait(0.1) end
+	end
+	task.wait(0.5)
+end
+
 local function goNear(pos, name)
 	local Tele = Farm.Tele
-	if Farm.Manual then
+	if Farm.AutoDrive and not Farm.Manual then
+		-- the real thing: drive the car with throttle + steering along the game's roads (the server accepts that)
+		local prevSit = Farm.SitInteract
+		Farm.SitInteract = true -- sit the legitimate way, the server then knows you are in the car
+		local seated = ensureInCar()
+		Farm.SitInteract = prevSit
+		if not seated then say("could not get into the car"); return false end
+		say("driving to " .. name)
+		Farm.Drive.MaxSpeed = Farm.DriveSpeed
+		local ok, why = Farm.Drive.To(pos, { arrive = 22 })
+		flog(("autopilot result: %s (%s)"):format(tostring(ok), tostring(why)))
+		if not ok then say("could not drive to " .. name .. ": " .. tostring(why)); return false end
+		leaveCar()
+		return true
+	end	if Farm.Manual then
 		-- the automatic car trips are not accepted by the server (it only keeps ~1 s of a scripted flight), so YOU drive to the area
 		local _, hum0, hrp0 = parts()
 		local dist = hrp0 and (hrp0.Position - pos).Magnitude or 1e9

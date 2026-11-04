@@ -11,6 +11,7 @@ local Tele = __import("teleport")
 local Hud = __import("hud")
 local Config = __import("config")
 local Farm = __import("farm")
+local Drive = __import("autodrive")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -129,6 +130,8 @@ Tele.Scan(addLocations)
 -- AutoFarm tab (modules get added here)
 local tFarm = win:Tab("AutoFarm")
 Farm.Tele = Tele
+Farm.Drive = Drive
+Drive.Log = function(m) Farm.Trace("drive: " .. m) end
 Tele.OnTrace = Farm.Trace
 local lFarm = tFarm:Label({ Name = "Status", Value = Farm.Info })
 local lFarmStats = tFarm:Label({ Name = "Done", Value = Farm.Stats })
@@ -148,6 +151,8 @@ mFarm:Toggle({ Name = "Get into the car with the seat interaction (off = direct)
 mFarm:Toggle({ Name = "Instant teleport on foot (off = walk)", Default = Farm.InstantMove, NoSave = true, Callback = function(v) Farm.InstantMove = v end })
 mFarm:Slider({ Name = "Sell calls", Min = 1, Max = 6, Step = 1, Default = Farm.SellCalls, Callback = function(v) Farm.SellCalls = v end })
 mFarm:Slider({ Name = "Travel speed", Min = 80, Max = 600, Step = 20, Default = Farm.TravelSpeed, NoSave = true, Suffix = " st/s", Callback = function(v) Farm.TravelSpeed = v end })
+mFarm:Toggle({ Name = "Autopilot: drive the car for real along the roads", Default = Farm.AutoDrive, NoSave = true, Callback = function(v) Farm.AutoDrive = v end })
+mFarm:Slider({ Name = "Autopilot speed", Min = 30, Max = 140, Step = 5, Default = Farm.DriveSpeed, Suffix = " st/s", NoSave = true, Callback = function(v) Farm.DriveSpeed = v end })
 mFarm:Toggle({ Name = "I drive myself (no automatic trips)", Default = Farm.Manual, NoSave = true, Callback = function(v) Farm.Manual = v end })
 tFarm:Button({ Name = "Buy a bomb at the nearest dealer", Callback = function() Farm.Once("buybomb") end })
 tFarm:Button({ Name = "Rob nearest cash register now", Callback = function() Farm.Once("registers") end })
@@ -282,6 +287,7 @@ local function unload()
 	Speed.Destroy()
 	Tele.Notify, Tele.Changed = nil, nil
 	hud.EditChanged = nil
+	Drive.Stop()
 	Farm.Destroy()
 	hud:Destroy()
 	win:Destroy()
