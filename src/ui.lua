@@ -53,7 +53,7 @@ UI.__index = UI
 
 function UI.new(opts)
 	opts = opts or {}
-	local self = setmetatable({ tabs = {}, rows = {}, conns = {}, active = nil, visible = true, baseScale = 1 }, UI)
+	local self = setmetatable({ tabs = {}, rows = {}, conns = {}, flags = {}, active = nil, visible = true, baseScale = 1 }, UI)
 
 	local gui = new("ScreenGui", {
 		Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -310,6 +310,47 @@ end
 local M = {}
 UI.TabMethods = M
 
+-- settings registry: every Toggle / Slider / Keybind is remembered under "Tab/Module/Name" so a whole config can be saved and applied
+local function register(self, o, kind, obj)
+	if o.NoSave then return end
+	local win = self.win
+	local id = (self.realTab or self).name .. "/" .. (self.modName and (self.modName .. "/") or "") .. o.Name
+	if win.flags[id] then
+		local n = 2
+		while win.flags[id .. "#" .. n] do n = n + 1 end
+		id = id .. "#" .. n
+	end
+	win.flags[id] = { kind = kind, obj = obj }
+end
+
+function UI:GetConfig()
+	local out = {}
+	for id, f in pairs(self.flags) do
+		local v = f.obj:Get()
+		if f.kind == "key" then v = v and v.Name or "" end
+		out[id] = v
+	end
+	return out
+end
+
+-- sliders and keybinds first, toggles last: a module reads its sliders when it turns on
+function UI:ApplyConfig(cfg)
+	for pass = 1, 2 do
+		for id, f in pairs(self.flags) do
+			local v = cfg[id]
+			if v ~= nil and ((f.kind == "toggle") == (pass == 2)) then
+				pcall(function()
+					if f.kind == "key" then
+						f.obj:Set(v ~= "" and Enum.KeyCode[v] or nil)
+					elseif f.obj:Get() ~= v then
+						f.obj:Set(v)
+					end
+				end)
+			end
+		end
+	end
+end
+
 local function row(tab, name, height)
 	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = tab.page }, { corner(9), stroke(T.stroke) })
 	f.MouseEnter:Connect(function() tween(f, .15, { BackgroundColor3 = T.hover }) end)
@@ -328,12 +369,33 @@ end
 
 function M:Button(o)
 	local f = row(self, o.Name, 38)
+	if o.Order then f.LayoutOrder = o.Order end
 	local b = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = o.Name, TextColor3 = T.text, Font = T.font, TextSize = 13, AutoButtonColor = false, Parent = f })
 	b.MouseButton1Click:Connect(function()
 		tween(f, .08, { BackgroundColor3 = Color3.fromRGB(55, 55, 55) })
 		task.delay(.08, function() tween(f, .3, { BackgroundColor3 = T.hover }) end)
 		if o.Callback then task.spawn(o.Callback) end
 	end)
+	local win = self.win
+	return {
+		frame = f,
+		SetText = function(_, t) b.Text = t end,
+		Destroy = function()
+			for i, r in ipairs(win.rows) do if r.frame == f then table.remove(win.rows, i); break end end
+			f:Destroy()
+		end,
+	}
+end
+
+-- single-line text input; Callback(text) runs when you press Enter / click away
+function M:TextBox(o)
+	local f = row(self, o.Name, 40)
+	local n = label(o.Name, 13, T.text); n.Position = UDim2.fromOffset(14, 0); n.Size = UDim2.new(1, -190, 1, 0); n.Parent = f
+	local bg = new("Frame", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(160, 26), BackgroundColor3 = T.hover, BorderSizePixel = 0, Parent = f }, { corner(6), stroke(T.stroke) })
+	local box = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0), Text = o.Default or "", PlaceholderText = o.Placeholder or "",
+		PlaceholderColor3 = T.sub, TextColor3 = T.text, Font = T.font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, Parent = bg })
+	box.FocusLost:Connect(function() if o.Callback then task.spawn(o.Callback, box.Text) end end)
+	return { Get = function() return box.Text end, Set = function(_, t) box.Text = t end, frame = f }
 end
 
 function M:Toggle(o)
@@ -360,6 +422,7 @@ function M:Toggle(o)
 	hit.MouseButton1Click:Connect(function() apply(not state) end)
 	apply(o.Default == true, true)
 	obj.frame, obj.hit = f, hit
+	register(self, o, "toggle", obj)
 	return obj
 end
 
@@ -384,7 +447,7 @@ function M:Module(o)
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = sf })
 	new("UIPadding", { PaddingLeft = UDim.new(0, 14), Parent = sf })
-	local sub = { page = sf, win = win, realTab = self.realTab or self }
+	local sub = { page = sf, win = win, realTab = self.realTab or self, modName = o.Name }
 	setmetatable(sub, { __index = M })
 
 	local open = false
@@ -401,7 +464,7 @@ function M:Module(o)
 	end
 	obj.hit.MouseButton2Click:Connect(function() obj:SetOpen(not open) end)
 
-	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label" }) do
+	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label", "TextBox" }) do
 		obj[k] = function(_, opts) return M[k](sub, opts) end
 	end
 	return obj
@@ -445,6 +508,7 @@ function M:Slider(o)
 		end
 	end))
 	set(o.Default or min, true)
+	register(self, o, "slider", obj)
 	return obj
 end
 
@@ -466,7 +530,7 @@ function M:Keybind(o)
 	function obj:Get() return key end
 	-- still "listening" for a moment after a bind, so the key you just chose does not also fire its action
 	function obj:IsListening() return listening or os.clock() - (obj.boundAt or 0) < 0.25 end
-	function obj:Set(k) key = k; show() end
+	function obj:Set(k, silent) key = k; show(); if not silent and o.Callback then task.spawn(o.Callback, key) end end
 	btn.MouseButton1Click:Connect(function()
 		if listening then return end
 		listening = true
@@ -483,6 +547,7 @@ function M:Keybind(o)
 		table.insert(self.win.conns, conn)
 	end)
 	show()
+	register(self, o, "key", obj)
 	return obj
 end
 

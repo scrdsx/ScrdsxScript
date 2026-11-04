@@ -260,6 +260,27 @@ function HUD:Save()
 	pcall(function() if writefile then writefile(SAVE_FILE, HttpService:JSONEncode(d)) end end)
 end
 
+-- positions of all widgets as fractions of the screen (for configs)
+function HUD:GetLayout()
+	local out = {}
+	for id, w in pairs(self.widgets) do
+		out[id] = { x = math.floor(w.frame.Position.X.Scale * 10000) / 10000, y = math.floor(w.frame.Position.Y.Scale * 10000) / 10000 }
+	end
+	return out
+end
+
+function HUD:SetLayout(map)
+	if type(map) ~= "table" then return end
+	for id, p in pairs(map) do
+		local w = self.widgets[id]
+		if w and type(p) == "table" and tonumber(p.x) and tonumber(p.y) then
+			w.frame.Position = UDim2.fromScale(math.clamp(p.x, 0, 0.98), math.clamp(p.y, 0, 0.98))
+			self.saved.pos[id] = { x = p.x, y = p.y }
+		end
+	end
+	self:Save()
+end
+
 function HUD:SetWidget(id, on)
 	local w = self.widgets[id]
 	if not w then return end
