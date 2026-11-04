@@ -34,13 +34,30 @@ end
 local graph
 local function flat(a, b) return V3(a.X - b.X, 0, a.Z - b.Z).Magnitude end
 
+local function fullName(i) local ok, r = pcall(game.GetFullName, i); return ok and r or tostring(i) end
+-- The game keeps the road map as a model named NavigationMap (it renames NavigationModules at start-up) and moves it into the
+-- minimap's viewport, so it can be in ReplicatedStorage OR inside your PlayerGui. Look in both, take the biggest "Roads" folder.
 local function findRoads()
-	local nm = RS:FindFirstChild("NavigationModules") or RS:FindFirstChild("NavigationMap")
-	if nm and nm:FindFirstChild("Roads") then return nm.Roads end
-	for _, d in ipairs(RS:GetChildren()) do
-		local r = d:FindFirstChild("Roads")
-		if r and #r:GetChildren() > 20 then return r end
+	local best, bestN = nil, 0
+	local candidates = {}
+	for _, root in ipairs({ RS, lp:FindFirstChild("PlayerGui"), workspace }) do
+		if root then
+			local okd, descendants = pcall(function() return root:GetDescendants() end)
+			for _, d in ipairs(okd and descendants or {}) do
+				if d.Name == "Roads" and not d:IsDescendantOf(workspace.Terrain) then
+					local n = #d:GetChildren()
+					candidates[#candidates + 1] = ("%s (%d children)"):format(fullName(d), n)
+					local pn = d.Parent and d.Parent.Name or ""
+					local mapLike = pn == "NavigationMap" or pn == "NavigationModules"
+					if n > bestN and (mapLike or n > 40) and not (root == workspace and not mapLike) then best, bestN = d, n end
+				end
+			end
+		end
 	end
+	if best then log("road map found: " .. fullName(best) .. " (" .. bestN .. " pieces)") else
+		log("road map NOT found. Roads folders seen: " .. (#candidates > 0 and table.concat(candidates, "; ") or "none"))
+	end
+	return best
 end
 
 local function build()
@@ -187,8 +204,9 @@ function Drive.To(targetPos, opts)
 		local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
 		if not (car and seat and hum and hum.SeatPart == seat) then return false, "sit in your car first" end
 
-		graph = graph or build()
-		if not graph then return false, "road graph missing" end
+		local gerr
+		if not graph then graph, gerr = build() end
+		if not graph then return false, "road graph missing: " .. tostring(gerr) end
 		local wps, endPos = route(graph, seat.Position, targetPos)
 		if not wps then return false, endPos end
 		log(("route: %d waypoints, ends at (%.0f,%.0f,%.0f)"):format(#wps, endPos.X, endPos.Y, endPos.Z))
@@ -324,5 +342,7 @@ function Drive.To(targetPos, opts)
 end
 
 function Drive.Stop() Drive.Cancel = true end
+function Drive.GetGraph() return graph end
+function Drive.Prepare() if not graph then local g = build(); graph = g end return graph end
 
 return Drive
