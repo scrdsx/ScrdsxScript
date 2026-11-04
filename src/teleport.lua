@@ -299,13 +299,48 @@ end
 
 function Tele.Stop() Tele.Cancel = true end
 
+-- Seat guard. Seating ourselves skips the game's normal "interact" flow; its interaction UI then unmounts and the game's
+-- own client sends FireServer(seat, <id>, "cancel"), and the server throws you out of the seat (seen in tools/seatloss_probe.lua,
+-- caller Code.layout.guis.interactionSystem -> interactable.interactCancel). We drop that one message for our own seat.
+-- NEVER use obj:Method() inside the hook (nested namecalls corrupt the original call): properties + plain functions only.
+local GuardSeat, guardUntil, guardHooked = nil, 0, false
+Tele.Blocked = 0
+local function installGuard()
+	if guardHooked then return true end
+	if not (hookmetamethod and getnamecallmethod) then return false end
+	local ok = pcall(function()
+		local old
+		old = hookmetamethod(game, "__namecall", (newcclosure or function(f) return f end)(function(self, ...)
+			local m = getnamecallmethod()
+			if m == "FireServer" and GuardSeat and os.clock() < guardUntil and typeof(self) == "Instance" and self.ClassName == "RemoteEvent" then
+				local a, _, c3 = ...
+				if a == GuardSeat and c3 == "cancel" then
+					Tele.Blocked = Tele.Blocked + 1
+					return nil
+				end
+			end
+			if setnamecallmethod then setnamecallmethod(m) end
+			return old(self, ...)
+		end))
+	end)
+	guardHooked = ok
+	return ok
+end
+local function guard(seat, seconds)
+	installGuard()
+	GuardSeat = seat
+	guardUntil = os.clock() + seconds
+end
+
 function Tele.GoToCar()
 	if Tele.Busy then return end
 	local car, seat = myCar()
 	if not car or not seat then say("Spawn your car first"); return end
 	Tele.Busy = true
+	guard(seat, 1e9)
 	task.spawn(function()
 		local ok = ensureSeated(car, seat)
+		guard(seat, 4)
 		Tele.Busy = false
 		say(ok and "In your car" or "Could not sit in the car")
 	end)
@@ -316,6 +351,7 @@ function Tele.GoTo(loc)
 	local car, seat = myCar()
 	if not car or not seat then say("Spawn your car first"); return end
 	Tele.Busy, Tele.Cancel = true, false
+	guard(seat, 1e9) -- from before we sit until a few seconds after we arrive
 	task.spawn(function()
 		local store = {}
 		local c = lp.Character
@@ -449,6 +485,7 @@ function Tele.GoTo(loc)
 		end)
 		if next(store) then ghost(car, c, false, store) end
 		if lagOn then setLag(false) end
+		guard(seat, 4)
 		Tele.Busy = false
 		if not okRun then say("Teleport error: " .. tostring(err):sub(1, 80)) end
 	end)
