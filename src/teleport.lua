@@ -8,6 +8,8 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local NetworkClient = game:GetService("NetworkClient")
+local UIS = game:GetService("UserInputService")
+local CAS = game:GetService("ContextActionService")
 
 local Tele = {
 	Speed = 900,      -- studs/s along the whole path
@@ -355,9 +357,11 @@ function Tele.GoTo(loc)
 	guard(seat, 1e9) -- from before we sit until a few seconds after we arrive
 	task.spawn(function()
 		local store = {}
+		local undo = {} -- things to put back after the trip, whatever happens
 		local c = lp.Character
 		local okRun, err = pcall(function()
 			local hum = c and c:FindFirstChildOfClass("Humanoid")
+			local hrp = c and c:FindFirstChild("HumanoidRootPart")
 			if Tele.GetIn and not ensureSeated(car, seat) then say("Could not sit in the car"); return end
 			if not (hum and hum.SeatPart == seat) then say("Sit in your car first (or turn Get in on)"); return end
 
@@ -433,6 +437,30 @@ function Tele.GoTo(loc)
 			if Tele.Stealth then stealth = setLag(true) end
 			task.delay(T + 8, function() if lagOn then setLag(false) end end) -- watchdog: never leave the network throttled
 
+			-- Nothing may make you leave the seat during the trip: no jumping out, no get-up state, sit forced every frame,
+			-- and Space is swallowed so a stray key press cannot eject you.
+			pcall(function()
+				local jumpWas = hum:GetStateEnabled(Enum.HumanoidStateType.Jumping)
+				local upWas = hum:GetStateEnabled(Enum.HumanoidStateType.GettingUp)
+				hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+				hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+				undo[#undo + 1] = function()
+					hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, jumpWas)
+					hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, upWas)
+				end
+			end)
+			local hold = RunService.Stepped:Connect(function()
+				pcall(function()
+					hum.Jump = false
+					if hum.SeatPart == seat then hum.Sit = true end
+				end)
+			end)
+			undo[#undo + 1] = function() hold:Disconnect() end
+			pcall(function()
+				CAS:BindActionAtPriority("ScrdsxTeleNoJump", function() return Enum.ContextActionResult.Sink end, false, 3000, Enum.KeyCode.Space, Enum.KeyCode.ButtonA)
+				undo[#undo + 1] = function() CAS:UnbindAction("ScrdsxTeleNoJump") end
+			end)
+
 			say(("%s %s (%.1fs%s)"):format(onRoad and "Going to" or "Going near", loc.name, T, stealth and ", hidden" or ""))
 			local t0, lostSince, finished = os.clock(), nil, false
 			local idx = 1
@@ -440,14 +468,29 @@ function Tele.GoTo(loc)
 				local dt = RunService.Heartbeat:Wait()
 				if Tele.Cancel then say("Cancelled"); break end
 				if not seat.Parent then say("Car disappeared"); break end
-				if hum.SeatPart ~= seat then
-					lostSince = lostSince or os.clock()
-					if os.clock() - lostSince > 0.4 then say("Cancelled (left the car)"); break end
+				local seated = hum.SeatPart == seat
+				if not seated then
+					if not lostSince then
+						lostSince = os.clock()
+						-- tell me WHAT was pressed when it happened (no key = the game / server did it)
+						local keys = {}
+						pcall(function() for _, k in ipairs(UIS:GetKeysPressed()) do keys[#keys + 1] = k.KeyCode.Name end end)
+						Tele.LastLoss = (#keys > 0) and table.concat(keys, "+") or "no key"
+						print(("[teleport] thrown out of the seat at %.2fs, keys down: %s"):format(os.clock() - t0, Tele.LastLoss))
+					end
+					-- the car waits, you are put back in the seat; give up only after 2s
+					if os.clock() - lostSince > 2 then say("Cancelled (left the car, keys: " .. tostring(Tele.LastLoss) .. ")"); break end
+					pcall(function()
+						hrp.CFrame = seat.CFrame * CFrame.new(0, 2, 0)
+						hrp.AssemblyLinearVelocity = Vector3.zero
+					end)
 					pcall(function() seat:Sit(hum) end)
 				else
 					lostSince = nil
 				end
-				if flyMode then
+				if not seated then
+					zero() -- hover while we get you back in
+				elseif flyMode then
 					-- velocity flight: set the speed of every physics piece of the car, like Vehicle Fly does
 					local sp = seat.Position
 					while idx < #pts - 1 and (pts[idx + 1] - sp).Magnitude < 8 do idx = idx + 1 end
@@ -515,6 +558,7 @@ function Tele.GoTo(loc)
 			end
 		end)
 		if next(store) then ghost(car, c, false, store) end
+		for _, u in ipairs(undo) do pcall(u) end
 		if lagOn then setLag(false) end
 		guard(seat, 4)
 		Tele.Busy = false
