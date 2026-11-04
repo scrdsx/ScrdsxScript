@@ -140,9 +140,7 @@ local function addBlock(x, z, why)
 	log(("blocked spot at (%.0f, %.0f): %s"):format(x, z, tostring(why)))
 end
 
--- drive a box the size of the car along every route segment: anything solid and upright in the way (bollards, gates, walls) is a block.
--- Floors / ramps / curbs do not count (their surfaces face up).
-local function scanRoute(wps, fromPos, car)
+local function scanParams(car)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	pcall(function() params.RespectCanCollide = true end)
@@ -150,6 +148,83 @@ local function scanRoute(wps, fromPos, car)
 	local vf = workspace:FindFirstChild("Vehicles")
 	if vf then ex[#ex + 1] = vf end
 	params.FilterDescendantsInstances = ex
+	return params
+end
+
+-- The REAL road surface: the parts called "Road" inside Workspace.Roads (the game's own navigation texture lives on them too).
+-- The minimap graph only says roughly where roads are; these helpers put the route onto the actual asphalt and tell whether the car is on it.
+local roadsKnown = false
+local ROAD_PARAMS
+local function roadParams()
+	if not ROAD_PARAMS then
+		ROAD_PARAMS = RaycastParams.new()
+		ROAD_PARAMS.FilterType = Enum.RaycastFilterType.Include
+		local r = workspace:FindFirstChild("Roads")
+		ROAD_PARAMS.FilterDescendantsInstances = r and { r } or {}
+	end
+	return ROAD_PARAMS
+end
+local function roadAt(x, z, y)
+	local res = workspace:Raycast(V3(x, (y or 10) + 40, z), V3(0, -160, 0), roadParams())
+	if res and res.Instance.Name == "Road" then return res.Position end
+	return nil
+end
+local function snapRoad(x, z, y)
+	local p = roadAt(x, z, y)
+	if p then return p, 0 end
+	for r = 3, 45, 3 do
+		for k = 0, 11 do
+			local a = k * math.pi / 6
+			local q = roadAt(x + math.cos(a) * r, z + math.sin(a) * r, y)
+			if q then return q, r end
+		end
+	end
+	return nil
+end
+
+-- the route as a dense polyline (a point every ~12 studs), each point moved onto the real road surface
+local function densify(wps, keys, fromPos)
+	local dense, dkeys = {}, {}
+	local prev = fromPos
+	local snapped, missing, shiftSum, n = 0, 0, 0, 0
+	for i, w in ipairs(wps) do
+		local len = flat(prev, w)
+		local steps = math.max(1, math.floor(len / 12 + 0.5))
+		for k = 1, steps do
+			local t = k / steps
+			local x, z, y = prev.X + (w.X - prev.X) * t, prev.Z + (w.Z - prev.Z) * t, prev.Y + (w.Y - prev.Y) * t
+			local p, shift = snapRoad(x, z, y)
+			if p then
+				snapped = snapped + 1; shiftSum = shiftSum + shift
+				dense[#dense + 1] = V3(p.X, p.Y, p.Z)
+			else
+				missing = missing + 1
+				dense[#dense + 1] = V3(x, y, z)
+			end
+			dkeys[#dense] = keys and keys[i] or false
+			n = n + 1
+			if n % 20 == 0 then task.wait() end
+		end
+		prev = w
+	end
+	-- light smoothing so the line does not jump between lanes
+	if #dense > 4 then
+		local sm = {}
+		for i = 1, #dense do
+			if i == 1 or i == #dense then sm[i] = dense[i]
+			else sm[i] = V3((dense[i - 1].X + 2 * dense[i].X + dense[i + 1].X) / 4, dense[i].Y, (dense[i - 1].Z + 2 * dense[i].Z + dense[i + 1].Z) / 4) end
+		end
+		dense = sm
+	end
+	if snapped > 0 then roadsKnown = true end
+	log(("route: %d points, %d put on the real road surface (average shift %.1f studs), %d not found"):format(#dense, snapped, snapped > 0 and shiftSum / snapped or 0, missing))
+	return dense, dkeys
+end
+
+-- drive a box the size of the car along every route segment: anything solid and upright in the way (bollards, gates, walls) is a block.
+-- Floors / ramps / curbs do not count (their surfaces face up).
+local function scanRoute(wps, fromPos, car)
+	local params = scanParams(car)
 	local useBlock = true
 	local hits = {}
 	local prev = fromPos
@@ -260,8 +335,8 @@ end
 -- "training": the driving parameters are re-tried with small random changes on every trip; a change that drives better (closer to the
 -- route, fewer stuck / turn-around moments, quicker) is kept. Saved in ScrdsxScript/drivetune.json so it keeps improving between sessions.
 local TUNE_FILE = "ScrdsxScript/drivetune.json"
-local RANGE = { kp = { 1.0, 3.5 }, kd = { 0.05, 0.5 }, lookBase = { 6, 20 }, lookGain = { 0.3, 0.9 }, bendDiv = { 0.9, 2.0 }, speedMul = { 0.7, 1.35 } }
-local best = { p = { kp = 2.0, kd = 0.22, lookBase = 10, lookGain = 0.55, bendDiv = 1.4, speedMul = 1.0 }, cost = nil, trips = 0, pieces = {} }
+local RANGE = { kp = { 1.0, 3.5 }, kd = { 0.05, 0.5 }, lookBase = { 6, 20 }, lookGain = { 0.3, 0.9 }, bendDiv = { 0.9, 2.0 }, speedMul = { 0.7, 1.35 }, latAcc = { 8, 30 } }
+local best = { p = { kp = 2.0, kd = 0.22, lookBase = 10, lookGain = 0.55, bendDiv = 1.4, speedMul = 1.0, latAcc = 16 }, cost = nil, trips = 0, pieces = {} }
 local loaded = false
 local function loadTune()
 	if loaded then return end
@@ -356,15 +431,21 @@ function Drive.To(targetPos, opts)
 			if not wps and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
 				log("every route is blocked somewhere, ignoring the blocked spots")
 				wps, endPos, wpKeys = route(graph, seat.Position, targetPos, true)
+				if wps then wps, wpKeys = densify(wps, wpKeys, seat.Position) end
 				break
 			end
 			if not wps then return false, endPos end
+			local dw, dk = densify(wps, wpKeys, seat.Position)
+			wps, wpKeys = dw, dk
 			local hits = scanRoute(wps, seat.Position, car)
 			if #hits == 0 then
 				if attempt > 1 then log(("route %d is clear"):format(attempt)) end
 				break
 			end
-			for _, h in ipairs(hits) do addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route") end
+			for i, h in ipairs(hits) do
+				if i > 3 then break end
+				addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
+			end
 			if attempt == 6 then log("no clear route found, driving the best one") end
 		end
 		if not wps then return false, endPos end
@@ -523,6 +604,10 @@ function Drive.To(targetPos, opts)
 		local offSum, offN, reverses = 0, 0, 0
 		local segIdx, stuckSince, recoveries = 1, nil, 0
 		local reversing, revT, revCool = false, 0, 0
+		local scanPar = scanParams(car)
+		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
+		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
+		local lastHp, hp0, slowUntil = 0, car:GetAttribute("currentHealth"), 0
 		Drive.State = { name = opts.name or "destination", wps = wps, idx = 1, spd = 0, remain = 0, err = 0 }
 		local startT = os.clock()
 		local startPos = seat.Position
@@ -589,9 +674,40 @@ function Drive.To(targetPos, opts)
 				return true, "arrived"
 			end
 
+			-- real road check (5 Hz): over asphalt? if not for a moment, aim for the nearest road surface
+			if roadsKnown and nowT - lastRoadChk > 0.2 then
+				lastRoadChk = nowT
+				if roadAt(pos.X, pos.Z, pos.Y) then offRoadSince, roadPt = nil, nil
+				else
+					offRoadSince = offRoadSince or nowT
+					if nowT - offRoadSince > 0.8 then roadPt = snapRoad(pos.X, pos.Z, pos.Y) end
+				end
+			end
+			local offRoad = offRoadSince ~= nil and nowT - offRoadSince > 0.8
+
+			-- damage watch: the car lost health -> we hit something. Slow down and plan around that spot.
+			if nowT - lastHp > 0.4 then
+				lastHp = nowT
+				local hp = car:GetAttribute("currentHealth")
+				if type(hp) == "number" then
+					if hp0 and hp < hp0 - 10 then
+						log(("car damaged: health %.0f -> %.0f at (%.0f,%.0f), speed %.0f"):format(hp0, hp, pos.X, pos.Z, spd))
+						slowUntil = nowT + 2.5
+						if flat(pos, startPos) > 30 and (opts.replans or 0) < 5 then
+							addBlock(pos.X + fwd.X * 6, pos.Z + fwd.Z * 6, "hit something here")
+							release(); closePiece(); saveTune()
+							return false, "replan"
+						end
+					end
+					hp0 = hp
+					if hp <= 0 then log("the car is destroyed"); release(); closePiece(); saveTune(); return false, "car destroyed" end
+				end
+			end
+
 			-- aim point on the route, further ahead when faster
 			local look = math.clamp(P.lookBase + spd * P.lookGain, 12, 50)
 			local aim = pointAhead(bestI, bestT, look)
+			if offRoad and roadPt then aim = roadPt end
 			local dirv = V3(aim.X - pos.X, 0, aim.Z - pos.Z)
 			if dirv.Magnitude < 0.5 then dirv = fwd end
 			local e = wrap(yawOf(dirv) - yaw)
@@ -601,18 +717,72 @@ function Drive.To(targetPos, opts)
 			local kp = P.kp / (1 + spd / 40)
 			local steerCmd = math.clamp(e * kp - yawRate * P.kd, -1, 1) * steerSign
 
-			-- speed: look at how much the route bends in the next ~45 studs
+			-- speed: from the curvature of the route ahead (radius -> comfortable speed) and how far away each bend is (braking distance)
 			local ahead1 = pointAhead(bestI, bestT, 8)
 			local ahead2 = pointAhead(bestI, bestT, 60)
 			local bend = math.abs(wrap(yawOf(V3(ahead2.X - ahead1.X, 0, ahead2.Z - ahead1.Z)) - yaw))
-			local corner = (1 - math.clamp(bend / P.bendDiv, 0, 0.62)) * (1 - math.clamp(math.abs(e) / 1.5, 0, 0.5))
+			local allowed = math.min(Drive.MaxSpeed, 62) * P.speedMul
+			do
+				local prevPt, prevH = pointAhead(bestI, bestT, 4), nil
+				for k = 1, 8 do
+					local d = 4 + k * 14
+					local pt = pointAhead(bestI, bestT, d)
+					local h = yawOf(V3(pt.X - prevPt.X, 0, pt.Z - prevPt.Z))
+					if prevH then
+						local kappa = math.abs(wrap(h - prevH)) / 14
+						local vk = math.sqrt(P.latAcc / math.max(kappa, 0.0004))
+						allowed = math.min(allowed, math.sqrt(vk * vk + 2 * 12 * math.max(d - 14, 0)))
+					end
+					prevPt, prevH = pt, h
+				end
+			end
+			local corner = 1 - math.clamp(math.abs(e) / 1.5, 0, 0.5)
 			local pm = pieceMul(curKey)
-			local target = math.min(Drive.MaxSpeed * P.speedMul * corner * pm, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
+			local target = math.min(allowed * corner * pm, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
 			target = math.max(target, 14)
+			if offRoad then target = math.min(target, 18) end
+			if nowT < slowUntil then target = math.min(target, 22) end
 			local thrCmd = cur.Throttle
 			if spd < target - 3 then thrCmd = 1
-			elseif spd > target + 14 then thrCmd = -1
+			elseif spd > target + 8 then thrCmd = -1
 			elseif spd > target + 2 then thrCmd = 0 end
+
+			-- safety brake: a car-sized box ahead; anything solid and upright inside the stopping distance means brake NOW
+			if nowT - lastScan > 0.1 and not reversing then
+				lastScan = nowT
+				local L = math.clamp(spd * 0.9 + 8, 10, 70)
+				local origin = V3(pos.X, pos.Y - 1, pos.Z) + fwd * 3
+				local okb, r = pcall(function() return workspace:Blockcast(CFrame.lookAt(origin, origin + fwd), V3(6, 3, 1), fwd * L, scanPar) end)
+				danger = nil
+				if okb and r and math.abs(r.Normal.Y) < 0.5 then
+					local m = r.Instance:FindFirstAncestorOfClass("Model")
+					if not (m and m:FindFirstChildOfClass("Humanoid")) then danger = { dist = r.Distance, pos = r.Position, name = r.Instance:GetFullName() } end
+				end
+			end
+			if danger and not reversing and danger.dist < spd * spd / 36 + spd * 0.3 + 5 then
+				thrCmd = spd > 4 and -1 or 0
+				if nowT - lastDangerLog > 2 then
+					lastDangerLog = nowT
+					log(("braking: %s is %.0f studs ahead, speed %.0f"):format(danger.name, danger.dist, spd))
+				end
+				if spd < 3 then
+					dangerStopT = dangerStopT or nowT
+					if nowT - dangerStopT > 1.3 then
+						dangerStopT = nil
+						if flat(pos, startPos) > 30 and (opts.replans or 0) < 5 then
+							addBlock(danger.pos.X, danger.pos.Z, "solid " .. danger.name .. " in front of the car")
+							release(); closePiece(); saveTune()
+							return false, "replan"
+						end
+						reversing, revT = true, nowT -- near the start: back out of it
+						reverses = reverses + 1
+					end
+				else
+					dangerStopT = nil
+				end
+			else
+				dangerStopT = nil
+			end
 
 			-- the aim point is behind us: do not circle, back up while steering the other way until we point roughly at it
 			if not reversing and math.abs(e) > 2.1 and spd < 18 and nowT - revCool > 2 then
@@ -664,7 +834,7 @@ function Drive.To(targetPos, opts)
 			end
 			if nowT - lastLog > 3 then
 				lastLog = nowT
-				log(("drive: %.0f studs left, speed %.0f (target %.0f, piece x%.2f), segment %d/%d, aim error %.2f, bend %.2f, off route %.1f"):format(remainRoute, spd, target, pm, segIdx, #path - 1, e, bend, bestD))
+				log(("drive: %.0f studs left, speed %.0f (target %.0f, piece x%.2f), segment %d/%d, aim error %.2f, bend %.2f, off route %.1f, %s"):format(remainRoute, spd, target, pm, segIdx, #path - 1, e, bend, bestD, offRoad and "OFF ROAD" or "on road"))
 			end
 		end
 		release()

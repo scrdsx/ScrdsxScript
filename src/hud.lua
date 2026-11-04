@@ -255,7 +255,7 @@ function HUD.new(opts)
 		local R = 260
 		if st and st.wps and #st.wps > 0 then
 			R = 90
-			for i = st.idx, math.min(#st.wps, st.idx + 10) do
+			for i = st.idx, math.min(#st.wps, st.idx + 35) do
 				local d = st.wps[i] - pos
 				R = math.max(R, math.sqrt(d.X * d.X + d.Z * d.Z) * 1.15)
 			end

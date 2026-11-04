@@ -39,7 +39,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false, Manual = false, AutoDrive = true, DriveSpeed = 100, ManualRange = 250,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false, Manual = false, AutoDrive = true, DriveSpeed = 60, ManualRange = 250,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
