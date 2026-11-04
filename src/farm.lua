@@ -39,7 +39,7 @@ local REGISTERS = { -- robbery folder name -> fallback position
 local Farm = {
 	Enabled = false, Busy = false, Cancel = false,
 	Registers = true, Bank = true, Jeweler = false, Club = false,
-	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false,
+	SellGold = true, SellCalls = 1, WalkSpeed = 60, TravelSpeed = 130, InstantMove = false, Parallel = true, bombs = 0, SitInteract = false, Manual = true, ManualRange = 250,
 	Info = "off", Stats = "-", Tele = nil,
 	cool = {}, done = { registers = 0, bank = 0, jeweler = 0, club = 0, fails = 0 },
 }
@@ -303,6 +303,17 @@ end
 -- drive (Teleports module) to a place and step out of the car
 local function goNear(pos, name)
 	local Tele = Farm.Tele
+	if Farm.Manual then
+		-- the automatic car trips are not accepted by the server (it only keeps ~1 s of a scripted flight), so YOU drive to the area
+		local _, hum0, hrp0 = parts()
+		local dist = hrp0 and (hrp0.Position - pos).Magnitude or 1e9
+		if dist > Farm.ManualRange then
+			say(("%s is %.0f studs away: drive there yourself, then press the button again"):format(name, dist))
+			return false
+		end
+		if hum0 and hum0.SeatPart then hum0.Sit = false; task.wait(0.7) end
+		return true
+	end
 	ensureInCar()
 	say("driving to " .. name)
 	stream(pos)
@@ -803,10 +814,16 @@ end
 
 local function doRegisters()
 	local list = {}
-	for _, e in ipairs(REGISTERS) do if ready(e.key) and locationFor(e) then list[#list + 1] = e end end
-	if #list == 0 then return false end
 	local _, _, hrp = parts()
 	local here = hrp and hrp.Position or V3()
+	for _, e in ipairs(REGISTERS) do
+		local lp0 = locationFor(e)
+		if ready(e.key) and lp0 and (not Farm.Manual or (lp0 - here).Magnitude <= Farm.ManualRange) then list[#list + 1] = e end
+	end
+	if #list == 0 then
+		if Farm.Manual then say("no cash register near you: drive to a shop (Tool Shop, Ares, Gas-N-Go, Osso, Farm Shop, Clothing Store)") end
+		return false
+	end
 	table.sort(list, function(a, b) return (locationFor(a) - here).Magnitude < (locationFor(b) - here).Magnitude end)
 	-- a register that turns out to be on cooldown only costs a short flight: go on to the next one
 	for _, e in ipairs(list) do
@@ -927,6 +944,7 @@ end
 -- control ------------------------------------------------------------------------------------------------------------
 local function runOnce(kind)
 	if kind == "registers" then return doRegisters()
+	elseif kind == "buybomb" then return tryRoutine("buybomb", function() return buyBombs(1) end)
 	elseif kind == "bank" then Farm.cool.bank = nil; return doBank()
 	elseif kind == "jeweler" then Farm.cool.jeweler = nil; return doJeweler()
 	elseif kind == "club" then Farm.cool.club = nil; return doClub() end
