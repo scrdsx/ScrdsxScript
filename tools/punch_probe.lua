@@ -92,22 +92,28 @@ task.spawn(function()
 	end
 end)
 
+local function finish()
+	if not active then return end
+	active = false
+	for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+	local txt = table.concat(out, "
+")
+	local ok = pcall(function() setclipboard(txt) end)
+	pcall(function() writefile("punch_report.txt", txt) end)
+	print("[punch] " .. #out .. " lines " .. (ok and "copied to clipboard" or "(clipboard failed)") .. " + workspace/punch_report.txt")
+end
+
 -- everything else your input does around the punch (clicks, keys)
 table.insert(conns, UIS.InputBegan:Connect(function(i, gp)
 	if not active then return end
 	if i.KeyCode == Enum.KeyCode.End then
-		active = false
-		for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-		local txt = table.concat(out, "\n")
-		local ok = pcall(function() setclipboard(txt) end)
-		pcall(function() writefile("punch_report.txt", txt) end)
-		print("[punch] " .. #out .. " lines " .. (ok and "copied to clipboard" or "(clipboard failed)") .. " + workspace/punch_report.txt")
+		finish()
 	elseif i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 		log(("input: left click gameProcessed=%s"):format(tostring(gp)))
 	elseif i.UserInputType == Enum.UserInputType.Keyboard then
 		log(("input: key %s gameProcessed=%s"):format(i.KeyCode.Name, tostring(gp)))
 	end
 end))
-env.PunchProbe = { Stop = function() active = false end }
-log("recording; punch a register, then press End")
-print("[punch] recording - punch a cash register by hand, then press End")
+env.PunchProbe = { Stop = function() active = false end, Finish = finish }
+log("recording; punch a register, then press End (or run getgenv().PunchProbe.Finish())")
+print("[punch] recording - punch a cash register by hand, then press End (or run getgenv().PunchProbe.Finish())")
