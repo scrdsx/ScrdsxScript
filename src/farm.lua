@@ -153,12 +153,25 @@ local function near(p, target, r)
 end
 local function moveStep(hum, hrp, target, timeout, r)
 	hum:MoveTo(target)
-	local t, lastPos, lastT = os.clock(), hrp.Position, os.clock()
+	local t, lastPos, lastT, tries = os.clock(), hrp.Position, os.clock(), 0
 	while os.clock() - t < timeout and not Farm.Cancel and hrp.Parent do
 		task.wait(0.1)
 		if near(hrp.Position, target, r) then return true end
-		if os.clock() - lastT > 1.2 then
-			if (hrp.Position - lastPos).Magnitude < 1.5 then hum.Jump = true end -- stuck on something: hop
+		if os.clock() - lastT > 0.9 then
+			if (hrp.Position - lastPos).Magnitude < 1.5 then
+				tries = tries + 1
+				hum.Jump = true
+				if tries % 2 == 0 then
+					-- blocked: step sideways, alternating left / right, then try again
+					local d = target - hrp.Position
+					d = V3(d.X, 0, d.Z)
+					if d.Magnitude > 1 then
+						local side = V3(-d.Z, 0, d.X).Unit * ((tries % 4 == 0) and -9 or 9)
+						hum:MoveTo(hrp.Position + side)
+						task.wait(0.9)
+					end
+				end
+			end
 			lastPos, lastT = hrp.Position, os.clock()
 			hum:MoveTo(target)
 		end
@@ -187,8 +200,22 @@ local function walkTo(pos, _, stop, maxLen)
 	if okc and path.Status == Enum.PathStatus.Success then
 		waypoints = path:GetWaypoints()
 	else
-		flog("no path found, walking straight")
-		waypoints = { { Position = pos, Action = Enum.PathWaypointAction.Walk } }
+		local why = okc and tostring(path.Status) or "error"
+		-- the destination may be inside something solid: try spots around it
+		for _, off in ipairs({ V3(4, 0, 0), V3(-4, 0, 0), V3(0, 0, 4), V3(0, 0, -4), V3(8, 0, 0), V3(-8, 0, 0), V3(0, 0, 8), V3(0, 0, -8) }) do
+			local alt = PFS:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, WaypointSpacing = 5 })
+			local ok2 = pcall(function() alt:ComputeAsync(hrp.Position, pos + off) end)
+			if ok2 and alt.Status == Enum.PathStatus.Success then
+				waypoints = alt:GetWaypoints()
+				waypoints[#waypoints + 1] = { Position = pos, Action = Enum.PathWaypointAction.Walk }
+				flog("path found to a spot next to the target (" .. why .. " for the exact point)")
+				break
+			end
+		end
+		if not waypoints then
+			flog("no path (" .. why .. "), walking straight")
+			waypoints = { { Position = pos, Action = Enum.PathWaypointAction.Walk } }
+		end
 	end
 	-- how far is the walk really? (a dealer behind a fence can mean a 300 stud detour)
 	local plen, prev = 0, hrp.Position
@@ -677,22 +704,38 @@ local function doorsNear(p, radius)
 	table.sort(list, function(a, b) return a.dist < b.dist end)
 	return list
 end
+local function doorCentre(inst, fallback)
+	local door = inst:FindFirstChild("Door")
+	local mp = door and door:FindFirstChild("MainPart")
+	return (mp and mp:IsA("BasePart")) and mp.Position or fallback
+end
 local function enterShop(rp)
 	local _, _, hrp = parts()
 	local flat = V3(hrp.Position.X - rp.X, 0, hrp.Position.Z - rp.Z)
 	if flat.Magnitude < 12 then return end -- already inside
-	local doors = doorsNear(rp, 60)
-	for i = 1, math.min(#doors, 3) do
-		flog(("door candidate %d: %s (%s) at (%.0f,%.0f,%.0f), %.0f studs from the register"):format(i, doors[i].inst.Name, doors[i].tag, doors[i].pos.X, doors[i].pos.Y, doors[i].pos.Z, doors[i].dist))
+	local doors = doorsNear(rp, 75)
+	local bestDoor, bestScore
+	for i, d in ipairs(doors) do
+		local n = d.inst.Name:lower()
+		local locked = d.inst:GetAttribute("Locked") == true
+		local staff = n:find("metal", 1, true) or n:find("staff", 1, true) or n:find("back", 1, true) or n:find("service", 1, true)
+		local score = d.dist + (locked and 500 or 0) + (staff and 220 or 0) + ((n:find("glass", 1, true) or n:find("sliding", 1, true)) and -20 or 0)
+		if i <= 4 then
+			flog(("door candidate %d: %s (%s) at (%.0f,%.0f,%.0f), %.0f studs from the target, locked=%s staff=%s score %.0f"):format(i, d.inst.Name, d.tag,
+				d.pos.X, d.pos.Y, d.pos.Z, d.dist, tostring(locked), tostring(staff ~= nil), score))
+		end
+		if not bestScore or score < bestScore then bestDoor, bestScore = d, score end
 	end
-	local d = doors[1]
-	if not d then flog("no door found near the register"); return end
-	local out = V3(hrp.Position.X - d.pos.X, 0, hrp.Position.Z - d.pos.Z)
+	local d = bestDoor
+	if not d then flog("no door found near the target"); return end
+	local centre = doorCentre(d.inst, d.pos)
+	local out = V3(hrp.Position.X - centre.X, 0, hrp.Position.Z - centre.Z)
 	out = out.Magnitude > 0.1 and out.Unit or V3(1, 0, 0)
-	say("going in through the door")
-	walkTo(d.pos + out * 6 + V3(0, 1, 0), nil, 2.5)  -- in front of the door (it opens when you are close)
-	task.wait(0.8)
-	walkTo(d.pos - out * 5 + V3(0, 1, 0), nil, 2.5)   -- through it
+	say("going in through the " .. d.inst.Name)
+	flog(("door chosen: %s at (%.0f,%.0f,%.0f)"):format(d.inst.Name, centre.X, centre.Y, centre.Z))
+	walkTo(centre + out * 7 + V3(0, 1, 0), nil, 3)      -- in front of the door
+	task.wait(0.4)
+	walkTo(centre - out * 7 + V3(0, 1, 0), nil, 3)      -- push through it
 end
 
 local function findRegisterModel(entry)

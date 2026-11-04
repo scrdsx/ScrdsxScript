@@ -170,7 +170,8 @@ local function route(g, fromPos, toPos)
 	local path, cur = {}, t
 	while cur do table.insert(path, 1, cur); cur = prev[cur] end
 	-- waypoints: the connection points between pieces, plus a piece centre where the road bends
-	local wps = {}
+	local wps, keys = {}, {}
+	local function keyOf(m) return math.floor(m.pos.X / 10) .. "," .. math.floor(m.pos.Z / 10) end
 	local last = fromPos
 	for i = 1, #path - 1 do
 		local m, n = path[i], path[i + 1]
@@ -181,20 +182,22 @@ local function route(g, fromPos, toPos)
 			local ap = V3(m.pos.X - last.X, 0, m.pos.Z - last.Z)
 			local proj = math.clamp(ap:Dot(ab.Unit), 0, ab.Magnitude)
 			local lateral = (ap - ab.Unit * proj).Magnitude
-			if lateral > 4 then wps[#wps + 1] = m.pos end
+			if lateral > 4 then wps[#wps + 1] = m.pos; keys[#wps] = keyOf(m) end
 		end
 		wps[#wps + 1] = via
+		keys[#wps] = keyOf(m)
 		last = via
 	end
 	wps[#wps + 1] = path[#path].pos
-	return wps, path[#path].pos
+	keys[#wps] = keyOf(path[#path])
+	return wps, path[#path].pos, keys
 end
 
 -- "training": the driving parameters are re-tried with small random changes on every trip; a change that drives better (closer to the
 -- route, fewer stuck / turn-around moments, quicker) is kept. Saved in ScrdsxScript/drivetune.json so it keeps improving between sessions.
 local TUNE_FILE = "ScrdsxScript/drivetune.json"
 local RANGE = { kp = { 1.0, 3.5 }, kd = { 0.05, 0.5 }, lookBase = { 6, 20 }, lookGain = { 0.3, 0.9 }, bendDiv = { 0.9, 2.0 }, speedMul = { 0.7, 1.35 } }
-local best = { p = { kp = 2.0, kd = 0.22, lookBase = 10, lookGain = 0.55, bendDiv = 1.4, speedMul = 1.0 }, cost = nil, trips = 0 }
+local best = { p = { kp = 2.0, kd = 0.22, lookBase = 10, lookGain = 0.55, bendDiv = 1.4, speedMul = 1.0 }, cost = nil, trips = 0, pieces = {} }
 local loaded = false
 local function loadTune()
 	if loaded then return end
@@ -207,6 +210,7 @@ local function loadTune()
 					if tonumber(d.p[k]) then best.p[k] = math.clamp(d.p[k], r[1], r[2]) end
 				end
 				best.cost, best.trips = tonumber(d.cost), tonumber(d.trips) or 0
+				if type(d.pieces) == 'table' then best.pieces = d.pieces end
 			end
 		end
 	end)
@@ -219,6 +223,22 @@ local function saveTune()
 		end
 	end)
 end
+-- what the car learned about one road piece (a corner / junction): a speed multiplier that goes down where it got stuck, had to back
+-- up or wandered off the road, and slowly up where it drove cleanly
+local function learnPiece(key, stat)
+	if not key or not stat then return end
+	local rec = best.pieces[key] or { m = 1, n = 0 }
+	if stat.stuck or stat.rev then rec.m = math.max(0.4, rec.m * 0.72)
+	elseif stat.maxOff > 14 or stat.maxErr > 1.1 then rec.m = math.max(0.4, rec.m * 0.9)
+	else rec.m = math.min(1.45, rec.m * 1.05) end
+	rec.n = (rec.n or 0) + 1
+	best.pieces[key] = rec
+end
+local function pieceMul(key)
+	local rec = key and best.pieces[key]
+	return rec and rec.m or 1
+end
+
 function Drive.NextParams()
 	loadTune()
 	local explore = best.cost ~= nil and math.random() < 0.7
@@ -230,6 +250,7 @@ function Drive.NextParams()
 	return p, explore
 end
 function Drive.Report(p, explore, cost)
+	-- (piece memory is saved together with the settings)
 	best.trips = best.trips + 1
 	if best.cost == nil or (explore and cost < best.cost) then
 		best.p, best.cost = p, cost
@@ -258,7 +279,7 @@ function Drive.To(targetPos, opts)
 		local gerr
 		if not graph then graph, gerr = build() end
 		if not graph then return false, "road graph missing: " .. tostring(gerr) end
-		local wps, endPos = route(graph, seat.Position, targetPos)
+		local wps, endPos, wpKeys = route(graph, seat.Position, targetPos)
 		if not wps then return false, endPos end
 		log(("route: %d waypoints, ends at (%.0f,%.0f,%.0f)"):format(#wps, endPos.X, endPos.Y, endPos.Z))
 
@@ -403,6 +424,14 @@ function Drive.To(targetPos, opts)
 			return pos + (b2 - a2).Unit * math.min(dist, left), cur
 		end
 		local P, explore = Drive.NextParams()
+		local pathKey = { false }
+		for i = 1, #wps do pathKey[i + 1] = wpKeys and wpKeys[i] or false end
+		local curKey, pStat = nil, nil
+		local learned = 0
+		local function closePiece()
+			if curKey and pStat then learnPiece(curKey, pStat); learned = learned + 1 end
+			curKey, pStat = nil, nil
+		end
 		local offSum, offN, reverses = 0, 0, 0
 		local segIdx, stuckSince, recoveries = 1, nil, 0
 		local reversing, revT, revCool = false, 0, 0
@@ -423,6 +452,9 @@ function Drive.To(targetPos, opts)
 				log(("left the car at (%.0f,%.0f,%.0f): speed %.0f, car up-vector Y=%.2f (low = on its side), car health %s, occupant=%s"):format(
 					seat.Position.X, seat.Position.Y, seat.Position.Z, speedFlat(), up.Y, tostring(car:GetAttribute("currentHealth")), tostring(seat.Occupant)))
 				release()
+				if pStat then pStat.stuck = true end
+				closePiece()
+				saveTune()
 				return false, "left the car"
 			end
 			local pos = seat.Position
@@ -444,12 +476,22 @@ function Drive.To(targetPos, opts)
 			end
 			segIdx = math.max(segIdx, bestI)
 			offSum, offN = offSum + bestD, offN + 1
+			do
+				local key = pathKey[math.min(bestI + 1, #pathKey)]
+				if key ~= curKey then
+					closePiece()
+					curKey, pStat = key, { maxOff = 0, maxErr = 0, stuck = false, rev = false }
+				end
+				if pStat then pStat.maxOff = math.max(pStat.maxOff, bestD) end
+			end
 			local remainRoute = remainingFrom(bestI, bestT)
 			if remainRoute < arrive or (segIdx >= #path - 1 and flat(pos, path[#path]) < arrive) then
 				setCtl("Throttle", -1); setCtl("Steering", 0)
 				local tb = os.clock()
 				while speedFlat() > 2.5 and os.clock() - tb < 4 do task.wait(0.05) end
 				release()
+				closePiece()
+				log(("training: learned from %d road pieces on this trip (%d pieces known)"):format(learned, (function() local n = 0 for _ in pairs(best.pieces) do n = n + 1 end return n end)()))
 				if totalD > 250 and offN > 20 then
 					local dur = os.clock() - startT
 					local cost = (offSum / offN) * 1.5 + recoveries * 30 + reverses * 15 + (dur / (totalD / 100)) * 0.8
@@ -464,6 +506,7 @@ function Drive.To(targetPos, opts)
 			local dirv = V3(aim.X - pos.X, 0, aim.Z - pos.Z)
 			if dirv.Magnitude < 0.5 then dirv = fwd end
 			local e = wrap(yawOf(dirv) - yaw)
+			if pStat then pStat.maxErr = math.max(pStat.maxErr, math.abs(e)) end
 
 			-- steering: proportional (less at speed) minus damping on the turn rate
 			local kp = P.kp / (1 + spd / 40)
@@ -474,7 +517,8 @@ function Drive.To(targetPos, opts)
 			local ahead2 = pointAhead(bestI, bestT, 60)
 			local bend = math.abs(wrap(yawOf(V3(ahead2.X - ahead1.X, 0, ahead2.Z - ahead1.Z)) - yaw))
 			local corner = (1 - math.clamp(bend / P.bendDiv, 0, 0.62)) * (1 - math.clamp(math.abs(e) / 1.5, 0, 0.5))
-			local target = math.min(Drive.MaxSpeed * P.speedMul * corner, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
+			local pm = pieceMul(curKey)
+			local target = math.min(Drive.MaxSpeed * P.speedMul * corner * pm, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
 			target = math.max(target, 14)
 			local thrCmd = cur.Throttle
 			if spd < target - 3 then thrCmd = 1
@@ -485,6 +529,7 @@ function Drive.To(targetPos, opts)
 			if not reversing and math.abs(e) > 2.1 and spd < 18 and nowT - revCool > 2 then
 				reversing, revT = true, nowT
 				reverses = reverses + 1
+				if pStat then pStat.rev = true end
 				log(("target is behind (error %.2f): backing up to turn around"):format(e))
 			end
 			if reversing then
@@ -511,8 +556,9 @@ function Drive.To(targetPos, opts)
 				stuckSince = stuckSince or nowT
 				if nowT - stuckSince > 1.6 then
 					recoveries = recoveries + 1
+					if pStat then pStat.stuck = true end
 					log(("stuck at (%.0f,%.0f,%.0f), backing up (%d)"):format(pos.X, pos.Y, pos.Z, recoveries))
-					if recoveries > 8 then release(); return false, "stuck" end
+					if recoveries > 8 then release(); closePiece(); saveTune(); return false, "stuck" end
 					setCtl("Throttle", -1); setCtl("Steering", -steerCmd)
 					task.wait(1.5)
 					setCtl("Steering", 0)
@@ -523,10 +569,11 @@ function Drive.To(targetPos, opts)
 			end
 			if nowT - lastLog > 3 then
 				lastLog = nowT
-				log(("drive: %.0f studs left, speed %.0f (target %.0f), segment %d/%d, aim error %.2f, bend %.2f, off route %.1f"):format(remainRoute, spd, target, segIdx, #path - 1, e, bend, bestD))
+				log(("drive: %.0f studs left, speed %.0f (target %.0f, piece x%.2f), segment %d/%d, aim error %.2f, bend %.2f, off route %.1f"):format(remainRoute, spd, target, pm, segIdx, #path - 1, e, bend, bestD))
 			end
 		end
 		release()
+		saveTune()
 		return false, Drive.Cancel and "cancelled" or "took too long"
 	end)
 	Drive.Busy = false
