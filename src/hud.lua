@@ -105,13 +105,14 @@ function HUD.new(opts)
 		table.insert(self.conns, f.InputBegan:Connect(function(i)
 			if not self.editing then return end
 			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-				dragging, startMouse, startPos = true, i.Position, f.AbsolutePosition
+				-- InputObject.Position is a Vector3; mixing it with the Vector2 AbsolutePosition throws, so use Vector2s
+				dragging, startMouse, startPos = true, Vector2.new(i.Position.X, i.Position.Y), f.AbsolutePosition
 			end
 		end))
 		table.insert(self.conns, UIS.InputChanged:Connect(function(i)
 			if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
 				local screen = gui.AbsoluteSize
-				local np = startPos + (i.Position - startMouse)
+				local np = startPos + (Vector2.new(i.Position.X, i.Position.Y) - startMouse)
 				local x = math.clamp(np.X / math.max(screen.X, 1), 0, 0.98)
 				local y = math.clamp(np.Y / math.max(screen.Y, 1), 0, 0.98)
 				f.Position = UDim2.fromScale(x, y)
