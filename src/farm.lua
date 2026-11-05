@@ -105,6 +105,31 @@ local function fire(id, ...)
 	return true
 end
 
+-- Detonate like the player does: the inventory (Tab) has a "Detonate Bombs" entry that calls InventoryController.detonateBombs.
+-- First the raw remote, then a click on that inventory entry itself (found by its text) in case the game wants the real UI path.
+local function detonate()
+	fire(ID.DETONATE)
+	pcall(function()
+		local pg = lp:FindFirstChildOfClass("PlayerGui")
+		if not pg then return end
+		for _, d in ipairs(pg:GetDescendants()) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text == "Detonate Bombs" then
+				local b = d
+				while b and not b:IsA("GuiButton") do b = b.Parent end
+				if b and b:IsA("GuiButton") and getconnections then
+					for _, ev in ipairs({ b.MouseButton1Click, b.Activated, b.MouseButton1Down, b.MouseButton1Up }) do
+						for _, c in ipairs(getconnections(ev)) do pcall(function() c:Fire() end) end
+					end
+					flog("detonate: clicked the inventory 'Detonate Bombs' entry")
+				elseif b == nil then
+					flog("detonate: 'Detonate Bombs' text found but no button around it")
+				end
+				return
+			end
+		end
+	end)
+end
+
 -- helpers ---------------------------------------------------------------------------------------------------------
 local function parts()
 	local c = lp.Character
@@ -1123,7 +1148,7 @@ local function doBank()
 		if #old > 0 then
 			-- an old bomb counts against the 'max thrown' limit and the server then ignores the new throw: blow it up first
 			say("bank: clearing an old bomb first")
-			fire(ID.DETONATE)
+			detonate()
 			task.wait(2.5)
 			flog(("after clearing: %d bomb(s) lying around"):format(#bombsOut()))
 		end
@@ -1139,7 +1164,7 @@ local function doBank()
 		for i = 1, 4 do
 			task.wait(i == 1 and 1.2 or 1.2)
 			say("bank: detonating (try " .. i .. ")")
-			fire(ID.DETONATE)
+			detonate()
 			if vault and waitAttr(vault, "Opened", true, 4) then opened = true; break end
 			flog(("after detonate %d: %s | bombs left %d"):format(i, attrLine(vault), #bombsOut()))
 		end
@@ -1181,7 +1206,7 @@ local function doSafeStore(key, label, pos, getFolder, getSafes, statKey)
 				if not throwBomb(sp) then say(label .. ": no bomb left"); break end
 				for i = 1, 3 do -- the bomb only goes off when you detonate it
 					task.wait(i == 1 and 1.9 or 1.2)
-					fire(ID.DETONATE)
+					detonate()
 					if waitAttr(s, "Opened", true, 4) then break end
 				end
 			end
