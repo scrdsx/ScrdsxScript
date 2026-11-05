@@ -699,20 +699,8 @@ local function throwBomb(target)
 	local before = bombCount()
 	fire(ID.THROW, tool, target.X, target.Y, target.Z)
 	task.wait(0.4)
-	if before then
-		local function now() return bombCount() or before end
-		local t = os.clock()
-		while os.clock() - t < 2.5 and now() >= before do task.wait(0.15) end
-		if now() >= before then
-			flog("the bomb count did not go down after the throw: throwing again")
-			fire(ID.THROW, tool, target.X, target.Y + 0.5, target.Z)
-			task.wait(0.4)
-			t = os.clock()
-			while os.clock() - t < 2.5 and now() >= before do task.wait(0.15) end
-			if now() >= before then flog("throw failed: the bomb is still in the inventory"); return false end
-		end
-		flog(("bomb thrown (inventory %d -> %d)"):format(before, now()))
-	end
+	-- (the inventory count does NOT go down at the throw, only after the explosion: so it cannot be used to check the throw. Log only.)
+	if before then flog(("bomb thrown (inventory shows %d before, %s right after)"):format(before, tostring(bombCount()))) end
 	return true
 end
 local function waitAttr(inst, name, want, seconds)

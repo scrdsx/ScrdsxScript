@@ -1105,6 +1105,12 @@ function Drive.To(targetPos, opts)
 					dangerStopT = dangerStopT or nowT
 					if nowT - dangerStopT > 1.3 then
 						dangerStopT = nil
+						if remainRoute < 90 then
+							-- stopped by a pump / pillar / wall next to the destination: close enough, the farm walks the rest
+							log(("stopped %.0f studs before the destination by %s: counting it as arrived"):format(remainRoute, danger.name))
+							release(); closePiece(); saveTune()
+							return true, "arrived"
+						end
 						if (flat(pos, startPos) > 30 or nowT - startT > 8) and (opts.replans or 0) < 5 then
 							addBlock(danger.pos.X, danger.pos.Z, "solid " .. danger.name .. " in front of the car")
 							release(); closePiece(); saveTune()
@@ -1154,6 +1160,11 @@ function Drive.To(targetPos, opts)
 					if pStat then pStat.stuck = true; pStat.stuckN = (pStat.stuckN or 0) + 1 end
 					log(("stuck at (%.0f,%.0f,%.0f), backing up (%d)"):format(pos.X, pos.Y, pos.Z, recoveries))
 					if recoveries > 8 then release(); closePiece(); saveTune(); return false, "stuck" end
+					if remainRoute < 90 then
+						log(("stuck %.0f studs before the destination: counting it as arrived"):format(remainRoute))
+						release(); closePiece(); saveTune()
+						return true, "arrived"
+					end
 					if (flat(pos, startPos) > 30 or nowT - startT > 8) and (opts.replans or 0) < 5 then
 						addBlock(pos.X + fwd.X * 6, pos.Z + fwd.Z * 6, "the car got stuck here")
 						log("stuck: planning another route around this spot")
