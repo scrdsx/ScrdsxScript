@@ -402,6 +402,15 @@ local function goNear(pos, name)
 			end
 		end
 		if not ok then say("could not drive to " .. name .. ": " .. tostring(why)); return false end
+		do
+			local _, _, hrpN = parts()
+			local left = hrpN and (hrpN.Position - pos).Magnitude or 0
+			if left > 320 then
+				say(("the road stops %.0f studs from %s: not walking that far"):format(left, name))
+				flog(("autopilot ended %.0f studs from the target: the road network does not lead there, giving up on %s"):format(left, name))
+				return false
+			end
+		end
 		leaveCar()
 		return true
 	end	if Farm.Manual then

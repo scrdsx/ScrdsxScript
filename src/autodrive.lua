@@ -157,9 +157,16 @@ local function addBlock(x, z, why)
 	log(("blocked spot at (%.0f, %.0f): %s"):format(x, z, tostring(why)))
 end
 
+-- things that stand next to roads and are not in a car's way (the planner already keeps 8 studs from the road edge): lamps, signs, trees,
+-- traffic lights, the rails of a level crossing (cars drive over them), curbs and sidewalks
+local IGNORE_ANCESTORS = { "Traffic Lights", "Streetlamps", "Signs", "TrainTracks", "RailroadCrossings", "Trees", "DestroyedObjects" }
 local function ignorable(inst)
 	local n = inst.Name
-	return inst == workspace.Terrain or inst:FindFirstAncestor("Traffic Lights") ~= nil or n:find("Road", 1, true) ~= nil or n == "Curb" or n == "Sidewalk" or n:find("Marking", 1, true) ~= nil
+	if inst == workspace.Terrain or n:find("Road", 1, true) ~= nil or n == "Curb" or n == "Sidewalk" or n:find("Marking", 1, true) ~= nil then return true end
+	for _, a in ipairs(IGNORE_ANCESTORS) do
+		if inst:FindFirstAncestor(a) ~= nil then return true end
+	end
+	return false
 end
 
 local function scanParams(car)
@@ -630,16 +637,29 @@ function Drive.To(targetPos, opts)
 					head = head0 and { x = head0.X, z = head0.Z } or nil, ay = seat.Position.Y, by = targetPos.Y, blocked = blocked, minEdge = minEdge,
 				})
 			end
-			local pts, why = plan(2, blockedXZ)
-			if pts and why == "partial" then log("planner: the destination cannot be reached by road (barrier / enclosed area): driving to the closest point") end
-			if not pts and why == "no road connection" then
-				pts, why = plan(1, blockedXZ)
-				if pts then log("planner: narrow roads, keeping 4 studs from the edge") end
+			-- blocked spots never apply right around the car (it must be able to leave where it stands)
+			local sx0, sz0 = seat.Position.X, seat.Position.Z
+			local function blockedFn(x, z)
+				if (x - sx0) ^ 2 + (z - sz0) ^ 2 < 400 then return false end
+				return blockedXZ(x, z)
 			end
-			if not pts and why == "no road connection" and (#TRIP_BLOCK > 0 or #PERM_BLOCK > 0) then
-				pts, why = plan(1, nil)
-				if pts then log("planner: every route is blocked somewhere, ignoring the blocked spots") end
+			local hasBlocks = #TRIP_BLOCK > 0 or #PERM_BLOCK > 0
+			local variants = { { 2, blockedFn, "" }, { 1, blockedFn, "narrow roads: keeping 4 studs from the edge" } }
+			if hasBlocks then variants[#variants + 1] = { 1, nil, "ignoring the blocked spots" } end
+			local pts, why, bestGap, how
+			for _, v in ipairs(variants) do
+				local p2, w2 = plan(v[1], v[2])
+				if p2 then
+					local last = p2[#p2]
+					local gap = math.sqrt((last.x - targetPos.X) ^ 2 + (last.z - targetPos.Z) ^ 2)
+					if w2 == "ok" then pts, why, how = p2, w2, v[3]; break end
+					if not bestGap or gap < bestGap - 5 then pts, why, bestGap, how = p2, w2, gap, v[3] end -- cut off: keep the variant that gets closest
+				elseif not pts then
+					why = w2
+				end
 			end
+			if pts and how and how ~= "" then log("planner: " .. how) end
+			if pts and why == "partial" then log(("planner: the destination cannot be reached by road (barrier / enclosed area): closest point is %.0f studs from it"):format(bestGap or 0)) end
 			if not pts then
 				-- only fall back to the minimap graph when the planner has no road data near the start / destination. The graph knows nothing
 				-- about barriers and levels (it once drove into the underground garage), so a cut-off destination never goes there.
