@@ -155,7 +155,29 @@ local function addBlock(x, z, why)
 		if nearSpot(b, x, z) < 12 then b.n = (b.n or 0) + 1; found = true; break end
 	end
 	if not found then PERM_BLOCK[#PERM_BLOCK + 1] = { x = math.floor(x), z = math.floor(z), n = 1 } end
-	log(("blocked spot at (%.0f, %.0f): %s"):format(x, z, tostring(why)))
+	if why then log(("blocked spot at (%.0f, %.0f): %s"):format(x, z, tostring(why))) end
+end
+
+-- a long obstacle (a row of concrete barriers, a wall): block ALL of its pieces, not only the one we hit. The planner's map data does not know
+-- things that were not loaded when the map was exported, and without this the next route runs into the next piece of the same barrier.
+local function blockObstacle(inst, hitX, hitZ, why)
+	addBlock(hitX, hitZ, why)
+	local grp = inst and inst.Parent
+	if not grp or grp == workspace or grp == workspace:FindFirstChild("Roads") then return end
+	local n = 0
+	for _, d in ipairs(grp:GetDescendants()) do
+		if d:IsA("BasePart") and d.CanCollide and d.Size.Y > 0.8 then
+			local p, sz = d.Position, d.Size
+			local len = math.max(sz.X, sz.Z)
+			local ax = sz.X >= sz.Z and d.CFrame.RightVector or d.CFrame.LookVector
+			for t = -len / 2, len / 2, 8 do
+				addBlock(p.X + ax.X * t, p.Z + ax.Z * t, nil)
+			end
+			n = n + 1
+			if n >= 60 then break end
+		end
+	end
+	if n > 0 then log(("blocked %d pieces of %s"):format(n, grp:GetFullName())) end
 end
 
 -- things that stand next to roads and are not in a car's way (the planner already keeps 8 studs from the road edge): lamps, signs, trees,
@@ -1116,7 +1138,7 @@ function Drive.To(targetPos, opts)
 				danger = nil
 				if okb and r and math.abs(r.Normal.Y) < 0.5 and not ignorable(r.Instance) then
 					local m = r.Instance:FindFirstAncestorOfClass("Model")
-					if not (m and m:FindFirstChildOfClass("Humanoid")) then danger = { dist = r.Distance, pos = r.Position, name = r.Instance:GetFullName() } end
+					if not (m and m:FindFirstChildOfClass("Humanoid")) then danger = { dist = r.Distance, pos = r.Position, name = r.Instance:GetFullName(), inst = r.Instance } end
 				end
 			end
 			-- honk (H, the game's own horn key) in short bursts while another car is in front of us
@@ -1161,7 +1183,7 @@ function Drive.To(targetPos, opts)
 						end
 						if danger.dist < 6 then backOut(danger.name .. " touches the front of the car") end
 						if (flat(pos, startPos) > 30 or nowT - startT > 8) and (opts.replans or 0) < 5 then
-							addBlock(danger.pos.X, danger.pos.Z, "solid " .. danger.name .. " in front of the car")
+							blockObstacle(danger.inst, danger.pos.X, danger.pos.Z, "solid " .. danger.name .. " in front of the car")
 							release(); closePiece(); saveTune()
 							return false, "replan"
 						end

@@ -734,11 +734,24 @@ local function throwBomb(target)
 	end
 	task.wait(0.8)
 	local before = bombCount()
-	fire(ID.THROW, tool, target.X, target.Y, target.Z)
-	task.wait(0.4)
-	-- (the inventory count does NOT go down at the throw, only after the explosion: so it cannot be used to check the throw. Log only.)
-	if before then flog(("bomb thrown (inventory shows %d before, %s right after)"):format(before, tostring(bombCount()))) end
-	return true
+	-- the game's own client sends (tool, Vector3 position); the old (tool, x, y, z) was dropped by the server: no bomb ever appeared
+	local function myBomb()
+		local objs = workspace:FindFirstChild("Objects")
+		local th = objs and objs:FindFirstChild("Throwables")
+		local f = th and th:FindFirstChild("Bomb")
+		return f and f:FindFirstChild(lp.Name)
+	end
+	local landed = false
+	for try = 1, 3 do
+		fire(ID.THROW, tool, V3(target.X, target.Y + (try - 1) * 0.6, target.Z))
+		local t = os.clock()
+		while os.clock() - t < 2.2 and not myBomb() do task.wait(0.1) end
+		if myBomb() then landed = true; break end
+		flog(("throw %d: no bomb appeared in the world, throwing again"):format(try))
+		task.wait(1.2)
+	end
+	if before then flog(("bomb thrown: %s (inventory shows %d before, %s right after)"):format(landed and "it is in the world" or "NOTHING appeared", before, tostring(bombCount()))) end
+	return landed
 end
 local function waitAttr(inst, name, want, seconds)
 	local t = os.clock()
