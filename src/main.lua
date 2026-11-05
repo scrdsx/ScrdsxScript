@@ -152,6 +152,7 @@ mFarm:Toggle({ Name = "Instant teleport on foot (off = walk)", Default = Farm.In
 mFarm:Slider({ Name = "Sell calls", Min = 1, Max = 6, Step = 1, Default = Farm.SellCalls, Callback = function(v) Farm.SellCalls = v end })
 mFarm:Slider({ Name = "Travel speed", Min = 80, Max = 600, Step = 20, Default = Farm.TravelSpeed, NoSave = true, Suffix = " st/s", Callback = function(v) Farm.TravelSpeed = v end })
 mFarm:Toggle({ Name = "Autopilot: drive the car for real along the roads", Default = Farm.AutoDrive, NoSave = true, Callback = function(v) Farm.AutoDrive = v end })
+mFarm:Toggle({ Name = "Honk at cars in front (H)", Default = true, NoSave = true, Callback = function(v) Drive.Honk = v end })
 mFarm:Slider({ Name = "Autopilot speed", Min = 30, Max = 140, Step = 5, Default = Farm.DriveSpeed, Suffix = " st/s", NoSave = true, Callback = function(v) Farm.DriveSpeed = v end })
 mFarm:Toggle({ Name = "I drive myself (no automatic trips)", Default = Farm.Manual, NoSave = true, Callback = function(v) Farm.Manual = v end })
 tFarm:Button({ Name = "Buy a bomb at the nearest dealer", Callback = function() Farm.Once("buybomb") end })

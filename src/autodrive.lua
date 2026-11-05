@@ -18,7 +18,7 @@ local REM = {
 	IGNITION = "de7910a1-5108-423c-bb43-bb8dbe2dcf8a",
 }
 
-local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil } -- State: live data for the HUD map
+local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true } -- State: live data for the HUD map
 local function log(s) if Drive.Log then Drive.Log(s) else print("[drive] " .. s) end end
 
 local remotes = {}
@@ -753,7 +753,7 @@ function Drive.To(targetPos, opts)
 			setCtl("Throttle", 0, true)
 			setCtl("Steering", 0, true)
 			if pwmConn then pwmConn:Disconnect(); pwmConn = nil end
-			for _, code in ipairs({ Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D }) do key(code, false) end
+			for _, code in ipairs({ Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D, Enum.KeyCode.H }) do key(code, false) end
 		end
 
 		log(("car state: IsOn=%s ParkingBrake=%s fuel=%s health=%s Throttle=%s"):format(tostring(car:GetAttribute("IsOn")), tostring(car:GetAttribute("ParkingBrake")),
@@ -877,6 +877,10 @@ function Drive.To(targetPos, opts)
 		local segIdx, stuckSince, recoveries = 1, nil, 0
 		local reversing, revT, revCool = false, 0, 0
 		local scanPar = scanParams(car)
+		local CS = game:GetService("CollectionService")
+		local honkPar = RaycastParams.new()
+		honkPar.FilterType = Enum.RaycastFilterType.Include
+		local lastHonkChk, honkSince, carDist = 0, nil, nil
 		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
 		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
 		local lastHp, hp0, slowUntil = 0, car:GetAttribute("currentHealth"), 0
@@ -1067,6 +1071,30 @@ function Drive.To(targetPos, opts)
 					if not (m and m:FindFirstChildOfClass("Humanoid")) then danger = { dist = r.Distance, pos = r.Position, name = r.Instance:GetFullName() } end
 				end
 			end
+			-- honk (H, the game's own horn key) in short bursts while another car is in front of us
+			if Drive.Honk ~= false and nowT - lastHonkChk > 0.15 then
+				lastHonkChk = nowT
+				local cars = {}
+				for _, tag in ipairs({ "Car", "Motorcycle" }) do
+					for _, m in ipairs(CS:GetTagged(tag)) do
+						if m ~= car and m.Parent then cars[#cars + 1] = m end
+					end
+				end
+				local seen = false
+				if #cars > 0 then
+					honkPar.FilterDescendantsInstances = cars
+					local L = math.clamp(spd * 0.8 + 14, 18, 55)
+					local origin = V3(pos.X, pos.Y - 0.5, pos.Z) + fwd * 3
+					local okh, rh = pcall(function() return workspace:Blockcast(CFrame.lookAt(origin, origin + fwd), V3(7, 3, 1), fwd * L, honkPar) end)
+					seen = okh and rh ~= nil
+					carDist = seen and rh.Distance or nil
+				end
+				if not seen then carDist = nil end
+				if seen then honkSince = honkSince or nowT else honkSince = nil end
+				key(Enum.KeyCode.H, honkSince ~= nil and (nowT - honkSince) % 1.4 < 0.5)
+			end
+			-- and do not drive into it: brake when it is closer than the stopping distance
+			if carDist and not reversing and carDist < spd * spd / 36 + spd * 0.3 + 6 then thrCmd = spd > 3 and -1 or 0 end
 			if danger and not reversing and danger.dist < spd * spd / 36 + spd * 0.3 + 5 then
 				thrCmd = spd > 4 and -1 or 0
 				if nowT - lastDangerLog > 2 then
