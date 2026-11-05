@@ -1098,15 +1098,50 @@ local function doBank()
 		vault = bank and bank:FindFirstChild("VaultDoor")
 		if vault then waitAttr(vault, "Enabled", true, 6) end
 		face(BANK.target)
+		-- what state is the bank in? (every attribute of the robbery folder, the vault and its parent) and which bombs of ours lie around
+		local function attrLine(i)
+			if not i then return "-" end
+			local t = {}
+			for k, v in pairs(i:GetAttributes()) do t[#t + 1] = k .. "=" .. tostring(v):sub(1, 24) end
+			table.sort(t)
+			return i.Name .. "[" .. table.concat(t, ", ") .. "]"
+		end
+		local function bombsOut()
+			local out = {}
+			local objs = workspace:FindFirstChild("Objects")
+			local th = objs and objs:FindFirstChild("Throwables")
+			local f = th and th:FindFirstChild("Bomb")
+			for _, b in ipairs(f and f:GetChildren() or {}) do
+				local p = b:IsA("Model") and b:GetPivot().Position or (b:IsA("BasePart") and b.Position)
+				if p then out[#out + 1] = ("(%.0f,%.0f,%.0f)"):format(p.X, p.Y, p.Z) end
+			end
+			return out
+		end
+		flog("bank state: " .. attrLine(bank) .. " | " .. attrLine(vault) .. " | opened=" .. tostring(vault and vault:GetAttribute("Opened")))
+		local old = bombsOut()
+		flog(("bombs of ours lying around before the throw: %d %s"):format(#old, table.concat(old, " ")))
+		if #old > 0 then
+			-- an old bomb counts against the 'max thrown' limit and the server then ignores the new throw: blow it up first
+			say("bank: clearing an old bomb first")
+			fire(ID.DETONATE)
+			task.wait(2.5)
+			flog(("after clearing: %d bomb(s) lying around"):format(#bombsOut()))
+		end
 		say("bank: throwing the bomb")
 		if not throwBomb(BANK.target) then say("bank: could not throw"); cooldown("bank", 90); backToCar(); return false end
+		task.wait(1.0)
+		do
+			local now = bombsOut()
+			flog(("bombs lying around 1 s after the throw: %d %s (the vault door is at %.0f,%.0f,%.0f)"):format(#now, table.concat(now, " "), BANK.target.X, BANK.target.Y, BANK.target.Z))
+		end
 		-- a thrown bomb does nothing until YOU detonate it (the game's "Detonate Bombs" button); in your recordings that was 1.6 to 2.5 s later
 		local opened = false
 		for i = 1, 4 do
-			task.wait(i == 1 and 1.9 or 1.2)
+			task.wait(i == 1 and 1.2 or 1.2)
 			say("bank: detonating (try " .. i .. ")")
 			fire(ID.DETONATE)
 			if vault and waitAttr(vault, "Opened", true, 4) then opened = true; break end
+			flog(("after detonate %d: %s | bombs left %d"):format(i, attrLine(vault), #bombsOut()))
 		end
 		if not opened then say("bank: vault did not open"); cooldown("bank", 120); backToCar(); return false end
 		loot(bank, "bank")
