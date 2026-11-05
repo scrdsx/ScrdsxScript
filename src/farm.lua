@@ -415,9 +415,12 @@ local function goNear(pos, name)
 		local ok, why
 		local replans, reroutes = 0, 0
 		for attempt = 1, 9 do
+			if Farm.Drive.Evade ~= false and Farm.Drive.Chase and Farm.Drive.Chase(150) then
+				say("police are chasing: driving away first"); Farm.Drive.Flee(); Farm.Drive.MaxSpeed = Farm.DriveSpeed
+			end
 			ok, why = Farm.Drive.To(pos, { arrive = 22, name = name, replans = replans, reroutes = reroutes })
 			flog(("autopilot result: %s (%s)"):format(tostring(ok), tostring(why)))
-			if ok or Farm.Cancel or (why ~= "left the car" and why ~= "stuck" and why ~= "replan" and why ~= "reroute") then break end
+			if ok or Farm.Cancel or (why ~= "left the car" and why ~= "stuck" and why ~= "replan" and why ~= "reroute" and why ~= "chased") then break end
 			if why == "reroute" then reroutes = reroutes + 1 elseif why == "replan" then replans = math.min(replans + 1, 4) end
 			say((why == "replan" or why == "reroute") and "taking another route" or "lost the car, getting back in and driving on")
 			if why ~= "reroute" then

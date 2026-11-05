@@ -11,6 +11,7 @@ local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 local V3 = Vector3.new
 local RoadPlan = __import("roadplan")
+local RoadData = __import("roaddata")
 
 local REM = {
 	THROTTLE = "e805d6ad-9279-4c0d-8a9d-c12d7342cb1b",
@@ -18,7 +19,7 @@ local REM = {
 	IGNITION = "de7910a1-5108-423c-bb43-bb8dbe2dcf8a",
 }
 
-local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true } -- State: live data for the HUD map
+local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true, Evade = true } -- State: live data for the HUD map
 local function log(s) if Drive.Log then Drive.Log(s) else print("[drive] " .. s) end end
 
 local remotes = {}
@@ -901,6 +902,7 @@ function Drive.To(targetPos, opts)
 		local honkPar = RaycastParams.new()
 		honkPar.FilterType = Enum.RaycastFilterType.Include
 		local lastHonkChk, honkSince, carDist = 0, nil, nil
+		local lastChase = 0
 		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
 		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
 		local lastHp, hp0, slowUntil = 0, car:GetAttribute("currentHealth"), 0
@@ -982,6 +984,17 @@ function Drive.To(targetPos, opts)
 				end
 			end
 			local offRoad = offRoadSince ~= nil and nowT - offRoadSince > 0.8
+
+			-- police behind us while wanted: stop this trip, the caller runs away first (Drive.Flee)
+			if Drive.Evade ~= false and not opts.flee and nowT - lastChase > 1.0 then
+				lastChase = nowT
+				local cd = Drive.Chase(150)
+				if cd then
+					log(("police chase: a police car with lights is %.0f studs away and you are wanted"):format(cd))
+					release(); closePiece(); saveTune()
+					return false, "chased"
+				end
+			end
 
 			-- damage watch: the car lost health -> we hit something. Slow down and plan around that spot.
 			if nowT - lastHp > 0.4 then
@@ -1212,6 +1225,87 @@ function Drive.To(targetPos, opts)
 	Drive.State = nil
 	if not ok then log("drive error: " .. tostring(res)); return false, tostring(res) end
 	return res, why or res
+end
+
+-- Police chase: the character is flagged IsWanted (attribute on the HumanoidRootPart) and a police car with its emergency lights on is near.
+-- Returns distance, position of the nearest such car (or nil).
+function Drive.Chase(radius)
+	local c = lp.Character
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	if not hrp or hrp:GetAttribute("IsWanted") ~= true then return nil end
+	local vf = workspace:FindFirstChild("Vehicles")
+	local best, bpos
+	for _, m in ipairs(vf and vf:GetChildren() or {}) do
+		if m.Name ~= lp.Name then
+			local cfg = tostring(m:GetAttribute("Config") or "")
+			if cfg:lower():find("police") and m:GetAttribute("EmergencyLights") == true then
+				local ok, pv = pcall(function() return m:GetPivot().Position end)
+				if ok then
+					local d = (pv - hrp.Position).Magnitude
+					if d < (radius or 170) and (not best or d < best) then best, bpos = d, pv end
+				end
+			end
+		end
+	end
+	return best, bpos
+end
+
+-- Run away: keep driving to far away road points on the opposite side from the police until the wanted flag is gone
+-- (or no police car with lights has been near for a while). Returns true when the chase is over.
+function Drive.Flee(maxSecs)
+	local car = workspace:FindFirstChild("Vehicles") and workspace.Vehicles:FindFirstChild(lp.Name)
+	local seat = car and car:FindFirstChild("DriveSeat")
+	if not seat then return false end
+	local quads = RoadData.quads
+	local nq = #quads // 9
+	if nq == 0 then return false end
+	local t0, clearSince = os.clock(), nil
+	local oldMax = Drive.MaxSpeed
+	Drive.MaxSpeed = 80
+	log("police chase: running away")
+	local legs, fails = 0, 0
+	while not Drive.Cancel and os.clock() - t0 < (maxSecs or 240) and fails < 4 do
+		local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+		if not hrp then break end
+		local d, ppos = Drive.Chase(260)
+		local wanted = hrp:GetAttribute("IsWanted") == true
+		if not wanted then log("police chase: no longer wanted"); break end
+		if d then clearSince = nil else
+			clearSince = clearSince or os.clock()
+			if os.clock() - clearSince > 12 then log("police chase: lost them"); break end
+		end
+		-- destination: a road point 350..1000 studs away, as far from the police as possible, preferably straight away from them
+		local me = hrp.Position
+		local away = ppos and V3(me.X - ppos.X, 0, me.Z - ppos.Z) or nil
+		away = away and away.Magnitude > 1 and away.Unit or nil
+		local bestScore, bx, by, bz
+		for _ = 1, 40 do
+			local k = math.random(0, nq - 1) * 9 + 1
+			local x = (quads[k] + quads[k + 2] + quads[k + 4] + quads[k + 6]) / 4
+			local z = (quads[k + 1] + quads[k + 3] + quads[k + 5] + quads[k + 7]) / 4
+			local y = quads[k + 8]
+			local dm = math.sqrt((x - me.X) ^ 2 + (z - me.Z) ^ 2)
+			if dm > 350 and dm < 1000 and math.abs(y - me.Y) < 8 then
+				local sc = 0
+				if ppos then sc = sc + math.sqrt((x - ppos.X) ^ 2 + (z - ppos.Z) ^ 2) end
+				if away then sc = sc + ((x - me.X) * away.X + (z - me.Z) * away.Z) * 0.6 end
+				sc = sc + math.random() * 120
+				if not bestScore or sc > bestScore then bestScore, bx, by, bz = sc, x, y, z end
+			end
+		end
+		if not bx then fails = fails + 1; task.wait(0.5) else
+			legs = legs + 1
+			log(("police chase: leg %d to (%.0f,%.0f), police %s"):format(legs, bx, bz, d and ("%.0f studs behind"):format(d) or "out of sight"))
+			local ok, why = Drive.To(V3(bx, by, bz), { arrive = 60, name = "away from the police", flee = true })
+			if not ok then
+				if why == "left the car" or why == "sit in your car first" then break end
+				fails = fails + 1
+			end
+		end
+	end
+	Drive.MaxSpeed = oldMax
+	local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+	return not (hrp and hrp:GetAttribute("IsWanted") == true)
 end
 
 function Drive.Stop() Drive.Cancel = true end
