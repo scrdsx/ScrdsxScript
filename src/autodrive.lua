@@ -641,7 +641,7 @@ function Drive.To(targetPos, opts)
 			-- blocked spots never apply right around the car (it must be able to leave where it stands)
 			local sx0, sz0 = seat.Position.X, seat.Position.Z
 			local function blockedFn(x, z)
-				if (x - sx0) ^ 2 + (z - sz0) ^ 2 < 400 then return false end
+				if (x - sx0) ^ 2 + (z - sz0) ^ 2 < ((os.clock() - (Drive.lastBackOut or -99) < 15) and 81 or 400) then return false end
 				return blockedXZ(x, z)
 			end
 			local hasBlocks = #TRIP_BLOCK > 0 or #PERM_BLOCK > 0
@@ -897,6 +897,21 @@ function Drive.To(targetPos, opts)
 		local offSum, offN, reverses = 0, 0, 0
 		local segIdx, stuckSince, recoveries = 1, nil, 0
 		local reversing, revT, revCool = false, 0, 0
+		-- pinned against something solid (the brake keeps us at 0 studs from it): reverse straight out for a moment, so a new route
+		-- starts from free space and not from the very spot that blocks it
+		local function backOut(why2, secs)
+			log(("backing out: %s"):format(why2))
+			Drive.lastBackOut = os.clock()
+			setCtl("Steering", 0); setCtl("Throttle", -1)
+			local t = os.clock()
+			local moved0 = seat.Position
+			while os.clock() - t < (secs or 2.2) and not Drive.Cancel do
+				task.wait(0.1)
+				if (seat.Position - moved0).Magnitude > 14 then break end
+			end
+			setCtl("Throttle", 0)
+			task.wait(0.15)
+		end
 		local scanPar = scanParams(car)
 		local CS = game:GetService("CollectionService")
 		local honkPar = RaycastParams.new()
@@ -1144,6 +1159,7 @@ function Drive.To(targetPos, opts)
 							release(); closePiece(); saveTune()
 							return true, "arrived"
 						end
+						if danger.dist < 6 then backOut(danger.name .. " touches the front of the car") end
 						if (flat(pos, startPos) > 30 or nowT - startT > 8) and (opts.replans or 0) < 5 then
 							addBlock(danger.pos.X, danger.pos.Z, "solid " .. danger.name .. " in front of the car")
 							release(); closePiece(); saveTune()
@@ -1200,6 +1216,7 @@ function Drive.To(targetPos, opts)
 					end
 					if (flat(pos, startPos) > 30 or nowT - startT > 8) and (opts.replans or 0) < 5 then
 						addBlock(pos.X + fwd.X * 6, pos.Z + fwd.Z * 6, "the car got stuck here")
+						backOut("stuck")
 						log("stuck: planning another route around this spot")
 						release(); closePiece(); saveTune()
 						return false, "replan"
