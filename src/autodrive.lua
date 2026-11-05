@@ -641,8 +641,11 @@ function Drive.To(targetPos, opts)
 				if pts then log("planner: every route is blocked somewhere, ignoring the blocked spots") end
 			end
 			if not pts then
-				log("road-surface planner: " .. tostring(why) .. " (using the minimap graph instead)")
+				-- only fall back to the minimap graph when the planner has no road data near the start / destination. The graph knows nothing
+				-- about barriers and levels (it once drove into the underground garage), so a cut-off destination never goes there.
+				log("road-surface planner: " .. tostring(why) .. (tostring(why):find("no road near") and " (using the minimap graph instead)" or ""))
 				wps = nil
+				if not tostring(why):find("no road near") then return false, "no road route: " .. tostring(why) end
 				break
 			end
 			local w, k, len = {}, {}, 0

@@ -103,7 +103,8 @@ local function snap(x, z, y, radius)
 					for lvl in pairs(levels) do
 						local k = K(i0 + di, j0 + dj, lvl)
 						if cells[k] and (edge[k] or 0) >= 1 then
-							local d = di * di + dj * dj + (y and ((cells[k] - y) / CELL) ^ 2 * 0.2 or 0)
+							-- the level (height) matters a lot: a dealer on the street must not snap to the road in the garage below it
+							local d = di * di + dj * dj + (y and ((cells[k] - y) / CELL) ^ 2 * 2.0 or 0)
 							if not bestd or d < bestd then bestk, bestd = k, d end
 						end
 					end
@@ -181,7 +182,7 @@ function Plan.Route(ax, az, bx, bz, opts)
 			end
 			expanded = expanded + 1
 			yield(expanded)
-			if expanded > 120000 then return nil, "search too large" end
+			if expanded > 150000 then break end -- searched the whole network: take the closest point reached
 			local i, j, l = unK(k)
 			local gk = gs[k]
 			for di = -1, 1 do
