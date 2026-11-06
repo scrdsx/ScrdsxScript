@@ -496,7 +496,14 @@ function M:Module(o)
 	obj.frame.LayoutOrder = 0
 
 	local chev = label("›", 20, T.sub, T.bold, Enum.TextXAlignment.Center)
-	chev.AnchorPoint = Vector2.new(.5, .5); chev.Position = UDim2.new(1, -72, .5, -1); chev.Size = UDim2.fromOffset(16, 20); chev.Parent = obj.frame
+	chev.AnchorPoint = Vector2.new(.5, .5); chev.Position = UDim2.new(1, -72, .5, -1); chev.Size = UDim2.fromOffset(16, 20); chev.Visible = false; chev.Parent = obj.frame
+	-- "n settings" hint next to the arrow (only when the module has settings)
+	local hint = label("", 11, T.sub, T.font, Enum.TextXAlignment.Right)
+	hint.AnchorPoint = Vector2.new(1, .5); hint.Position = UDim2.new(1, -84, .5, 0); hint.Size = UDim2.fromOffset(90, 16); hint.Visible = false; hint.Parent = obj.frame
+	-- click zones: the switch (right edge) toggles the module, the rest of the row opens / closes its settings
+	obj.hit.Size = UDim2.new(0, 64, 1, 0); obj.hit.Position = UDim2.new(1, -64, 0, 0)
+	local expandBtn = new("TextButton", { Size = UDim2.new(1, -64, 1, 0), BackgroundTransparency = 1, Text = "", Parent = obj.frame })
+	local count = 0
 
 	local sf = new("CanvasGroup", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -518,11 +525,28 @@ function M:Module(o)
 			task.delay(.16, function() if not open then sf.Visible = false end end)
 		end
 		tween(chev, .2, { Rotation = v and 90 or 0, TextColor3 = v and T.text or T.sub })
+		-- nudge the automatic sizes so the page re-measures right away
+		task.defer(function()
+			for _, fr in ipairs({ sf, cont, cont.Parent }) do
+				pcall(function() local a = fr.AutomaticSize; fr.AutomaticSize = Enum.AutomaticSize.None; fr.AutomaticSize = a end)
+			end
+		end)
 	end
+	local function flip()
+		if count == 0 then obj:Set(not obj:Get()) else obj:SetOpen(not open) end
+	end
+	expandBtn.MouseButton1Click:Connect(flip)
+	expandBtn.MouseButton2Click:Connect(function() obj:SetOpen(not open) end)
 	obj.hit.MouseButton2Click:Connect(function() obj:SetOpen(not open) end)
 
 	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label", "TextBox", "Section" }) do
-		obj[k] = function(_, opts) return M[k](sub, opts) end
+		obj[k] = function(_, opts)
+			if k ~= "Section" then
+				count = count + 1
+				hint.Text = count .. (count == 1 and " setting" or " settings"); hint.Visible = true; chev.Visible = true
+			end
+			return M[k](sub, opts)
+		end
 	end
 	return obj
 end

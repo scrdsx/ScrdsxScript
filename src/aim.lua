@@ -7,7 +7,7 @@ local lp = Players.LocalPlayer
 
 local Aim = {
 	Enabled = false, Hold = true, Part = "Head", FOV = 180, Smooth = 0.3, MaxDist = 400, WallCheck = true, Prediction = 0.06,
-	Sticky = true, WantedOnly = false, ShowFOV = true,
+	Sticky = true, WantedOnly = false, ShowFOV = true, MouseLock = false,
 	Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
 	Active = false, Target = nil, Info = "off",
 }
@@ -16,6 +16,14 @@ Aim.PartList = PARTS
 
 local gui, circle, circleStroke, rp
 local lastT
+local lockedMouse, prevMouse = false, nil
+
+local function releaseMouse()
+	if lockedMouse then
+		lockedMouse = false
+		pcall(function() UIS.MouseBehavior = prevMouse or Enum.MouseBehavior.Default end)
+	end
+end
 local BIND = "ScrdsxCamlock"
 
 local function guiParent()
@@ -67,6 +75,16 @@ local function step(dt)
 		circle.Position = UDim2.fromOffset(center.X, center.Y)
 		circleStroke.Color = Aim.Active and Color3.fromRGB(255, 82, 82) or Color3.fromRGB(235, 235, 240)
 		circleStroke.Transparency = Aim.Active and 0.1 or 0.55
+	end
+	-- mouse lock: while aiming the cursor sits in the screen centre (like shift lock); let go again afterwards
+	if Aim.Enabled and Aim.Active and Aim.MouseLock then
+		if UIS.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
+			if not lockedMouse then prevMouse = UIS.MouseBehavior end
+			lockedMouse = true
+			UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+		end
+	else
+		releaseMouse()
 	end
 	if not (Aim.Enabled and Aim.Active) then Aim.Target, lastT = nil, nil; return end
 
@@ -123,7 +141,7 @@ end
 
 function Aim.SetEnabled(v)
 	Aim.Enabled = v
-	if not v then Aim.Active, Aim.Target = false, nil end
+	if not v then Aim.Active, Aim.Target = false, nil; releaseMouse() end
 	Aim.Info = v and "ready" or "off"
 	if Aim.Changed then Aim.Changed() end
 end
@@ -148,6 +166,7 @@ function Aim.Start()
 end
 
 function Aim.Destroy()
+	releaseMouse()
 	Aim.OnTarget = nil
 	pcall(function() RunService:UnbindFromRenderStep(BIND) end)
 	if gui then pcall(function() gui:Destroy() end) end
