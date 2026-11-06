@@ -1,6 +1,5 @@
 -- ESP: other players with box (full or corner style), skeleton, name + role, health bar, distance, tracer, WANTED tag and a hover card,
--- plus a police radar pill. Plain GUI instances only (no Drawing library), so it works on every executor. Everything is smoothed
--- (positions follow the player with a short ease instead of snapping) and fades out with distance.
+-- plus a police radar pill. Plain GUI instances only (no Drawing library), so it works on every executor. It fades out with distance.
 -- Roles come from the game's own Teams: Police = blue, FireDepartment = red, Prisoner = grey, Citizen = white, other jobs use the team colour.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -223,7 +222,6 @@ local function update(dt)
 
 	local vs = cam.ViewportSize
 	local mouse = UIS:GetMouseLocation()
-	local ease = 1 - math.exp(-(dt or 0.016) * 24)
 	local hoverBest, hoverD, hoverText
 	for plr, e in pairs(entries) do
 		local ch = plr.Character
@@ -240,12 +238,10 @@ local function update(dt)
 					shown = true
 					local wanted = hrp:GetAttribute("IsWanted") == true
 					local c = (wanted and ESP.Wanted) and RED or col
-					-- smooth the box (ease towards the real position; snap on the first frame)
-					local th, tw = math.max(bot.Y - top.Y, 8), math.max(bot.Y - top.Y, 8) * 0.55
-					local tx, ty = top.X - tw / 2, top.Y
-					if not e.init then e.x, e.y, e.w, e.h, e.init = tx, ty, tw, th, true
-					else e.x = e.x + (tx - e.x) * ease; e.y = e.y + (ty - e.y) * ease; e.w = e.w + (tw - e.w) * ease; e.h = e.h + (th - e.h) * ease end
-					local x0, y0, w, h = e.x, e.y, e.w, e.h
+					-- no easing on the screen position: it lagged behind the player whenever the camera turned. Exact every frame.
+					local h = math.max(bot.Y - top.Y, 8)
+					local w = h * 0.55
+					local x0, y0 = top.X - w / 2, top.Y
 					local cx = x0 + w / 2
 					-- fade with distance (the last 40% of the range)
 					local fade = ESP.Fade and math.clamp(1 - (d - ESP.MaxDist * 0.6) / (ESP.MaxDist * 0.4), 0.25, 1) or 1
