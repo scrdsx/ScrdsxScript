@@ -43,9 +43,30 @@ local function unpatchClass()
 	klass, origs = nil, nil
 end
 
+-- Third way, needs no getgc: require() the game's own stamina module (the same cached table the game uses) and patch the class.
+local function tryRequire()
+	local ps = lp:FindFirstChild("PlayerScripts")
+	if not ps then return false end
+	for _, d in ipairs(ps:GetDescendants()) do
+		if d:IsA("ModuleScript") and d.Name:lower() == "characterstaminacontroller" then
+			local ok, mod = pcall(require, d)
+			if ok and type(mod) == "table" then
+				for _, v in pairs(mod) do
+					if type(v) == "table" and type(rawget(v, "useStamina")) == "function" and type(rawget(v, "getStamina")) == "function" then
+						patchClass(v)
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
 -- heap scan in chunks so it never freezes the game
 local function scan()
 	if scanning then return end
+	if not klass and tryRequire() then say("stamina patched (module)"); return end
 	if not getgc then say("needs getgc (executor)"); return end
 	scanning, lastScan = true, os.clock()
 	task.spawn(function()
