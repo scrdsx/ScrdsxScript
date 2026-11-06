@@ -1360,6 +1360,27 @@ end
 -- Quick loot (keybind): pick up every money / gold / item pile within `radius` studs of me, nearest first. Works any time the farm is off.
 function Farm.LootNearby(radius)
 	if Farm.Busy then return false end
+	radius = radius or 90
+	do -- anything to collect near me? tell the user why not instead of doing nothing
+		local _, _, h = parts()
+		local near, n = nil, 0
+		for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
+			for _, d in ipairs(CS:GetTagged(tg)) do
+				if d:IsA("BasePart") and d:GetAttribute("Enabled") == true and h then
+					local dd = (d.Position - h.Position).Magnitude
+					if not near or dd < near then near = dd end
+					if dd <= radius then n = n + 1 end
+				end
+			end
+		end
+		if n == 0 then
+			local msg = near and ("quick loot: nothing within %d st (nearest pile is %d st away)"):format(radius, near) or "quick loot: nothing collectable is loaded right now"
+			flog(msg)
+			if Farm.Notify then Farm.Notify(msg) end
+			return false
+		end
+		flog(("quick loot: %d pile(s) within %d st"):format(n, radius))
+	end
 	Farm.Busy, Farm.Cancel = true, false
 	task.spawn(function()
 		local got = 0
@@ -1367,6 +1388,7 @@ function Farm.LootNearby(radius)
 		if not ok then flog("quick loot error: " .. tostring(err)) end
 		Farm.Busy, Farm.Cancel = false, true
 		say(("quick loot: picked up %d"):format(got))
+		if Farm.Notify then Farm.Notify(("Quick loot: picked up %d"):format(got)) end
 	end)
 	return true
 end

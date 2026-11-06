@@ -177,6 +177,7 @@ Tele.Scan(addLocations)
 -- AutoFarm tab (modules get added here)
 local tFarm = win:Tab("AutoFarm", { Section = "Farming", Icon = 6 })
 Farm.Tele = Tele
+Farm.Notify = function(m) win:Notify(m, 4) end
 Farm.Drive = Drive
 Drive.Log = function(m) Farm.Trace("drive: " .. m) end
 Tele.OnTrace = Farm.Trace
@@ -446,7 +447,8 @@ end))
 
 -- camlock key (hold or toggle, see the Aim tab)
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
-	if gp or i.UserInputType ~= Enum.UserInputType.Keyboard or aimKey:IsListening() then return end
+	-- (gameProcessed is ignored on purpose: the game binds many keys itself and would swallow ours; only typing in a text box blocks it)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or aimKey:IsListening() then return end
 	if aimKey:Get() == i.KeyCode then Aim.KeyEvent(true) end
 end))
 table.insert(win.conns, UIS.InputEnded:Connect(function(i)
@@ -456,7 +458,7 @@ end))
 
 -- quick loot key: first press collects everything in range, pressing it again while collecting stops it
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
-	if gp or i.UserInputType ~= Enum.UserInputType.Keyboard or lootKey:IsListening() or not mLoot:Get() then return end
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or lootKey:IsListening() or not mLoot:Get() then return end
 	if lootKey:Get() ~= i.KeyCode then return end
 	if Farm.Busy then
 		if not Farm.Enabled then Farm.StopLoot(); win:Notify("Quick loot stopped") end
