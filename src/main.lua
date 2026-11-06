@@ -13,6 +13,7 @@ local Config = __import("config")
 local Farm = __import("farm")
 local Drive = __import("autodrive")
 local ESP = __import("esp")
+local Aim = __import("aim")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -99,6 +100,9 @@ Player.Start()
 local tEsp = win:Tab("ESP", { Section = "Game" })
 local mEsp = tEsp:Module({ Name = "Player ESP", Default = false, Callback = function(on) ESP.SetEnabled(on) end })
 mEsp:Toggle({ Name = "Box", Default = ESP.Boxes, Callback = function(v) ESP.Boxes = v end })
+mEsp:Toggle({ Name = "Corner box style (off = full outline)", Default = ESP.CornerBox, Callback = function(v) ESP.CornerBox = v end })
+mEsp:Toggle({ Name = "Skeleton", Default = ESP.Skeleton, Callback = function(v) ESP.Skeleton = v end })
+mEsp:Toggle({ Name = "Fade with distance", Default = ESP.Fade, Callback = function(v) ESP.Fade = v end })
 mEsp:Toggle({ Name = "Name + role (police blue, fire red)", Default = ESP.Names, Callback = function(v) ESP.Names = v end })
 mEsp:Toggle({ Name = "Health bar", Default = ESP.Health, Callback = function(v) ESP.Health = v end })
 mEsp:Toggle({ Name = "Distance", Default = ESP.Distance, Callback = function(v) ESP.Distance = v end })
@@ -114,6 +118,28 @@ local mRadar = tEsp:Module({ Name = "Police radar (escape helper)", Default = tr
 mRadar:Slider({ Name = "Warn within", Min = 100, Max = 800, Step = 25, Default = ESP.RadarDist, Suffix = " st", Callback = function(v) ESP.RadarDist = v end })
 ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) end
 ESP.Start()
+
+-- Aim tab
+local tAim = win:Tab("Aim", { Section = "Game" })
+local mAim = tAim:Module({ Name = "Camlock", Default = false, Callback = function(on) Aim.SetEnabled(on) end })
+local lAim = mAim:Label({ Name = "Status", Value = Aim.Info })
+Aim.Changed = function() lAim:Set(Aim.Info) end
+local aimKey = mAim:Keybind({ Name = "Aim key", Default = Enum.KeyCode.Z })
+mAim:Toggle({ Name = "Hold the key (off = press to toggle)", Default = Aim.Hold, Callback = function(v) Aim.Hold = v; Aim.Active = false end })
+mAim:Toggle({ Name = "Aim at the head (off = body)", Default = true, Callback = function(v) Aim.Part = v and "Head" or "Torso" end })
+mAim:Slider({ Name = "Field of view", Min = 40, Max = 600, Step = 10, Default = Aim.FOV, Suffix = " px", Callback = function(v) Aim.FOV = v end })
+mAim:Slider({ Name = "Smoothness (low = slow glide, 1 = snap)", Min = 0.05, Max = 1, Step = 0.05, Default = Aim.Smooth, Callback = function(v) Aim.Smooth = v end })
+mAim:Slider({ Name = "Range", Min = 50, Max = 1500, Step = 25, Default = Aim.MaxDist, Suffix = " st", Callback = function(v) Aim.MaxDist = v end })
+mAim:Slider({ Name = "Predict movement", Min = 0, Max = 0.4, Step = 0.01, Default = Aim.Prediction, Suffix = " s", Callback = function(v) Aim.Prediction = v end })
+mAim:Toggle({ Name = "Only players I can see (wall check)", Default = Aim.WallCheck, Callback = function(v) Aim.WallCheck = v end })
+mAim:Toggle({ Name = "Stay on the first target while held", Default = Aim.Sticky, Callback = function(v) Aim.Sticky = v end })
+mAim:Toggle({ Name = "Wanted players only", Default = Aim.WantedOnly, Callback = function(v) Aim.WantedOnly = v end })
+mAim:Toggle({ Name = "Show field of view circle", Default = Aim.ShowFOV, Callback = function(v) Aim.ShowFOV = v end })
+mAim:Toggle({ Name = "Target police", Default = true, Callback = function(v) Aim.Teams.Police = v end })
+mAim:Toggle({ Name = "Target fire department", Default = true, Callback = function(v) Aim.Teams.FireDepartment = v end })
+mAim:Toggle({ Name = "Target citizens", Default = true, Callback = function(v) Aim.Teams.Citizen = v end })
+mAim:Toggle({ Name = "Target other jobs / prisoners", Default = true, Callback = function(v) Aim.Teams.Other = v end })
+Aim.Start()
 
 -- Teleports tab
 local tTele = win:Tab("Teleports")
@@ -164,7 +190,7 @@ mFarm = tFarm:Module({ Name = "Auto Rob", Default = false, NoSave = true, Callba
 	win:Notify(on and "AutoFarm on" or "AutoFarm stopping...")
 end })
 local mLoot = tFarm:Module({ Name = "Quick loot (keybind)", Default = true, Callback = function() end })
-local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items nearby)", Default = Enum.KeyCode.G })
+local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items nearby)", Default = Enum.KeyCode.Y })
 mLoot:Slider({ Name = "Range", Min = 20, Max = 250, Step = 5, Default = 90, Suffix = " st", Callback = function(v) Farm.LootRange = v end })
 Farm.LootRange = Farm.LootRange or 90
 mFarm:Toggle({ Name = "Cash registers (gas stations, shops)", Default = Farm.Registers, Callback = function(v) Farm.Registers = v end })
@@ -200,7 +226,7 @@ local hud = Hud.new({
 	GetModules = function()
 		local list = {}
 		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
-			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm, ["Player ESP"] = mEsp }) do
+			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm, ["Player ESP"] = mEsp, ["Camlock"] = mAim }) do
 			if m:Get() then list[#list + 1] = name end
 		end
 		return list
@@ -361,6 +387,10 @@ local function unload()
 	hud.EditChanged = nil
 	Drive.Stop()
 	Farm.Destroy()
+	ESP.OnPolice = nil
+	ESP.Destroy()
+	Aim.Changed = nil
+	Aim.Destroy()
 	hud:Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
@@ -412,6 +442,16 @@ end))
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 	if gp or i.UserInputType ~= Enum.UserInputType.Keyboard or flyKey:IsListening() then return end
 	if flyKey:Get() == i.KeyCode then mFly:Set(not mFly:Get()) end
+end))
+
+-- camlock key (hold or toggle, see the Aim tab)
+table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
+	if gp or i.UserInputType ~= Enum.UserInputType.Keyboard or aimKey:IsListening() then return end
+	if aimKey:Get() == i.KeyCode then Aim.KeyEvent(true) end
+end))
+table.insert(win.conns, UIS.InputEnded:Connect(function(i)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
+	if Aim.Hold and aimKey:Get() == i.KeyCode then Aim.KeyEvent(false) end
 end))
 
 -- quick loot key: first press collects everything in range, pressing it again while collecting stops it
