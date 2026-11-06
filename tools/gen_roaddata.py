@@ -22,6 +22,21 @@ obs = []
 for f in sorted(glob.glob(os.path.join(folder, "obstacles_*.csv"))):
     obs += list(csv.DictReader(open(f, encoding="utf8")))
 
+# big solid things that sit INSIDE the Roads folder (roundabout statue bases, concrete barriers, bridge walls) are not in the obstacle files, because the
+# exporter skips everything under Workspace.Roads. They are in roads_*.csv: take the big, tall, collidable ones as obstacles too.
+SKIP_PARENTS = {"Streetlamp", "Sidewalks", "Track", "Train Tracks Straight", "Train Tracks Curve", "Hydrant", "Guide Post", "MiniLight"}
+extra = 0
+for f in sorted(glob.glob(os.path.join(folder, "roads_*.csv"))):
+    for r in csv.DictReader(open(f, encoding="utf8")):
+        if r["name"] in ("Road", "Curb", "Sidewalk", "Shoulder") or r["parent"] in SKIP_PARENTS or r["collide"] != "1":
+            continue
+        sx, sy, sz = float(r["sx"]), float(r["sy"]), float(r["sz"])
+        barrier = "safety barrier" in r["parent"].lower() or "barrier" in r["name"].lower()
+        if barrier or (sy >= 2.5 and max(sx, sz) >= 4 and min(sx, sz) >= 2):
+            r = dict(r); r["_extra"] = True
+            obs.append(r); extra += 1
+print(extra, "solid parts from the Roads folder added as obstacles")
+
 blocked = set()
 for r in obs:
     x, y, z = float(r["x"]), float(r["y"]), float(r["z"])
@@ -49,6 +64,7 @@ for r in obs:
 barrier_cells = set()
 barriers = []
 for r in obs:
+    if r.get("_extra"): continue # (these are solid things, not gates that close a road)
     nm = (r["name"] + " " + r["parent"]).lower()
     if ("gate" in nm and "gate base" not in nm and "gated" not in nm) or "gate base" in nm or ("bollard" in nm and r["name"] == "Main") or "roadblock" in nm or "barrier" in nm:
         x, z = float(r["x"]), float(r["z"])
