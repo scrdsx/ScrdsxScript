@@ -123,11 +123,12 @@ end
 
 local function buildGui()
 	gui = mk("ScreenGui", { Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 4, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, guiParent())
-	hover = mk("Frame", { BackgroundColor3 = BG, BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.fromOffset(200, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, ZIndex = 5 }, gui)
+	hover = mk("Frame", { BackgroundColor3 = BG, BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Visible = false, ZIndex = 5 }, gui)
+	mk("UISizeConstraint", { MinSize = Vector2.new(190, 0) }, hover)
 	mk("UICorner", { CornerRadius = UDim.new(0, 8) }, hover)
 	mk("UIStroke", { Color = STROKE, Thickness = 1 }, hover)
 	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, hover)
-	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Font = Enum.Font.GothamMedium, TextSize = 12,
+	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = Enum.Font.GothamMedium, TextSize = 12,
 		TextColor3 = Color3.fromRGB(215, 215, 220), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, RichText = true, ZIndex = 6 }, hover)
 	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(176, 32), BackgroundColor3 = BG, BackgroundTransparency = 0.1, BorderSizePixel = 0, Visible = false }, gui)
 	mk("UICorner", { CornerRadius = UDim.new(0, 16) }, radar)
@@ -285,7 +286,9 @@ local function update(dt)
 					-- name + role + wanted
 					if ESP.Names then
 						e.name.Visible = true
-						e.name.Position = UDim2.fromOffset(cx, y0 - 4)
+						-- keep the tag fully on screen (it used to stick out at the screen edge)
+						local nsz = e.name.AbsoluteSize
+						e.name.Position = UDim2.fromOffset(math.clamp(cx, nsz.X / 2 + 4, math.max(vs.X - nsz.X / 2 - 4, nsz.X / 2 + 4)), math.max(y0 - 4, nsz.Y + 4))
 						local tag = TAG[role] and ("  <font color=\"%s\">%s</font>"):format(hex(col), TAG[role]) or ""
 						local wt = (wanted and ESP.Wanted) and "  <font color=\"#ff5252\">WANTED</font>" or ""
 						e.name.Text = plr.DisplayName .. tag .. wt
@@ -295,7 +298,8 @@ local function update(dt)
 					end
 					if ESP.Distance then
 						e.dist.Visible = true
-						e.dist.Position = UDim2.fromOffset(cx, y0 + h + 3)
+						local dsz = e.dist.AbsoluteSize
+						e.dist.Position = UDim2.fromOffset(math.clamp(cx, dsz.X / 2 + 4, math.max(vs.X - dsz.X / 2 - 4, dsz.X / 2 + 4)), math.min(y0 + h + 3, vs.Y - dsz.Y - 4))
 						e.dist.Text = math.floor(d) .. " st"
 						e.dist.TextTransparency = tr; e.dist.BackgroundTransparency = 0.3 + tr * 0.7
 					else
@@ -346,7 +350,10 @@ local function update(dt)
 	if hoverBest then
 		hoverLabel.Text = hoverText
 		hover.Visible = true
-		hover.Position = UDim2.fromOffset(math.min(mouse.X + 18, vs.X - 210), math.min(mouse.Y + 18, vs.Y - 160))
+		local hs = hover.AbsoluteSize
+		local hx = mouse.X + 18
+		if hx + hs.X > vs.X - 6 then hx = mouse.X - 18 - hs.X end -- no room on the right: open to the left of the cursor
+		hover.Position = UDim2.fromOffset(math.max(hx, 6), math.clamp(mouse.Y + 18, 6, math.max(vs.Y - hs.Y - 6, 6)))
 	else
 		hover.Visible = false
 	end
