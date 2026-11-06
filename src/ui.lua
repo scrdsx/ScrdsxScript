@@ -4,6 +4,7 @@ local UIS = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local Logo = __import("logo")
+local Icons = __import("icons")
 
 local T = {
 	bg = Color3.fromRGB(9, 9, 11),
@@ -59,7 +60,7 @@ end
 local UI = {}
 UI.__index = UI
 
-local SIDE_W, HEAD_H = 214, 54
+local SIDE_W, HEAD_H = 204, 54
 
 function UI.new(opts)
 	opts = opts or {}
@@ -235,8 +236,11 @@ function UI:Tab(name, opts)
 	}, { corner(10) })
 	local dot = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 12, .5, 0), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = T.sub, BorderSizePixel = 0, Parent = btn }, { corner(3) })
 	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 0, .5, 0), Size = UDim2.fromOffset(3, 0), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = btn }, { corner(2) })
+	-- a line icon (sprite sheet, tinted) instead of the dot when the executor can load images
+	local ico = opts.Icon and Icons.Make(btn, opts.Icon, 18, UDim2.new(0, 11, .5, -9))
+	if ico then ico.ImageColor3 = T.sub; dot.Visible = false end
 	local txt = label(name, 13, T.sub)
-	txt.Position = UDim2.fromOffset(28, 0); txt.Size = UDim2.new(1, -34, 1, 0); txt.Parent = btn
+	txt.Position = UDim2.fromOffset(ico and 38 or 28, 0); txt.Size = UDim2.new(1, ico and -44 or -34, 1, 0); txt.Parent = btn
 
 	local page = new("CanvasGroup", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
@@ -246,7 +250,7 @@ function UI:Tab(name, opts)
 	local header = label(name:upper(), 11, T.sub, T.bold)
 	header.Size = UDim2.new(1, 0, 0, 16); header.LayoutOrder = -1; header.Visible = false; header.Parent = page
 
-	local tab = { name = name, btn = btn, txt = txt, dot = dot, bar = bar, page = page, header = header, win = self, index = idx }
+	local tab = { name = name, btn = btn, txt = txt, dot = ico or dot, dotImg = ico ~= nil, bar = bar, page = page, header = header, win = self, index = idx }
 	setmetatable(tab, { __index = UI.TabMethods })
 	table.insert(self.tabs, tab)
 
@@ -266,7 +270,7 @@ function UI:Select(tab)
 		local on = t == tab
 		tween(t.btn, .22, { BackgroundTransparency = on and .35 or 1, BackgroundColor3 = T.accentDim })
 		tween(t.txt, .22, { TextColor3 = on and T.text or T.sub })
-		tween(t.dot, .22, { BackgroundColor3 = on and T.accent or T.sub })
+		tween(t.dot, .22, t.dotImg and { ImageColor3 = on and T.accent or T.sub } or { BackgroundColor3 = on and T.accent or T.sub })
 		tween(t.bar, .25, { Size = UDim2.fromOffset(3, on and 18 or 0) }, Enum.EasingStyle.Back)
 		if not on then t.page.Visible = false; t.page.GroupTransparency = 1 end
 	end
@@ -754,6 +758,9 @@ function UI.Remap(root, map)
 		pcall(function()
 			if o:IsA("GuiObject") then
 				local n = fix(o.BackgroundColor3); if n then o.BackgroundColor3 = n end
+				if o:IsA("ImageLabel") or o:IsA("ImageButton") then
+					local ic = fix(o.ImageColor3); if ic then o.ImageColor3 = ic end
+				end
 				if o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox") then
 					local t = fix(o.TextColor3); if t then o.TextColor3 = t end
 				end

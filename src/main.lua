@@ -30,7 +30,7 @@ Loading.run(TITLE, SUBTITLE)
 local win = UI.new({ Title = TITLE, Subtitle = SUBTITLE })
 
 -- Vehicle Mods tab
-local tVeh = win:Tab("Vehicle Mods", { Section = "Game" })
+local tVeh = win:Tab("Vehicle Mods", { Section = "Game", Icon = 1 })
 local lCar = tVeh:Label({ Name = "Car", Value = Vehicle.Info })
 local mSusp = tVeh:Module({ Name = "Suspension", Default = false, Callback = function(on) Vehicle.SetEnabled(on) end })
 mSusp:Slider({ Name = "Height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, Default = 0, Suffix = " st", Callback = function(v) Vehicle.SetHeight(v) end })
@@ -90,14 +90,14 @@ mFly:Toggle({ Name = "Stabilize (no spin)", Default = Fly.Stabilize, Callback = 
 Fly.Start()
 
 -- Player tab
-local tPlayer = win:Tab("Player")
+local tPlayer = win:Tab("Player", { Icon = 2 })
 local mStam = tPlayer:Module({ Name = "Inf Stamina", Default = false, Callback = function(on) Player.SetInfStamina(on) end })
 local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
 Player.Start()
 
 -- ESP tab
-local tEsp = win:Tab("ESP", { Section = "Game" })
+local tEsp = win:Tab("ESP", { Section = "Game", Icon = 3 })
 local mEsp = tEsp:Module({ Name = "Player ESP", Default = false, Callback = function(on) ESP.SetEnabled(on) end })
 mEsp:Toggle({ Name = "Box", Default = ESP.Boxes, Callback = function(v) ESP.Boxes = v end })
 mEsp:Toggle({ Name = "Corner box style (off = full outline)", Default = ESP.CornerBox, Callback = function(v) ESP.CornerBox = v end })
@@ -120,7 +120,7 @@ ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) 
 ESP.Start()
 
 -- Aim tab
-local tAim = win:Tab("Aim", { Section = "Game" })
+local tAim = win:Tab("Aim", { Section = "Game", Icon = 4 })
 local mAim = tAim:Module({ Name = "Camlock", Default = false, Callback = function(on) Aim.SetEnabled(on) end })
 local lAim = mAim:Label({ Name = "Status", Value = Aim.Info })
 Aim.Changed = function() lAim:Set(Aim.Info) end
@@ -142,7 +142,7 @@ mAim:Toggle({ Name = "Target other jobs / prisoners", Default = true, Callback =
 Aim.Start()
 
 -- Teleports tab
-local tTele = win:Tab("Teleports")
+local tTele = win:Tab("Teleports", { Icon = 5 })
 local lTele = tTele:Label({ Name = "Status", Value = Tele.Info })
 Tele.Notify = function(m) win:Notify(m) end
 Tele.Changed = function() lTele:Set(Tele.Info) end
@@ -175,7 +175,7 @@ end })
 Tele.Scan(addLocations)
 
 -- AutoFarm tab (modules get added here)
-local tFarm = win:Tab("AutoFarm", { Section = "Farming" })
+local tFarm = win:Tab("AutoFarm", { Section = "Farming", Icon = 6 })
 Farm.Tele = Tele
 Farm.Drive = Drive
 Drive.Log = function(m) Farm.Trace("drive: " .. m) end
@@ -232,7 +232,7 @@ local hud = Hud.new({
 		return list
 	end,
 })
-local tHud = win:Tab("HUD", { Section = "Client" })
+local tHud = win:Tab("HUD", { Section = "Client", Icon = 7 })
 tHud:Toggle({ Name = "Watermark", Default = hud:IsOn("watermark"), Callback = function(v) hud:SetWidget("watermark", v) end })
 tHud:Toggle({ Name = "Player info (health, position, nearest spot)", Default = hud:IsOn("info"), Callback = function(v) hud:SetWidget("info", v) end })
 tHud:Toggle({ Name = "Vehicle (speed, fuel, health, tires)", Default = hud:IsOn("vehicle"), Callback = function(v) hud:SetWidget("vehicle", v) end })
@@ -249,7 +249,7 @@ hud.EditChanged = function(on)
 end
 
 -- Configs tab: everything you change (modules on/off, sliders, keybinds, HUD layout) is saved and loaded again next time
-local tCfg = win:Tab("Configs")
+local tCfg = win:Tab("Configs", { Icon = 8 })
 local current = Config.GetAutoload() or "default"
 local lCurrent = tCfg:Label({ Name = "Current config", Value = current })
 local autosave, newName, lastSnap = true, "", nil
@@ -324,7 +324,7 @@ else
 end
 
 -- Settings tab
-local tSet = win:Tab("Settings")
+local tSet = win:Tab("Settings", { Icon = 9 })
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
 -- theme: accent + background as hex, applied to the window and the HUD, remembered between sessions
 local THEME_FILE = "ScrdsxScript/theme.json"

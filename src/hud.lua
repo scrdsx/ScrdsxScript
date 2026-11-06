@@ -81,10 +81,10 @@ function HUD.new(opts)
 	-- one widget = a card with an optional title and a list of rows
 	local function widget(id, title)
 		local f = new("Frame", {
-			Name = id, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = T.bg, BackgroundTransparency = .1,
+			Name = id, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = T.bg, BackgroundTransparency = .06,
 			BorderSizePixel = 0, Active = false, Parent = gui,
 		})
-		new("UICorner", { CornerRadius = UDim.new(0, 12), Parent = f })
+		new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = f })
 		local st = new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = f })
 		new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 9), PaddingBottom = UDim.new(0, 9), Parent = f })
 		local sc = new("UIScale", { Scale = self.scale, Parent = f })
@@ -92,7 +92,7 @@ function HUD.new(opts)
 		local w = { id = id, frame = f, stroke = st, scale = sc, rows = {}, title = title }
 		if title then
 			local tl = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 14), AutomaticSize = Enum.AutomaticSize.X, Text = title:upper(),
-				TextColor3 = T.accentSoft, Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 0, Parent = f })
+				TextColor3 = T.sub, Font = T.bold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 0, Parent = f })
 			w.titleLabel = tl
 		end
 		-- position (stored as a fraction of the screen so it survives resolution changes)
@@ -150,6 +150,9 @@ function HUD.new(opts)
 
 	-- rows: { key, value, color } ; creates / reuses TextLabels
 	local function setRows(w, list)
+		local kw = 0
+		for _, r in ipairs(list) do kw = math.max(kw, #(r[1] or "")) end
+		kw = kw * 6.6 + 6
 		for i, r in ipairs(list) do
 			local row = w.rows[i]
 			if not row then
@@ -164,8 +167,10 @@ function HUD.new(opts)
 			end
 			local ts = r.ts or 12 -- text size (the speed readout is big)
 			row.line.Size = UDim2.fromOffset(0, ts + 2)
-			row.k.Size = UDim2.fromOffset(0, ts + 2); row.v.Size = UDim2.fromOffset(0, ts + 2); row.v.TextSize = ts
 			local key = r[1] or ""
+			-- keys sit in one fixed column so the values line up underneath each other
+			row.k.AutomaticSize = Enum.AutomaticSize.None
+			row.k.Size = UDim2.fromOffset(key ~= "" and kw or 0, ts + 2); row.v.Size = UDim2.fromOffset(0, ts + 2); row.v.TextSize = ts
 			if row.k.Text ~= key then row.k.Text = key end
 			row.k.Visible = key ~= ""
 			local val = tostring(r[2] or "")
