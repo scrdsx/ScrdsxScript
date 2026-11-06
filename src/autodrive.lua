@@ -19,7 +19,7 @@ local REM = {
 	IGNITION = "de7910a1-5108-423c-bb43-bb8dbe2dcf8a",
 }
 
-local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true, Evade = true } -- State: live data for the HUD map
+local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true, Evade = false } -- State: live data for the HUD map
 local function log(s) if Drive.Log then Drive.Log(s) else print("[drive] " .. s) end end
 
 local remotes = {}
@@ -940,6 +940,7 @@ function Drive.To(targetPos, opts)
 		honkPar.FilterType = Enum.RaycastFilterType.Include
 		local lastHonkChk, honkSince, carDist = 0, nil, nil
 		local lastChase = 0
+		local passUntil, passSide, carStopT = 0, 0, nil -- going around a car that blocks the lane
 		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
 		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
 		local lastHp, hp0, slowUntil = 0, car:GetAttribute("currentHealth"), 0
@@ -1066,7 +1067,14 @@ function Drive.To(targetPos, opts)
 
 			-- aim point on the route, further ahead when faster
 			local look = math.clamp(P.lookBase + spd * P.lookGain, 12, 50)
+			do
+				-- in a bend aim closer: a long look-ahead cuts the corner (the car turned in early and ran over the inside)
+				local pa, pb, pc = pointAhead(bestI, bestT, 3), pointAhead(bestI, bestT, look * 0.8), pointAhead(bestI, bestT, look * 1.8)
+				local turn = math.abs(wrap(yawOf(V3(pc.X - pb.X, 0, pc.Z - pb.Z)) - yawOf(V3(pb.X - pa.X, 0, pb.Z - pa.Z))))
+				look = math.max(8, look / (1 + 2.5 * turn))
+			end
 			local aim = pointAhead(bestI, bestT, look)
+			if nowT < passUntil then aim = aim + V3(-fwd.Z, 0, fwd.X) * (passSide * 7) end
 			if offRoad and roadPt then aim = roadPt end
 			local dirv = V3(aim.X - pos.X, 0, aim.Z - pos.Z)
 			if dirv.Magnitude < 0.5 then dirv = fwd end
@@ -1164,8 +1172,46 @@ function Drive.To(targetPos, opts)
 				key(Enum.KeyCode.H, honkSince ~= nil and (nowT - honkSince) % 1.4 < 0.5)
 			end
 			-- and do not drive into it: brake when it is closer than the stopping distance
-			if carDist and not reversing and carDist < spd * spd / 36 + spd * 0.3 + 6 then thrCmd = spd > 3 and -1 or 0 end
-			if danger and not reversing and danger.dist < spd * spd / 36 + spd * 0.3 + 5 then
+			local passing = nowT < passUntil
+			if passing then target = math.min(target, 20); thrCmd = spd < 17 and 1 or 0 end
+			-- a car stands in our lane and does not move: go around it (to the side that is free and still on the road)
+			if carDist and spd < 3 and not reversing and not passing then
+				carStopT = carStopT or nowT
+				if nowT - carStopT > 2.0 then
+					carStopT = nil
+					local rightV = V3(-fwd.Z, 0, fwd.X)
+					local cars2 = {}
+					for _, tag in ipairs({ "Car", "Motorcycle" }) do
+						for _, m in ipairs(CS:GetTagged(tag)) do if m ~= car and m.Parent then cars2[#cars2 + 1] = m end end
+					end
+					local bestSide
+					for _, sgn in ipairs({ passSide ~= 0 and passSide or 1, -(passSide ~= 0 and passSide or 1) }) do
+						local o = V3(pos.X, pos.Y - 0.5, pos.Z) + rightV * (sgn * 7) + fwd * 2
+						local clear = true
+						pcall(function()
+							honkPar.FilterDescendantsInstances = cars2
+							if workspace:Blockcast(CFrame.lookAt(o, o + fwd), V3(6, 3, 1), fwd * 22, honkPar) then clear = false end
+							if clear and workspace:Blockcast(CFrame.lookAt(o, o + fwd), V3(6, 3, 1), fwd * 22, scanPar) then clear = false end
+						end)
+						if clear and roadsKnown then
+							local q = pos + rightV * (sgn * 7) + fwd * 14
+							if not roadAt(q.X, q.Z, q.Y) then clear = false end
+						end
+						if clear then bestSide = sgn; break end
+					end
+					if bestSide then
+						passSide, passUntil = bestSide, nowT + 5
+						log(("a car blocks the lane (%.0f studs ahead, standing still): going around it on the %s"):format(carDist, bestSide > 0 and "right" or "left"))
+					else
+						log("a car blocks the lane and both sides are blocked: waiting")
+						carStopT = nowT + 3 -- try again in 5 s
+					end
+				end
+			elseif not carDist then
+				carStopT = nil
+			end
+			if carDist and not reversing and carDist < (passing and 3.5 or (spd * spd / 36 + spd * 0.3 + 6)) then thrCmd = spd > 3 and -1 or 0 end
+			if danger and not reversing and danger.dist < (passing and 2.5 or (spd * spd / 36 + spd * 0.3 + 5)) then
 				thrCmd = spd > 4 and -1 or 0
 				if nowT - lastDangerLog > 2 then
 					lastDangerLog = nowT

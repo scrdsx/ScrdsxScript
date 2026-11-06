@@ -235,13 +235,15 @@ function Plan.Route(ax, az, bx, bz, opts)
 	end
 
 	-- string pulling: drop cells while the straight line stays at least 2 cells from the road edge
+	-- string pulling must keep further from the road edge than the path itself, else it cuts corners (the car then turns in early)
+	local pullEdge = math.min(3, minEdge + 1)
 	local function lineOk(a, b)
 		local len = sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
 		local steps = max(1, floor(len / (CELL * 0.5)))
 		for t = 1, steps - 1 do
 			local x, z = a[1] + (b[1] - a[1]) * t / steps, a[2] + (b[2] - a[2]) * t / steps
 			local k = find(floor(x / CELL), floor(z / CELL), a[4])
-			if not k or (edge[k] or 0) < 2 then return false end
+			if not k or (edge[k] or 0) < pullEdge then return false end
 			if blocked and blocked(x, z) then return false end
 		end
 		return true
