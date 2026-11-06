@@ -1367,44 +1367,74 @@ function Farm.Destroy()
 	Farm.Changed = nil
 end
 
--- Quick loot (keybind): pick up every money / gold / item pile within `radius` studs of me, nearest first. Works any time the farm is off.
+-- Quick loot (keybind). The server only accepts a pickup when you are within 10 studs of the pile, so the default mode does NOT walk:
+-- it picks up EVERYTHING within reach of where you stand, all at the same moment (one hold for the whole group). Stand in the middle of the
+-- money and press the key. With "Walk to piles out of reach" on it also walks to piles up to `Farm.LootRange` studs away, like the farm does.
+local REACH = 9.5
+local function lootCandidates(h, radius)
+	local list, near = {}, nil
+	for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
+		for _, d in ipairs(CS:GetTagged(tg)) do
+			if d:IsA("BasePart") and d:GetAttribute("Enabled") == true and d:GetAttribute("Collectable") ~= false then
+				local dd = (d.Position - h.Position).Magnitude
+				if not near or dd < near then near = dd end
+				if dd <= radius then list[#list + 1] = { part = d, id = CS:HasTag(d, "Money Collect Interactable") and ACT.money or ACT.item, dist = dd } end
+			end
+		end
+	end
+	local drops = workspace:FindFirstChild("Drops") -- money on the floor: MeshParts named after me
+	for _, d in ipairs(drops and drops:GetChildren() or {}) do
+		if d.Name == lp.Name and d:IsA("BasePart") then
+			local dd = (d.Position - h.Position).Magnitude
+			if not near or dd < near then near = dd end
+			if dd <= radius then list[#list + 1] = { part = d, id = ACT.drop, dist = dd } end
+		end
+	end
+	return list, near
+end
+
 function Farm.LootNearby(radius)
 	if Farm.Busy then return false end
-	radius = radius or 90
-	do -- anything to collect near me? tell the user why not instead of doing nothing
-		local _, _, h = parts()
-		local near, n = nil, 0
-		for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
-			for _, d in ipairs(CS:GetTagged(tg)) do
-				if d:IsA("BasePart") and d:GetAttribute("Enabled") == true and h then
-					local dd = (d.Position - h.Position).Magnitude
-					if not near or dd < near then near = dd end
-					if dd <= radius then n = n + 1 end
-				end
-			end
+	local walk = Farm.LootWalk == true
+	local range = walk and (radius or 90) or REACH
+	local _, _, h = parts()
+	if not h then return false end
+	local list, near = lootCandidates(h, range)
+	if #list == 0 then
+		local msg
+		if near then
+			msg = walk and ("quick loot: nothing within %d st (nearest pile is %d st away)"):format(range, near)
+				or ("quick loot: nothing within reach (nearest pile is %d st away: step closer, the game only lets you pick up within 10 st)"):format(near)
+		else
+			msg = "quick loot: nothing collectable is loaded right now"
 		end
-		do -- floor money in Workspace.Drops
-			local drops = workspace:FindFirstChild("Drops")
-			for _, d in ipairs(drops and drops:GetChildren() or {}) do
-				if d.Name == lp.Name and d:IsA("BasePart") and h then
-					local dd = (d.Position - h.Position).Magnitude
-					if not near or dd < near then near = dd end
-					if dd <= radius then n = n + 1 end
-				end
-			end
-		end
-		if n == 0 then
-			local msg = near and ("quick loot: nothing within %d st (nearest pile is %d st away)"):format(radius, near) or "quick loot: nothing collectable is loaded right now"
-			flog(msg)
-			if Farm.Notify then Farm.Notify(msg) end
-			return false
-		end
-		flog(("quick loot: %d pile(s) within %d st"):format(n, radius))
+		flog(msg)
+		if Farm.Notify then Farm.Notify(msg) end
+		return false
 	end
+	flog(("quick loot: %d pile(s) %s"):format(#list, walk and ("within " .. range .. " st, walking") or "in reach, all at once"))
 	Farm.Busy, Farm.Cancel = true, false
 	task.spawn(function()
 		local got = 0
-		local ok, err = pcall(function() got = loot(workspace, "quick loot", radius or 90) end)
+		local ok, err = pcall(function()
+			if walk then
+				got = loot(workspace, "quick loot", range)
+			else
+				-- everything in reach in ONE hold; a second and third round pick up what the first one missed (up to 3 tries)
+				for _ = 1, 3 do
+					local _, _, hh = parts()
+					if not hh or Farm.Cancel then break end
+					local l = lootCandidates(hh, REACH)
+					if #l == 0 then break end
+					say(("quick loot: picking up %d at once"):format(#l))
+					holdBatch(l)
+					task.wait(0.25)
+					for _, it in ipairs(l) do
+						if not it.part.Parent or (it.id ~= ACT.drop and it.part:GetAttribute("Enabled") ~= true) then got = got + 1 end
+					end
+				end
+			end
+		end)
 		if not ok then flog("quick loot error: " .. tostring(err)) end
 		Farm.Busy, Farm.Cancel = false, true
 		say(("quick loot: picked up %d"):format(got))

@@ -221,7 +221,10 @@ mFarm = tFarm:Module({ Name = "Auto Rob", Default = false, NoSave = true, Callba
 end })
 local mLoot = tFarm:Module({ Name = "Quick loot (keybind)", Default = true, Callback = function() end })
 local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items nearby)", Default = Enum.KeyCode.Y })
-mLoot:Slider({ Name = "Range", Min = 20, Max = 250, Step = 5, Default = 90, Suffix = " st", Callback = function(v) Farm.LootRange = v end })
+mLoot:Section("How it collects")
+mLoot:Label({ Name = "Default", Value = "all piles in reach, at once" })
+mLoot:Toggle({ Name = "Also walk to piles out of reach", Default = false, Callback = function(v) Farm.LootWalk = v end })
+mLoot:Slider({ Name = "Walking range", Min = 20, Max = 250, Step = 5, Default = 90, Suffix = " st", Callback = function(v) Farm.LootRange = v end })
 Farm.LootRange = Farm.LootRange or 90
 mFarm:Section("What to rob")
 mFarm:Toggle({ Name = "Cash registers (gas stations, shops)", Default = Farm.Registers, Callback = function(v) Farm.Registers = v end })
@@ -496,7 +499,7 @@ table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 		if not Farm.Enabled then Farm.StopLoot(); win:Notify("Quick loot stopped") end
 		return
 	end
-	win:Notify("Quick loot: collecting within " .. tostring(Farm.LootRange) .. " st (press again to stop)", 3)
+	win:Notify(Farm.LootWalk and ("Quick loot: walking to piles within " .. tostring(Farm.LootRange) .. " st (press again to stop)") or "Quick loot: picking up everything in reach", 2.5)
 	Farm.LootNearby(Farm.LootRange)
 end))
 
