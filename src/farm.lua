@@ -588,6 +588,16 @@ local function loot(root, label, radius)
 				if money or item then list[#list + 1] = { part = d, id = money and ACT.money or ACT.item } end
 			end
 		end
+		if root == workspace then
+			-- money that dropped on the floor (broken registers, your own drops): MeshParts named after me in Workspace.Drops
+			local drops = workspace:FindFirstChild("Drops")
+			for _, d in ipairs(drops and drops:GetChildren() or {}) do
+				if d.Name == lp.Name and d:IsA("BasePart") and (tried[d] or 0) < 3
+					and (not radius or (hrp0 and (d.Position - hrp0.Position).Magnitude <= radius)) then
+					list[#list + 1] = { part = d, id = ACT.drop }
+				end
+			end
+		end
 		if #list == 0 then break end
 		local _, _, hrp = parts()
 		if not hrp then break end
@@ -1367,6 +1377,16 @@ function Farm.LootNearby(radius)
 		for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
 			for _, d in ipairs(CS:GetTagged(tg)) do
 				if d:IsA("BasePart") and d:GetAttribute("Enabled") == true and h then
+					local dd = (d.Position - h.Position).Magnitude
+					if not near or dd < near then near = dd end
+					if dd <= radius then n = n + 1 end
+				end
+			end
+		end
+		do -- floor money in Workspace.Drops
+			local drops = workspace:FindFirstChild("Drops")
+			for _, d in ipairs(drops and drops:GetChildren() or {}) do
+				if d.Name == lp.Name and d:IsA("BasePart") and h then
 					local dd = (d.Position - h.Position).Magnitude
 					if not near or dd < near then near = dd end
 					if dd <= radius then n = n + 1 end
