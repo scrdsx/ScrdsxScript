@@ -15,6 +15,7 @@ local PARTS = { "Head", "Torso", "Root" }
 Aim.PartList = PARTS
 
 local gui, circle, circleStroke, rp
+local lastT
 local BIND = "ScrdsxCamlock"
 
 local function guiParent()
@@ -67,7 +68,7 @@ local function step(dt)
 		circleStroke.Color = Aim.Active and Color3.fromRGB(255, 82, 82) or Color3.fromRGB(235, 235, 240)
 		circleStroke.Transparency = Aim.Active and 0.1 or 0.55
 	end
-	if not (Aim.Enabled and Aim.Active) then Aim.Target = nil; return end
+	if not (Aim.Enabled and Aim.Active) then Aim.Target, lastT = nil, nil; return end
 
 	local origin = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 	origin = origin and origin.Position or cam.CFrame.Position
@@ -96,6 +97,11 @@ local function step(dt)
 			end
 		end
 		Aim.Target, aimPos = best, bestPos
+	end
+	-- tell the UI when the lock changes (a new player, or the target was lost)
+	if Aim.Target ~= lastT then
+		lastT = Aim.Target
+		if Aim.OnTarget then task.spawn(Aim.OnTarget, Aim.Target) end
 	end
 	if not aimPos then return end
 
@@ -142,6 +148,7 @@ function Aim.Start()
 end
 
 function Aim.Destroy()
+	Aim.OnTarget = nil
 	pcall(function() RunService:UnbindFromRenderStep(BIND) end)
 	if gui then pcall(function() gui:Destroy() end) end
 	gui, circle, circleStroke = nil, nil, nil

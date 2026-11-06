@@ -139,6 +139,22 @@ mAim:Toggle({ Name = "Target police", Default = true, Callback = function(v) Aim
 mAim:Toggle({ Name = "Target fire department", Default = true, Callback = function(v) Aim.Teams.FireDepartment = v end })
 mAim:Toggle({ Name = "Target citizens", Default = true, Callback = function(v) Aim.Teams.Citizen = v end })
 mAim:Toggle({ Name = "Target other jobs / prisoners", Default = true, Callback = function(v) Aim.Teams.Other = v end })
+local lastLockMsg = 0
+Aim.OnTarget = function(plr)
+	if os.clock() - lastLockMsg < 0.8 then return end
+	lastLockMsg = os.clock()
+	if plr then
+		local ch = plr.Character
+		local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+		local myChar = game:GetService("Players").LocalPlayer.Character
+		local me = myChar and myChar:FindFirstChild("HumanoidRootPart")
+		local role = ESP.RoleOf(plr)
+		local d = (hrp and me) and (" - %d st"):format((hrp.Position - me.Position).Magnitude) or ""
+		win:Notify(("Locked on: %s (@%s, %s)%s"):format(plr.DisplayName, plr.Name, role, d), 2.5)
+	else
+		win:Notify("Camlock: no target", 1.5)
+	end
+end
 Aim.Start()
 
 -- Teleports tab
