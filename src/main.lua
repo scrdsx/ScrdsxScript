@@ -12,6 +12,7 @@ local Hud = __import("hud")
 local Config = __import("config")
 local Farm = __import("farm")
 local Drive = __import("autodrive")
+local ESP = __import("esp")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -94,6 +95,26 @@ local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
 Player.Start()
 
+-- ESP tab
+local tEsp = win:Tab("ESP", { Section = "Game" })
+local mEsp = tEsp:Module({ Name = "Player ESP", Default = false, Callback = function(on) ESP.SetEnabled(on) end })
+mEsp:Toggle({ Name = "Box", Default = ESP.Boxes, Callback = function(v) ESP.Boxes = v end })
+mEsp:Toggle({ Name = "Name + role (police blue, fire red)", Default = ESP.Names, Callback = function(v) ESP.Names = v end })
+mEsp:Toggle({ Name = "Health bar", Default = ESP.Health, Callback = function(v) ESP.Health = v end })
+mEsp:Toggle({ Name = "Distance", Default = ESP.Distance, Callback = function(v) ESP.Distance = v end })
+mEsp:Toggle({ Name = "Tracers", Default = ESP.Tracers, Callback = function(v) ESP.Tracers = v end })
+mEsp:Toggle({ Name = "Wanted tag (red)", Default = ESP.Wanted, Callback = function(v) ESP.Wanted = v end })
+mEsp:Toggle({ Name = "Hover card (point at a player)", Default = ESP.Hover, Callback = function(v) ESP.Hover = v end })
+mEsp:Slider({ Name = "Max distance", Min = 100, Max = 3000, Step = 50, Default = ESP.MaxDist, Suffix = " st", Callback = function(v) ESP.MaxDist = v end })
+mEsp:Toggle({ Name = "Show police", Default = true, Callback = function(v) ESP.Teams.Police = v end })
+mEsp:Toggle({ Name = "Show fire department", Default = true, Callback = function(v) ESP.Teams.FireDepartment = v end })
+mEsp:Toggle({ Name = "Show citizens", Default = true, Callback = function(v) ESP.Teams.Citizen = v end })
+mEsp:Toggle({ Name = "Show other jobs / prisoners", Default = true, Callback = function(v) ESP.Teams.Other = v end })
+local mRadar = tEsp:Module({ Name = "Police radar (escape helper)", Default = true, Callback = function(on) ESP.Radar = on end })
+mRadar:Slider({ Name = "Warn within", Min = 100, Max = 800, Step = 25, Default = ESP.RadarDist, Suffix = " st", Callback = function(v) ESP.RadarDist = v end })
+ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) end
+ESP.Start()
+
 -- Teleports tab
 local tTele = win:Tab("Teleports")
 local lTele = tTele:Label({ Name = "Status", Value = Tele.Info })
@@ -142,6 +163,10 @@ mFarm = tFarm:Module({ Name = "Auto Rob", Default = false, NoSave = true, Callba
 	Farm.SetEnabled(on)
 	win:Notify(on and "AutoFarm on" or "AutoFarm stopping...")
 end })
+local mLoot = tFarm:Module({ Name = "Quick loot (keybind)", Default = true, Callback = function() end })
+local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items nearby)", Default = Enum.KeyCode.G })
+mLoot:Slider({ Name = "Range", Min = 20, Max = 250, Step = 5, Default = 90, Suffix = " st", Callback = function(v) Farm.LootRange = v end })
+Farm.LootRange = Farm.LootRange or 90
 mFarm:Toggle({ Name = "Cash registers (gas stations, shops)", Default = Farm.Registers, Callback = function(v) Farm.Registers = v end })
 mFarm:Toggle({ Name = "Bank (buys a bomb, takes money + gold)", Default = Farm.Bank, Callback = function(v) Farm.Bank = v end })
 mFarm:Toggle({ Name = "Jeweler safes (experimental)", Default = Farm.Jeweler, Callback = function(v) Farm.Jeweler = v end })
@@ -175,7 +200,7 @@ local hud = Hud.new({
 	GetModules = function()
 		local list = {}
 		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
-			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm }) do
+			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm, ["Player ESP"] = mEsp }) do
 			if m:Get() then list[#list + 1] = name end
 		end
 		return list
@@ -387,6 +412,18 @@ end))
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 	if gp or i.UserInputType ~= Enum.UserInputType.Keyboard or flyKey:IsListening() then return end
 	if flyKey:Get() == i.KeyCode then mFly:Set(not mFly:Get()) end
+end))
+
+-- quick loot key: first press collects everything in range, pressing it again while collecting stops it
+table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
+	if gp or i.UserInputType ~= Enum.UserInputType.Keyboard or lootKey:IsListening() or not mLoot:Get() then return end
+	if lootKey:Get() ~= i.KeyCode then return end
+	if Farm.Busy then
+		if not Farm.Enabled then Farm.StopLoot(); win:Notify("Quick loot stopped") end
+		return
+	end
+	win:Notify("Quick loot: collecting within " .. tostring(Farm.LootRange) .. " st (press again to stop)", 3)
+	Farm.LootNearby(Farm.LootRange)
 end))
 
 win:Notify(TITLE .. " loaded  v" .. tostring(env.ScrdsxVersion or "?"))

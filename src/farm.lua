@@ -565,13 +565,24 @@ local function afterBatch(batch, tried)
 end
 
 -- pick up everything under `root' that is switched on (money = id 2vd, items/gold = id 7Rm)
-local function loot(root, label)
+local function loot(root, label, radius)
 	local tried, got = {}, 0
 	local lastHere
 	while not Farm.Cancel do
 		local list = {}
-		for _, d in ipairs(root:GetDescendants()) do
-			if d:IsA("BasePart") and d:GetAttribute("Enabled") == true and d:GetAttribute("Collectable") ~= false and (tried[d] or 0) < 3 then
+		local cands
+		if root == workspace then -- quick loot: every collectable in the world (by tag), near me only
+			cands = {}
+			for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
+				for _, d in ipairs(CS:GetTagged(tg)) do cands[#cands + 1] = d end
+			end
+		else
+			cands = root:GetDescendants()
+		end
+		local _, _, hrp0 = parts()
+		for _, d in ipairs(cands) do
+			if d:IsA("BasePart") and d:GetAttribute("Enabled") == true and d:GetAttribute("Collectable") ~= false and (tried[d] or 0) < 3
+				and (not radius or (hrp0 and (d.Position - hrp0.Position).Magnitude <= radius)) then
 				local money = CS:HasTag(d, "Money Collect Interactable")
 				local item = CS:HasTag(d, "Item Collect Interactable")
 				if money or item then list[#list + 1] = { part = d, id = money and ACT.money or ACT.item } end
@@ -1345,6 +1356,21 @@ function Farm.Destroy()
 	Farm.Stop()
 	Farm.Changed = nil
 end
+
+-- Quick loot (keybind): pick up every money / gold / item pile within `radius` studs of me, nearest first. Works any time the farm is off.
+function Farm.LootNearby(radius)
+	if Farm.Busy then return false end
+	Farm.Busy, Farm.Cancel = true, false
+	task.spawn(function()
+		local got = 0
+		local ok, err = pcall(function() got = loot(workspace, "quick loot", radius or 90) end)
+		if not ok then flog("quick loot error: " .. tostring(err)) end
+		Farm.Busy, Farm.Cancel = false, true
+		say(("quick loot: picked up %d"):format(got))
+	end)
+	return true
+end
+function Farm.StopLoot() if Farm.Busy and not Farm.Enabled then Farm.Cancel = true end end
 
 stats()
 return Farm

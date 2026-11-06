@@ -2,6 +2,7 @@
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
+local Logo = __import("logo")
 
 local Loading = {}
 
@@ -40,6 +41,11 @@ function Loading.run(title, subtitle, extraSteps)
 	bg.BorderSizePixel = 0; bg.Parent = gui
 	tween(bg, .5, { BackgroundTransparency = 0 })
 
+	-- logo above the title
+	local logo = Logo.Make(bg, 60, UDim2.new(.5, -30, .5, -126))
+	if logo:IsA("ImageLabel") then logo.ImageTransparency = 1; tween(logo, .7, { ImageTransparency = 0 })
+	else logo.BackgroundTransparency = 1; tween(logo, .7, { BackgroundTransparency = 0 }) end
+
 	-- title: one label per letter so they can stagger in
 	local row = Instance.new("Frame")
 	row.AnchorPoint = Vector2.new(.5, .5); row.Position = UDim2.new(.5, 0, .5, -22); row.Size = UDim2.fromOffset(0, 40)
@@ -76,6 +82,11 @@ function Loading.run(title, subtitle, extraSteps)
 	track.BackgroundColor3 = Color3.fromRGB(28, 28, 28); track.BorderSizePixel = 0; track.Parent = bg
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(0, 1); fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255); fill.BorderSizePixel = 0; fill.Parent = track
+	do
+		local cr = Instance.new("UICorner"); cr.CornerRadius = UDim.new(1, 0); cr.Parent = track
+		local cr2 = Instance.new("UICorner"); cr2.CornerRadius = UDim.new(1, 0); cr2.Parent = fill
+		local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(Color3.fromRGB(64, 132, 255), Color3.fromRGB(150, 195, 255)); g.Parent = fill
+	end
 	task.delay(.9, function() tween(track, .6, { Size = UDim2.fromOffset(240, 2) }) end)
 
 	local status = Instance.new("TextLabel")
@@ -93,17 +104,18 @@ function Loading.run(title, subtitle, extraSteps)
 	}
 	for _, s in ipairs(extraSteps or {}) do table.insert(steps, s) end -- game-specific readiness checks: { "Label", cond, timeout }
 	for i, s in ipairs(steps) do
-		status.Text = s[1] .. "..."
+		status.Text = ("%s...  %d%%"):format(s[1], math.floor((i - 1) / (#steps + 1) * 100))
 		waitFor(s[2], s[3])
 		tween(fill, .35, { Size = UDim2.fromScale(i / (#steps + 1), 1) })
 		task.wait(.25)
 	end
-	status.Text = "Ready"
+	status.Text = "Ready  100%"
 	tween(fill, .4, { Size = UDim2.fromScale(1, 1) })
 	task.wait(.6)
 
 	-- fade out everything
 	for _, l in ipairs(letters) do tween(l, .4, { TextTransparency = 1 }) end
+	if logo:IsA("ImageLabel") then tween(logo, .4, { ImageTransparency = 1 }) else tween(logo, .4, { BackgroundTransparency = 1 }) end
 	tween(sub, .4, { TextTransparency = 1 }); tween(status, .4, { TextTransparency = 1 })
 	tween(fill, .4, { BackgroundTransparency = 1 }); tween(track, .4, { BackgroundTransparency = 1 })
 	task.wait(.35)

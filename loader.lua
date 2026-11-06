@@ -2,13 +2,19 @@
 -- Set getgenv().ScrdsxBase to the folder URL (ending in /) that holds loader.lua and src/.
 -- Set getgenv().ScrdsxLocal = "ScrdsxScript/" to read from the executor workspace instead.
 local env = getgenv and getgenv() or _G
-local BASE = env.ScrdsxBase or "http://localhost:8000/"
+local BASE = env.ScrdsxBase or "https://raw.githubusercontent.com/scrdsx/ScrdsxScript/main/"
 local LOCAL = env.ScrdsxLocal
-local MODULES = { "logo", "ui", "loading", "vehicle", "fly", "player", "anticrash", "antiflat", "speed", "teleport", "hud", "config", "roaddata", "roadplan", "autodrive", "farm", "main" } -- main last
+local MODULES = { "logo", "ui", "loading", "vehicle", "fly", "player", "esp", "anticrash", "antiflat", "speed", "teleport", "hud", "config", "roaddata", "roadplan", "autodrive", "farm", "main" } -- main last
 
 -- raw.githubusercontent.com caches files for ~5 minutes (and some executors cache on top), so a plain
 -- fetch can hand back an old release. Pin to the latest commit SHA instead: those URLs never go stale.
-local POLL_BASE = BASE -- the update watcher keeps polling the branch URL
+-- The update watcher and "Update now" always use the BRANCH (main), even when you started from a commit-pinned link,
+-- so pressing "Update now" in Settings always gets the newest version and you never have to change the script again.
+local POLL_BASE = BASE
+do
+	local o, r = BASE:match("raw%.githubusercontent%.com/([^/]+)/([^/]+)/")
+	if o then POLL_BASE = ("https://raw.githubusercontent.com/%s/%s/main/"):format(o, r) end
+end
 local commit
 if not LOCAL then
 	local owner, repo, branch = BASE:match("raw%.githubusercontent%.com/([^/]+)/([^/]+)/([^/]+)/")
@@ -43,6 +49,7 @@ else okv, ver = pcall(fetchVersion) end
 env.ScrdsxVersion = okv and ver or "unknown"
 env.ScrdsxReload = function() -- re-run this loader (used by "Update now")
 	if LOCAL then return loadstring(readfile(LOCAL .. "loader.lua"))() end
+	env.ScrdsxBase = POLL_BASE -- the new loader resolves the latest commit itself
 	return loadstring(game:HttpGet(POLL_BASE .. "loader.lua?t=" .. os.time()))()
 end
 
