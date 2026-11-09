@@ -160,8 +160,36 @@ end
 
 -- a long obstacle (a row of concrete barriers, a wall): block ALL of its pieces, not only the one we hit. The planner's map data does not know
 -- things that were not loaded when the map was exported, and without this the next route runs into the next piece of the same barrier.
+-- blocks that only live for this trip (roadworks, police roadblocks and the like come and go: they must never become permanent)
+local function addTempBlock(x, z)
+	for _, b in ipairs(TRIP_BLOCK) do if nearSpot(b, x, z) < 6 then return end end
+	TRIP_BLOCK[#TRIP_BLOCK + 1] = { x = x, z = z }
+end
+local function isTemporary(inst)
+	return inst ~= nil and (inst:FindFirstAncestor("Emergencies") ~= nil or inst:FindFirstAncestor("PoliceBlockades") ~= nil)
+end
+-- everything solid inside Workspace.Emergencies / PoliceBlockades (construction sites, roadblocks, crashed cars) becomes a block BEFORE the
+-- route is planned, so the planner drives round them instead of finding out at 100 studs/s
+local function blockDynamic()
+	local n = 0
+	for _, nm in ipairs({ "Emergencies", "PoliceBlockades" }) do
+		local f = workspace:FindFirstChild(nm)
+		for _, d in ipairs(f and f:GetDescendants() or {}) do
+			if d:IsA("BasePart") and d.CanCollide and d.Size.Y > 0.8 and math.max(d.Size.X, d.Size.Z) > 1.5 then
+				local p, sz = d.Position, d.Size
+				local len = math.max(sz.X, sz.Z)
+				local ax = sz.X >= sz.Z and d.CFrame.RightVector or d.CFrame.LookVector
+				for t = -len / 2, len / 2 + 0.01, 8 do addTempBlock(p.X + ax.X * t, p.Z + ax.Z * t) end
+				n = n + 1
+				if n >= 250 then return n end
+			end
+		end
+	end
+	return n
+end
 local function blockObstacle(inst, hitX, hitZ, why)
-	addBlock(hitX, hitZ, why)
+	local temp = isTemporary(inst)
+	if temp then addTempBlock(hitX, hitZ); log("blocked (temporary): " .. tostring(why)) else addBlock(hitX, hitZ, why) end
 	local grp = inst and inst.Parent
 	if not grp or grp == workspace or grp == workspace:FindFirstChild("Roads") then return end
 	local n = 0
@@ -171,7 +199,7 @@ local function blockObstacle(inst, hitX, hitZ, why)
 			local len = math.max(sz.X, sz.Z)
 			local ax = sz.X >= sz.Z and d.CFrame.RightVector or d.CFrame.LookVector
 			for t = -len / 2, len / 2, 8 do
-				addBlock(p.X + ax.X * t, p.Z + ax.Z * t, nil)
+				if temp then addTempBlock(p.X + ax.X * t, p.Z + ax.Z * t) else addBlock(p.X + ax.X * t, p.Z + ax.Z * t, nil) end
 			end
 			n = n + 1
 			if n >= 60 then break end
@@ -467,7 +495,7 @@ local function scanRoute(wps, fromPos, car)
 			if res and math.abs(res.Normal.Y) < 0.5 and not ignorable(res.Instance) then
 				local m = res.Instance:FindFirstAncestorOfClass("Model")
 				if not (m and m:FindFirstChildOfClass("Humanoid")) then
-					hits[#hits + 1] = { pos = res.Position, name = res.Instance:GetFullName(), seg = i }
+					hits[#hits + 1] = { pos = res.Position, name = res.Instance:GetFullName(), seg = i, inst = res.Instance }
 				end
 			end
 		end
@@ -641,7 +669,11 @@ function Drive.To(targetPos, opts)
 		if not (car and seat and hum and hum.SeatPart == seat) then return false, "sit in your car first" end
 
 		loadTune()
-		if (opts.replans or 0) == 0 then TRIP_BLOCK = {} end
+		if (opts.replans or 0) == 0 then
+			TRIP_BLOCK = {}
+			local nb = blockDynamic()
+			if nb > 0 then log(('%d roadwork / roadblock parts are blocked for this trip'):format(nb)) end
+		end
 		local wps, endPos, wpKeys
 		local head0
 		do
@@ -708,9 +740,12 @@ function Drive.To(targetPos, opts)
 			if #hits == 0 then break end
 			for i, h in ipairs(hits) do
 				if i > 3 then break end
-				addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
+				blockObstacle(h.inst, h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
 			end
-			if attempt == 3 then log("no clear route found, driving the best one") end
+			if attempt == 3 then
+				if opts.strict then return false, "no clear route" end
+				log("no clear route found, driving the best one")
+			end
 		end
 
 		-- 2) fallback: the minimap's road graph
@@ -739,7 +774,7 @@ function Drive.To(targetPos, opts)
 				end
 				for i, h in ipairs(hits) do
 					if i > 3 then break end
-					addBlock(h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
+					blockObstacle(h.inst, h.pos.X, h.pos.Z, "solid " .. h.name .. " on the route")
 				end
 				if attempt == 3 then log("no clear route found, driving the best one") end
 			end
@@ -1195,13 +1230,25 @@ function Drive.To(targetPos, opts)
 			-- safety brake: a car-sized box ahead; anything solid and upright inside the stopping distance means brake NOW
 			if nowT - lastScan > 0.1 and not reversing then
 				lastScan = nowT
-				local L = math.clamp(spd * 0.9 + 8, 10, 70)
+				local L = math.clamp(spd * 1.7 + 14, 20, 190)
 				local origin = V3(pos.X, pos.Y - 0.5, pos.Z) + fwd * 3
 				local okb, r = pcall(function() return workspace:Blockcast(CFrame.lookAt(origin, origin + fwd), V3(6, 3, 1), fwd * L, scanPar) end)
 				danger = nil
 				if okb and r and math.abs(r.Normal.Y) < 0.5 and not ignorable(r.Instance) then
 					local m = r.Instance:FindFirstAncestorOfClass("Model")
 					if not (m and m:FindFirstChildOfClass("Humanoid")) then danger = { dist = r.Distance, pos = r.Position, name = r.Instance:GetFullName(), inst = r.Instance } end
+				end
+				-- far away and not on our route (a wall behind the bend, a pole beside the road)? then it is not in our way
+				if danger and danger.dist > 25 then
+					local near = false
+					for i = bestI, math.min(#path - 1, bestI + 40) do
+						local a, b = path[i], path[i + 1]
+						local ab = V3(b.X - a.X, 0, b.Z - a.Z)
+						local l2 = ab:Dot(ab)
+						local t = l2 > 0.01 and math.clamp(V3(danger.pos.X - a.X, 0, danger.pos.Z - a.Z):Dot(ab) / l2, 0, 1) or 0
+						if flat(danger.pos, a + (b - a) * t) < 7 then near = true; break end
+					end
+					if not near then danger = nil end
 				end
 			end
 			-- honk (H, the game's own horn key) in short bursts while another car is in front of us
@@ -1267,7 +1314,7 @@ function Drive.To(targetPos, opts)
 				carStopT = nil
 			end
 			if carDist and not reversing and carDist < (passing and 3.5 or (spd * spd / 36 + spd * 0.3 + 6)) then thrCmd = spd > 3 and -1 or 0 end
-			if danger and not reversing and danger.dist < (passing and 2.5 or (spd * spd / 36 + spd * 0.3 + 5)) then
+			if danger and not reversing and danger.dist < (passing and 2.5 or (spd * spd / 28 + spd * 0.25 + 6)) then
 				thrCmd = spd > 4 and -1 or 0
 				if nowT - lastDangerLog > 2 then
 					lastDangerLog = nowT
