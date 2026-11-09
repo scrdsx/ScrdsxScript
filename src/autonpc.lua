@@ -17,6 +17,27 @@ local function say(s)
 	if NPC.Info ~= s then NPC.Info = s; if NPC.Changed then task.defer(NPC.Changed) end end
 end
 
+local function log(m) if Drive.Log then Drive.Log("npc: " .. m) end end
+
+-- One trip with the same retry rules as the farm: after a crash / stuck spot the autopilot plans AGAIN but remembers the blocked spot
+-- (the replan / reroute counters). Without them every retry started from scratch and drove into the same obstacle again.
+local function driveTo(dest, name, extra)
+	local replans, reroutes, tries = 0, 0, 0
+	while NPC.Enabled and tries < 7 do
+		local opts = { arrive = 30, name = name, replans = replans, reroutes = reroutes }
+		for k, v in pairs(extra or {}) do opts[k] = v end
+		local ok, why = Drive.To(dest, opts)
+		log(("%s: %s (%s)"):format(name, tostring(ok), tostring(why)))
+		if ok or why == "cancelled" or why == "retarget" or why == "left the car" or why == "sit in your car first" then return ok, why end
+		tries = tries + 1
+		if why == "replan" then replans = math.min(replans + 1, 4)
+		elseif why == "reroute" then reroutes = reroutes + 1
+		else return false, why end
+		task.wait(0.3)
+	end
+	return false, "gave up after " .. tries .. " tries"
+end
+
 local function carAndSeat()
 	local car = workspace:FindFirstChild("Vehicles") and workspace.Vehicles:FindFirstChild(lp.Name)
 	local seat = car and car:FindFirstChild("DriveSeat")
@@ -80,11 +101,11 @@ local function loop(id)
 					task.wait(0.5)
 				else
 					say("following " .. t.DisplayName)
-					local ok, why = Drive.To(hrp.Position, {
-						arrive = 18, name = "following " .. t.Name,
+					local ok, why = driveTo(hrp.Position, "following " .. t.Name, {
+						arrive = 18,
 						follow = function() local h = t.Character and t.Character:FindFirstChild("HumanoidRootPart"); return h and h.Position end,
 					})
-					if not ok and why ~= "retarget" and why ~= "replan" and why ~= "reroute" and why ~= "cancelled" then task.wait(1) end
+					if not ok and why ~= "retarget" and why ~= "cancelled" then task.wait(1) end
 				end
 			else
 				local dest = pickDest(seat.Position)
@@ -93,9 +114,9 @@ local function loop(id)
 					task.wait(1)
 				else
 					say(("roaming: driving %d studs"):format(flat(dest, seat.Position)))
-					local ok, why = Drive.To(dest, { arrive = 30, name = "roaming" })
-					if not ok and why ~= "replan" and why ~= "reroute" and why ~= "cancelled" then
-						say("roaming: " .. tostring(why))
+					local ok, why = driveTo(dest, "roaming")
+					if not ok and why ~= "cancelled" then
+						say("roaming: " .. tostring(why) .. ", picking another place")
 						task.wait(1)
 					end
 				end
