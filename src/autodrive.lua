@@ -19,7 +19,7 @@ local REM = {
 	IGNITION = "de7910a1-5108-423c-bb43-bb8dbe2dcf8a",
 }
 
-local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true, Evade = false } -- State: live data for the HUD map
+local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true, Evade = false, Signals = true, sig = 0 } -- State: live data for the HUD map
 local function log(s) if Drive.Log then Drive.Log(s) else print("[drive] " .. s) end end
 
 local remotes = {}
@@ -653,7 +653,9 @@ function Drive.To(targetPos, opts)
 		-- 1) planner on the REAL road surface (src/roadplan.lua, data from the map export): follows the actual asphalt, goes round islands,
 		--    keeps to the middle of the road, never touches a cell with something solid on it
 		RoadPlan.Yield = function() task.wait() end
+		if opts.waypoints then wps = opts.waypoints; endPos = wps[#wps] end -- parking: the route is given
 		for attempt = 1, 3 do
+			if opts.waypoints then break end
 			local t0 = os.clock()
 			local function plan(minEdge, blocked)
 				return RoadPlan.Route(seat.Position.X, seat.Position.Z, targetPos.X, targetPos.Z, {
@@ -792,7 +794,25 @@ function Drive.To(targetPos, opts)
 			end
 		end
 		if useKeys then pwmConn = RunService.Heartbeat:Connect(pwmStep) end
+		-- turn signals: the game's own keys, Q = left, E = right (they toggle). Drive.sig remembers what WE switched on (-1 left, 1 right, 0 none).
+		local function tap(code) key(code, true); task.wait(0.06); key(code, false) end
+		local function signalSet(want)
+			if Drive.Signals == false or (Drive.sig or 0) == want or Drive.sigBusy then return end
+			Drive.sigBusy = true
+			task.spawn(function()
+				local old = Drive.sig or 0
+				if old ~= 0 then tap(old < 0 and Enum.KeyCode.Q or Enum.KeyCode.E); task.wait(0.15) end
+				if want ~= 0 then tap(want < 0 and Enum.KeyCode.Q or Enum.KeyCode.E) end
+				Drive.sig = want
+				Drive.sigBusy = false
+				Drive.sigLogged = (Drive.sigLogged or 0) + 1
+				if Drive.sigLogged <= 4 then
+					log(("indicator %s (car attribute IndicatorsState = %s)"):format(want < 0 and "LEFT" or (want > 0 and "RIGHT" or "off"), tostring(car:GetAttribute("IndicatorsState"))))
+				end
+			end)
+		end
 		local function release()
+			signalSet(0)
 			setCtl("Throttle", 0, true)
 			setCtl("Steering", 0, true)
 			if pwmConn then pwmConn:Disconnect(); pwmConn = nil end
@@ -939,7 +959,7 @@ function Drive.To(targetPos, opts)
 		local honkPar = RaycastParams.new()
 		honkPar.FilterType = Enum.RaycastFilterType.Include
 		local lastHonkChk, honkSince, carDist = 0, nil, nil
-		local lastChase = 0
+		local lastChase, lastFollow, lastSig, sigOffAt = 0, 0, 0, nil
 		local passUntil, passSide, carStopT = 0, 0, nil -- going around a car that blocks the lane
 		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
 		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
@@ -1022,6 +1042,13 @@ function Drive.To(targetPos, opts)
 				end
 			end
 			local offRoad = offRoadSince ~= nil and nowT - offRoadSince > 0.8
+			if opts.exact then offRoad, roadPt = false, nil end
+
+			if opts.follow and nowT - lastFollow > 1.5 then
+				lastFollow = nowT
+				local tp = opts.follow()
+				if tp and flat(tp, targetPos) > 40 then release(); closePiece(); saveTune(); return false, "retarget" end
+			end
 
 			-- police behind us while wanted: stop this trip, the caller runs away first (Drive.Flee)
 			if Drive.Evade ~= false and not opts.flee and nowT - lastChase > 1.0 then
@@ -1039,7 +1066,7 @@ function Drive.To(targetPos, opts)
 				lastHp = nowT
 				local hp = car:GetAttribute("currentHealth")
 				if type(hp) == "number" then
-					if hp0 and hp < hp0 - 10 then
+					if hp0 and hp < hp0 - 10 and not opts.exact then
 						log(("car damaged: health %.0f -> %.0f at (%.0f,%.0f), speed %.0f"):format(hp0, hp, pos.X, pos.Z, spd))
 						slowUntil = nowT + 2.5
 						if flat(pos, startPos) > 30 and (opts.replans or 0) < 5 then
@@ -1073,6 +1100,7 @@ function Drive.To(targetPos, opts)
 				local turn = math.abs(wrap(yawOf(V3(pc.X - pb.X, 0, pc.Z - pb.Z)) - yawOf(V3(pb.X - pa.X, 0, pb.Z - pa.Z))))
 				look = math.max(8, look / (1 + 2.5 * turn))
 			end
+			if opts.look then look = opts.look end
 			local aim = pointAhead(bestI, bestT, look)
 			if nowT < passUntil then aim = aim + V3(-fwd.Z, 0, fwd.X) * (passSide * 7) end
 			if offRoad and roadPt then aim = roadPt end
@@ -1080,6 +1108,30 @@ function Drive.To(targetPos, opts)
 			if dirv.Magnitude < 0.5 then dirv = fwd end
 			local e = wrap(yawOf(dirv) - yaw)
 			if pStat then pStat.maxErr = math.max(pStat.maxErr, math.abs(e)) end
+
+			-- turn signals: a bend of more than ~30 degrees within the next 48 studs, a lane change round a car, or the parking manoeuvre
+			if Drive.Signals ~= false and nowT - lastSig > 0.25 then
+				lastSig = nowT
+				local want = 0
+				if opts.signal then want = opts.signal
+				elseif nowT < passUntil then want = passSide
+				else
+					local a1, a2 = pointAhead(bestI, bestT, 8), pointAhead(bestI, bestT, 48)
+					local dv = V3(a2.X - a1.X, 0, a2.Z - a1.Z)
+					if dv.Magnitude > 10 and remainRoute > 25 then
+						local u = dv.Unit
+						local ang = math.atan2(u:Dot(V3(-fwd.Z, 0, fwd.X)), u:Dot(fwd))
+						if math.abs(ang) > 0.55 and spd < 75 then want = ang > 0 and 1 or -1 end
+					end
+				end
+				if want ~= 0 then
+					sigOffAt = nil
+					signalSet(want)
+				elseif (Drive.sig or 0) ~= 0 then
+					sigOffAt = sigOffAt or nowT
+					if nowT - sigOffAt > 1.5 then signalSet(0); sigOffAt = nil end
+				end
+			end
 
 			-- steering: proportional (less at speed) minus damping on the turn rate
 			local kp = P.kp / (1 + spd / 40)
@@ -1130,10 +1182,13 @@ function Drive.To(targetPos, opts)
 			local pm = pieceMul(curKey)
 			local target = math.min(allowed * corner * pm, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
 			target = math.max(target, 14)
+			if opts.maxSpeed then target = math.min(allowed * corner, math.max(opts.maxSpeed * math.min(1, remainRoute / 10), 2.5)) end
 			if offRoad then target = math.min(target, 18) end
 			if nowT < slowUntil then target = math.min(target, 22) end
 			local thrCmd = cur.Throttle
-			if spd < target - 3 then thrCmd = 1
+			if opts.maxSpeed then
+				if spd < target - 0.6 then thrCmd = 1 elseif spd > target + 2 then thrCmd = -1 elseif spd > target + 0.6 then thrCmd = 0 end
+			elseif spd < target - 3 then thrCmd = 1
 			elseif spd > target + 8 then thrCmd = -1
 			elseif spd > target + 2 then thrCmd = 0 end
 
@@ -1172,6 +1227,7 @@ function Drive.To(targetPos, opts)
 				key(Enum.KeyCode.H, honkSince ~= nil and (nowT - honkSince) % 1.4 < 0.5)
 			end
 			-- and do not drive into it: brake when it is closer than the stopping distance
+			if opts.exact then danger, carDist = nil, nil end
 			local passing = nowT < passUntil
 			if passing then target = math.min(target, 20); thrCmd = spd < 17 and 1 or 0 end
 			-- a car stands in our lane and does not move: go around it (to the side that is free and still on the road)
@@ -1270,7 +1326,7 @@ function Drive.To(targetPos, opts)
 			end
 
 			-- stuck? back up a bit, then try again
-			if spd < 1.5 and cur.Throttle > 0 and nowT - startT > 2 and not reversing then
+			if spd < 1.5 and cur.Throttle > 0 and nowT - startT > 2 and not reversing and not opts.exact then
 				stuckSince = stuckSince or nowT
 				if nowT - stuckSince > 1.6 then
 					recoveries = recoveries + 1
@@ -1310,6 +1366,39 @@ function Drive.To(targetPos, opts)
 	Drive.State = nil
 	if not ok then log("drive error: " .. tostring(res)); return false, tostring(res) end
 	return res, why or res
+end
+
+-- Parks STRAIGHT: the normal planner brings the car to a point in front of the spot, then a smooth curve joins the centre line of the spot and
+-- the car runs in slowly along it (short look-ahead, low speed, no obstacle braking: the neighbours are meant to be close).
+--   spot = where the car should end up (the seat), dir = the direction the car faces when parked
+function Drive.ParkAt(spot, dir)
+	dir = V3(dir.X, 0, dir.Z)
+	if dir.Magnitude < 0.1 then return false, "no direction" end
+	dir = dir.Unit
+	local ok, why = Drive.To(spot - dir * 30, { arrive = 6, name = "parking approach" })
+	if not ok then return false, why end
+	local car = workspace:FindFirstChild("Vehicles") and workspace.Vehicles:FindFirstChild(lp.Name)
+	local seat = car and car:FindFirstChild("DriveSeat")
+	if not seat then return false, "no car" end
+	local lf = Drive.cal and Drive.cal.fwdLocal or V3(0, 0, -1)
+	local f0 = seat.CFrame:VectorToWorldSpace(lf)
+	f0 = V3(f0.X, 0, f0.Z)
+	f0 = f0.Magnitude > 0.1 and f0.Unit or dir
+	local p0, p3 = seat.Position, spot - dir * 14
+	local k = math.clamp(flat(p0, p3) * 0.45, 5, 20)
+	local p1, p2 = p0 + f0 * k, p3 - dir * k
+	local wps = {}
+	for i = 1, 12 do
+		local t = i / 12
+		local u = 1 - t
+		local q = p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t)
+		wps[#wps + 1] = V3(q.X, spot.Y, q.Z)
+	end
+	for d = 2, 14, 2 do wps[#wps + 1] = V3(p3.X + dir.X * d, spot.Y, p3.Z + dir.Z * d) end
+	local lat = (spot - p0):Dot(V3(-f0.Z, 0, f0.X))
+	local side = math.abs(lat) > 5 and (lat > 0 and 1 or -1) or nil
+	log(("parking: straight in along (%.2f, %.2f) to (%.0f, %.0f)"):format(dir.X, dir.Z, spot.X, spot.Z))
+	return Drive.To(spot, { waypoints = wps, exact = true, maxSpeed = 9, look = 5, arrive = 0.8, name = "parking", signal = side })
 end
 
 -- Police chase: the character is flagged IsWanted (attribute on the HumanoidRootPart) and a police car with its emergency lights on is near.

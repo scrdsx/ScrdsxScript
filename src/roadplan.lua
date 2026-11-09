@@ -11,7 +11,7 @@ local CELL = 4
 local WANT = 6      -- cells (24 studs) from the road edge are free of penalty; closer to the edge costs more
 local floor, sqrt, abs, max, min = math.floor, math.sqrt, math.abs, math.max, math.min
 
-local cells, edge, levels
+local cells, edge, levels, ringDir
 local built = false
 
 local function K(i, j, l) return ((l + 16) * 1024 + (i + 640)) * 2048 + (j + 640) end
@@ -87,6 +87,28 @@ local function build()
 		end
 		n = n + 1
 		yield(n)
+	end
+	-- roundabout rings: each cell in the ring remembers the direction of travel (counter-clockwise seen from above, right-hand traffic);
+	-- going the other way costs extra, so routes circle the island the way real traffic does
+	ringDir = {}
+	local rg = Data.rings
+	if rg then
+		for p = 1, #rg, 4 do
+			local cx, cz, r0, r1 = rg[p], rg[p + 1], rg[p + 2], rg[p + 3]
+			for i = floor((cx - r1) / CELL), floor((cx + r1) / CELL) do
+				for j = floor((cz - r1) / CELL), floor((cz + r1) / CELL) do
+					local x, z = i * CELL + CELL / 2, j * CELL + CELL / 2
+					local rx, rz = x - cx, z - cz
+					local d = sqrt(rx * rx + rz * rz)
+					if d > r0 and d < r1 then
+						for lvl in pairs(levels) do
+							local k = K(i, j, lvl)
+							if cells[k] then ringDir[k] = { rz / d, -rx / d } end
+						end
+					end
+				end
+			end
+		end
 	end
 	built = true
 end
@@ -201,6 +223,8 @@ function Plan.Route(ax, az, bx, bz, opts)
 								if ok then
 									local step = (di ~= 0 and dj ~= 0) and 1.4142 or 1
 									local pen = 1 + 0.35 * max(0, WANT - e)
+									local rd = ringDir and ringDir[nk]
+									if rd and (rd[1] * di + rd[2] * dj) < -0.3 then pen = pen * 1.8 end -- against the roundabout's direction
 									-- the first stretch behind the car costs extra: leave in the direction the car faces if the road allows it
 									if head then
 										local ddx, ddz = cx - sx_, cz - sz_

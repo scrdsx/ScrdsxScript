@@ -253,6 +253,36 @@ end })
 tFarm:Button({ Name = "Copy farm log (send me this if it fails)", Callback = function() win:Notify(Farm.CopyLog() and "Farm log copied" or "Could not copy; see workspace/farm_log.txt") end })
 tFarm:Button({ Name = "Stop AutoFarm", Callback = function() mFarm:Set(false, true); Farm.Stop() end })
 
+-- Auto Drive tab: the car drives itself like an NPC (roam the map, follow a player, park straight)
+local NPC = __import("autonpc")
+local tNpc = win:Tab("Auto Drive", { Icon = 1 })
+local mNpc
+mNpc = tNpc:Module({ Name = "Auto Drive", Default = false, NoSave = true, Callback = function(on)
+	if on and Farm.Enabled then
+		win:Notify("Turn Auto Rob off first")
+		mNpc:Set(false, true)
+		return
+	end
+	NPC.SetEnabled(on)
+	win:Notify(on and "Auto Drive on: sit in your car" or "Auto Drive off", 2.5)
+end })
+local lNpc = mNpc:Label({ Name = "Status", Value = NPC.Info })
+NPC.Changed = function() lNpc:Set(NPC.Info) end
+NPC.Stopped = function() mNpc:Set(false, true) end
+mNpc:Section("Mode")
+mNpc:Toggle({ Name = "Follow a player (off = roam the map)", Default = false, NoSave = true, Callback = function(v) NPC.Follow = v end })
+mNpc:TextBox({ Name = "Player to follow (blank = nearest)", Placeholder = "name", Callback = function(t) NPC.FollowName = t or "" end })
+mNpc:Section("Driving")
+mNpc:Slider({ Name = "Cruise speed", Min = 30, Max = 90, Step = 5, Default = NPC.Cruise, Suffix = " st/s", Callback = function(v) NPC.Cruise = v end })
+mNpc:Toggle({ Name = "Turn signals (Q left, E right)", Default = Drive.Signals ~= false, Callback = function(v) Drive.Signals = v end })
+mNpc:Toggle({ Name = "Honk at cars in front (H)", Default = true, Callback = function(v) Drive.Honk = v end })
+mNpc:Section("Parking")
+local parkKey = mNpc:Keybind({ Name = "Park key (look at the space, press)", Default = Enum.KeyCode.K })
+mNpc:Button({ Name = "Park straight at the crosshair now", Callback = function()
+	local ok, why = NPC.ParkAtCrosshair()
+	if not ok then win:Notify("Parking: " .. tostring(why)) end
+end })
+
 -- HUD tab: widgets that stay on screen; press / (window closed) to move them
 local hud = Hud.new({
 	Title = TITLE,
@@ -262,7 +292,7 @@ local hud = Hud.new({
 	GetModules = function()
 		local list = {}
 		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
-			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm, ["Player ESP"] = mEsp, ["Camlock"] = mAim }) do
+			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm, ["Player ESP"] = mEsp, ["Camlock"] = mAim, ["Auto Drive"] = mNpc }) do
 			if m:Get() then list[#list + 1] = name end
 		end
 		return list
@@ -425,6 +455,7 @@ local function unload()
 	Farm.Destroy()
 	ESP.OnPolice = nil
 	ESP.Destroy()
+	NPC.Destroy()
 	Aim.Changed = nil
 	Aim.Destroy()
 	hud:Destroy()
@@ -489,6 +520,14 @@ end))
 table.insert(win.conns, UIS.InputEnded:Connect(function(i)
 	if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if Aim.Hold and aimKey:Get() == i.KeyCode then Aim.KeyEvent(false) end
+end))
+
+-- park key: the car lines up with the space under the crosshair and rolls in straight
+table.insert(win.conns, UIS.InputBegan:Connect(function(i)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or parkKey:IsListening() then return end
+	if parkKey:Get() ~= i.KeyCode then return end
+	local ok, why = NPC.ParkAtCrosshair()
+	if not ok then win:Notify("Parking: " .. tostring(why), 3) end
 end))
 
 -- quick loot key: first press collects everything in range, pressing it again while collecting stops it

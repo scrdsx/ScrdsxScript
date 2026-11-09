@@ -81,6 +81,32 @@ for (x, z, par, nm) in barriers:
     if hit:
         print("  barrier %-14s %-12s at (%.0f,%.0f): %d road cells closed" % (par[:14], nm[:12], x, z, hit))
 blocked |= barrier_cells
+
+# roundabouts: the four quadrant "Road" parts of every Roundabout module give its centre. The middle (statue base + island) is closed for cars,
+# so routes have to go AROUND it; the planner also gets the rings so it can prefer the right direction of travel.
+rb = []
+for f in sorted(glob.glob(os.path.join(folder, "roads_*.csv"))):
+    for r in csv.DictReader(open(f, encoding="utf8")):
+        if r["name"] == "Road" and "roundabout" in r["parent"].lower():
+            rb.append((float(r["x"]), float(r["z"])))
+centres = []
+for (x, z) in rb:
+    for c in centres:
+        if math.hypot(c[0] / c[2] - x, c[1] / c[2] - z) < 260:
+            c[0] += x; c[1] += z; c[2] += 1
+            break
+    else:
+        centres.append([x, z, 1])
+rings = [(c[0] / c[2], c[1] / c[2]) for c in centres]
+ISLAND, RING_OUT = 40.0, 84.0
+for (cx, cz) in rings:
+    for i in range(int((cx - ISLAND) // 4), int((cx + ISLAND) // 4) + 1):
+        for j in range(int((cz - ISLAND) // 4), int((cz + ISLAND) // 4) + 1):
+            if math.hypot(i * 4 + 2 - cx, j * 4 + 2 - cz) <= ISLAND:
+                for l in range(-20, 21):
+                    if (i, j, l) in grid.cells:
+                        blocked.add((i, j, l))
+print(len(rings), "roundabouts (island radius %d closed)" % ISLAND)
 # inflate by one cell (the car is 6 wide)
 infl = set(blocked)
 for (i, j, l) in blocked:
@@ -101,6 +127,10 @@ lines.append("blocked = {")
 ks = sorted(key(*k) for k in infl)
 for i in range(0, len(ks), 20):
     lines.append(",".join(str(k) for k in ks[i:i + 20]) + ",")
+lines.append("},")
+lines.append("rings = {")
+for (cx, cz) in rings:
+    lines.append("%.1f,%.1f,%.1f,%.1f," % (cx, cz, ISLAND, RING_OUT))
 lines.append("},")
 lines.append("}")
 open(out, "w", encoding="utf8").write("\n".join(lines) + "\n")
