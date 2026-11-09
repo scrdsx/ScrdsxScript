@@ -11,7 +11,7 @@ local CELL = 4
 local WANT = 6      -- cells (24 studs) from the road edge are free of penalty; closer to the edge costs more
 local floor, sqrt, abs, max, min = math.floor, math.sqrt, math.abs, math.max, math.min
 
-local cells, edge, levels, ringDir
+local cells, edge, levels, ringDir, blockedSet
 local built = false
 
 local function K(i, j, l) return ((l + 16) * 1024 + (i + 640)) * 2048 + (j + 640) end
@@ -62,7 +62,8 @@ local function build()
 			end
 		end
 	end
-	for _, k in ipairs(Data.blocked) do cells[k] = nil end
+	blockedSet = {}
+	for _, k in ipairs(Data.blocked) do blockedSet[k] = true; cells[k] = nil end
 	-- distance to the road edge (cells), multi-source BFS from the boundary
 	local queue, head = {}, 1
 	for k in pairs(cells) do
@@ -136,6 +137,69 @@ local function snap(x, z, y, radius)
 		if bestk and r * r >= bestd then break end -- nothing in a bigger ring can be closer
 	end
 	return bestk
+end
+
+-- Live roads: road parts that exist in the game right now but are not in the baked map data (new modules, places the map export missed).
+-- q = flat list, 9 numbers per quad (same as Data.quads). New cells join the grid and the edge distances around them are recomputed.
+function Plan.Extend(q)
+	build()
+	local newKeys = {}
+	for p = 1, #q, 9 do
+		local x1, z1, x2, z2, x3, z3, x4, z4, y = q[p], q[p + 1], q[p + 2], q[p + 3], q[p + 4], q[p + 5], q[p + 6], q[p + 7], q[p + 8]
+		local lvl = floor(y / 6 + 0.5)
+		levels[lvl] = true
+		for i = floor(min(x1, x2, x3, x4) / CELL), floor(max(x1, x2, x3, x4) / CELL) do
+			for j = floor(min(z1, z2, z3, z4) / CELL), floor(max(z1, z2, z3, z4) / CELL) do
+				local cx, cz = i * CELL + CELL / 2, j * CELL + CELL / 2
+				local s1 = (x2 - x1) * (cz - z1) - (z2 - z1) * (cx - x1)
+				local s2 = (x3 - x2) * (cz - z2) - (z3 - z2) * (cx - x2)
+				local s3 = (x4 - x3) * (cz - z3) - (z4 - z3) * (cx - x3)
+				local s4 = (x1 - x4) * (cz - z4) - (z1 - z4) * (cx - x4)
+				if (s1 >= 0 and s2 >= 0 and s3 >= 0 and s4 >= 0) or (s1 <= 0 and s2 <= 0 and s3 <= 0 and s4 <= 0) then
+					local k = K(i, j, lvl)
+					if not cells[k] and not blockedSet[k] then cells[k] = y; newKeys[#newKeys + 1] = k end
+				end
+			end
+		end
+	end
+	if #newKeys == 0 then return 0 end
+	-- recompute the edge distance in a 8-cell ring round the new cells (old cells next to them may no longer be at the edge)
+	local region, list, n = {}, {}, 0
+	for _, k in ipairs(newKeys) do
+		local i, j, l = unK(k)
+		for di = -8, 8 do
+			for dj = -8, 8 do
+				local nk = find(i + di, j + dj, l)
+				if nk and not region[nk] then region[nk] = true; list[#list + 1] = nk end
+			end
+		end
+		n = n + 1
+		yield(n * 40)
+	end
+	local INF = 1e9
+	for _, k in ipairs(list) do edge[k] = INF end
+	for _, k in ipairs(list) do
+		local i, j, l = unK(k)
+		if not find(i + 1, j, l) or not find(i - 1, j, l) or not find(i, j + 1, l) or not find(i, j - 1, l) then edge[k] = 0 end
+	end
+	local changed, passes = true, 0
+	while changed and passes < 40 do
+		changed, passes = false, passes + 1
+		for idx, k in ipairs(list) do
+			local i, j, l = unK(k)
+			local best = edge[k]
+			for _, o in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+				local nk = find(i + o[1], j + o[2], l)
+				if nk then
+					local v = (edge[nk] or INF) + 1
+					if v < best then best = v end
+				end
+			end
+			if best < edge[k] then edge[k] = best; changed = true end
+			yield(idx + passes * 7)
+		end
+	end
+	return #newKeys
 end
 
 function Plan.Ready() return built end

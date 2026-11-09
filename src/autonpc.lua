@@ -24,7 +24,7 @@ local function log(m) if Drive.Log then Drive.Log("npc: " .. m) end end
 local function driveTo(dest, name, extra)
 	local replans, reroutes, tries = 0, 0, 0
 	while NPC.Enabled and tries < 7 do
-		local opts = { arrive = 30, name = name, replans = replans, reroutes = reroutes, strict = true }
+		local opts = { arrive = 30, name = name, replans = replans, reroutes = reroutes, strict = true, npc = true }
 		for k, v in pairs(extra or {}) do opts[k] = v end
 		local ok, why = Drive.To(dest, opts)
 		log(("%s: %s (%s)"):format(name, tostring(ok), tostring(why)))

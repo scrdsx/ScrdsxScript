@@ -32,7 +32,8 @@ for f in sorted(glob.glob(os.path.join(folder, "roads_*.csv"))):
             continue
         sx, sy, sz = float(r["sx"]), float(r["sy"]), float(r["sz"])
         barrier = "safety barrier" in r["parent"].lower() or "barrier" in r["name"].lower()
-        if barrier or (sy >= 2.5 and max(sx, sz) >= 4 and min(sx, sz) >= 2):
+        narrowing = "narrowing" in r["parent"].lower() or "concretebar" in r["name"].lower() # road narrowings have low concrete bars the car cannot climb
+        if barrier or narrowing or (sy >= 2.5 and max(sx, sz) >= 4 and min(sx, sz) >= 2):
             r = dict(r); r["_extra"] = True
             obs.append(r); extra += 1
 print(extra, "solid parts from the Roads folder added as obstacles")

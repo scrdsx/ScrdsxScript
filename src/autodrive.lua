@@ -19,7 +19,7 @@ local REM = {
 	IGNITION = "de7910a1-5108-423c-bb43-bb8dbe2dcf8a",
 }
 
-local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true, Evade = false, Signals = true, sig = 0 } -- State: live data for the HUD map
+local Drive = { Cancel = false, Busy = false, Info = "idle", MaxSpeed = 70, Log = nil, State = nil, Honk = true, Evade = false, Signals = true, sig = 0, CameraSlow = true, RedLights = true } -- State: live data for the HUD map
 local function log(s) if Drive.Log then Drive.Log(s) else print("[drive] " .. s) end end
 
 local remotes = {}
@@ -210,7 +210,166 @@ end
 
 -- things that stand next to roads and are not in a car's way (the planner already keeps 8 studs from the road edge): lamps, signs, trees,
 -- traffic lights, the rails of a level crossing (cars drive over them), curbs and sidewalks
-local IGNORE_ANCESTORS = { "Traffic Lights", "Streetlamps", "Signs", "TrainTracks", "RailroadCrossings", "Trees", "DestroyedObjects" }
+-- ---------------------------------------------------------------------------------------------------------------------------------------
+-- Live roads, speed cameras, traffic lights
+local CSV = game:GetService("CollectionService")
+local KMH = 1.008 -- km/h shown by the game = studs/s * 1.008
+local knownRoadParts = setmetatable({}, { __mode = "k" })
+local lastExtend = -99
+
+-- road parts that exist right now but are not in the baked map: the planner learns them (once per 25 s at most)
+local function extendRoads(center, radius)
+	if os.clock() - lastExtend < 25 then return 0 end
+	lastExtend = os.clock()
+	local roads = workspace:FindFirstChild("Roads")
+	if not roads then return 0 end
+	local q, n = {}, 0
+	for _, d in ipairs(roads:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name == "Road" and not knownRoadParts[d] then
+			local p = d.Position
+			if (p.X - center.X) ^ 2 + (p.Z - center.Z) ^ 2 < radius * radius then
+				knownRoadParts[d] = true
+				local cf, sz = d.CFrame, d.Size
+				local r, l = cf.RightVector, cf.LookVector
+				local hx, hz = sz.X / 2, sz.Z / 2
+				local rx, rz, lx, lz = r.X * hx, r.Z * hx, l.X * hz, l.Z * hz
+				q[#q + 1] = p.X - rx - lx; q[#q + 1] = p.Z - rz - lz
+				q[#q + 1] = p.X + rx - lx; q[#q + 1] = p.Z + rz - lz
+				q[#q + 1] = p.X + rx + lx; q[#q + 1] = p.Z + rz + lz
+				q[#q + 1] = p.X - rx + lx; q[#q + 1] = p.Z - rz + lz
+				q[#q + 1] = p.Y
+			end
+		end
+		n = n + 1
+		if n % 1500 == 0 then task.wait() end
+	end
+	if #q == 0 then return 0 end
+	RoadPlan.Yield = function() task.wait() end
+	local added = RoadPlan.Extend(q)
+	if added > 0 then log(("live roads: checked %d road parts around the car, %d road cells were missing from the map data and were added"):format(#q / 9, added)) end
+	return added
+end
+
+-- speed limit (km/h) at a point: Workspace.SpeedZones parts (tag "Speed Zone", attribute Speed); 50 everywhere else
+local function speedLimitAt(p)
+	local best = 50
+	local found = false
+	for _, z in ipairs(CSV:GetTagged("Speed Zone")) do
+		if z:IsA("BasePart") then
+			local lpnt = z.CFrame:PointToObjectSpace(p)
+			local h = z.Size / 2
+			if math.abs(lpnt.X) <= h.X and math.abs(lpnt.Z) <= h.Z and math.abs(lpnt.Y) <= h.Y + 40 then
+				local sp = z:GetAttribute("Speed")
+				if type(sp) == "number" and (not found or sp < best) then best, found = sp, true end
+			end
+		end
+	end
+	return best
+end
+
+-- a speed camera ahead: the speed we may still have (studs/s) so that we are at the limit when we pass it
+local function cameraCap(pos, fwd)
+	local cams = CSV:GetTagged("Speed Camera")
+	local cap
+	for _, c in ipairs(cams) do
+		local part = c:IsA("BasePart") and c or c:FindFirstChildWhichIsA("BasePart", true)
+		if part then
+			local v = V3(part.Position.X - pos.X, 0, part.Position.Z - pos.Z)
+			local along = v:Dot(fwd)
+			local lateral = math.abs(v:Dot(V3(-fwd.Z, 0, fwd.X)))
+			if along > -25 and along < 200 and lateral < 45 then
+				local limit = math.max(speedLimitAt(part.Position), 20)
+				if limit < 500 then
+					local lim = limit / KMH * 0.93
+					local c2 = math.sqrt(lim * lim + 2 * 11 * math.max(along - 12, 0))
+					if not cap or c2 < cap then cap = c2 end
+				end
+			end
+		end
+	end
+	return cap
+end
+
+-- traffic lights: lamps (parts named Red / Orange / Green inside Workspace.Roads."Traffic Lights"). Which lamp is lit is read from the part
+-- (neon material, a light switched on in it, how opaque / bright it is) and compared between the three, so no exact property has to be known.
+local lampGroups, lampT = {}, -99
+local function lampScore(p)
+	if not p then return 0 end
+	local s = (1 - p.Transparency) + (p.Color.R + p.Color.G + p.Color.B) / 3
+	if p.Material == Enum.Material.Neon then s = s + 2 end
+	for _, c in ipairs(p:GetDescendants()) do
+		if c:IsA("Light") and c.Enabled then s = s + 2 end
+		if (c:IsA("Decal") or c:IsA("Texture")) then s = s + (1 - c.Transparency) end
+	end
+	return s
+end
+local function refreshLamps(center)
+	lampT = os.clock()
+	lampGroups = {}
+	local roads = workspace:FindFirstChild("Roads")
+	local tl = roads and roads:FindFirstChild("Traffic Lights")
+	if not tl then return end
+	local n = 0
+	for _, d in ipairs(tl:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name == "Red" and d.Parent and d.Parent.Name == "Red" then
+			if (d.Position.X - center.X) ^ 2 + (d.Position.Z - center.Z) ^ 2 < 400 * 400 then
+				local holder = d.Parent.Parent
+				local o = holder and holder:FindFirstChild("Orange")
+				local g = holder and holder:FindFirstChild("Green")
+				o = o and (o:FindFirstChild("Orange") or o)
+				g = g and (g:FindFirstChild("Green") or g)
+				local model = d
+				while model and model ~= tl and model:GetAttribute("on") == nil do model = model.Parent end
+				lampGroups[#lampGroups + 1] = { red = d, orange = (o and o:IsA("BasePart")) and o or nil, green = (g and g:IsA("BasePart")) and g or nil, model = (model ~= tl) and model or nil }
+			end
+		end
+		n = n + 1
+		if n % 1500 == 0 then task.wait() end
+	end
+end
+local function lampState(gp)
+	if gp.model and (gp.model:GetAttribute("on") == false or gp.model:GetAttribute("broken") == true) then return "off" end
+	local r, o, g = lampScore(gp.red), lampScore(gp.orange), lampScore(gp.green)
+	local best, second, who = -1, -1, nil
+	for name, sc in pairs({ red = r, orange = o, green = g }) do
+		if sc > best then second, best, who = best, sc, name elseif sc > second then second = sc end
+	end
+	if best - second < 0.25 then return "unknown", r, o, g end
+	return who, r, o, g
+end
+-- distance (studs) to the stop line of the red light we are driving towards, or nil
+local loggedLamp = setmetatable({}, { __mode = "k" })
+local function redLightDist(pos, fwd, spd)
+	if os.clock() - lampT > 6 then refreshLamps(pos) end
+	local right = V3(-fwd.Z, 0, fwd.X)
+	local best
+	for _, gp in ipairs(lampGroups) do
+		local red = gp.red
+		if red and red.Parent then
+			local v = V3(red.Position.X - pos.X, 0, red.Position.Z - pos.Z)
+			local along = v:Dot(fwd)
+			if along > 5 and along < 110 and math.abs(v:Dot(right)) < 30 then
+				-- the lamp is a flat disc facing along its X axis: it is for us when that axis points along our road
+				local n = red.CFrame.RightVector
+				n = V3(n.X, 0, n.Z)
+				if n.Magnitude > 0.1 and math.abs(n.Unit:Dot(fwd)) > 0.75 then
+					local st, r, o, g = lampState(gp)
+					if not loggedLamp[red] then
+						loggedLamp[red] = true
+						log(("traffic light at (%.0f,%.0f): %s (scores red %.2f, orange %.2f, green %.2f)"):format(red.Position.X, red.Position.Z, st, r or 0, o or 0, g or 0))
+					end
+					if st == "red" or (st == "orange" and along > spd * 1.3 + 10) then
+						local d = along - 13
+						if not best or d < best then best = d end
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+local IGNORE_ANCESTORS = { "Traffic Lights", "Streetlamps", "Signs", "TrainTracks", "RailroadCrossings", "Rail", "Trees", "DestroyedObjects" }
 local function ignorable(inst)
 	local n = inst.Name
 	if inst == workspace.Terrain or n:find("Road", 1, true) ~= nil or n == "Curb" or n == "Sidewalk" or n:find("Marking", 1, true) ~= nil then return true end
@@ -669,6 +828,7 @@ function Drive.To(targetPos, opts)
 		if not (car and seat and hum and hum.SeatPart == seat) then return false, "sit in your car first" end
 
 		loadTune()
+		if not opts.waypoints and (opts.replans or 0) == 0 then pcall(extendRoads, seat.Position, 1100) end
 		if (opts.replans or 0) == 0 then
 			TRIP_BLOCK = {}
 			local nb = blockDynamic()
@@ -923,6 +1083,7 @@ function Drive.To(targetPos, opts)
 			-- calibration 2: does a positive Steering raise or lower the heading angle?
 			steerSign = 1
 			do
+				setCtl("Throttle", 0)
 				local y0 = yawOf(forward())
 				setCtl("Steering", 0.8)
 				task.wait(0.9)
@@ -995,6 +1156,7 @@ function Drive.To(targetPos, opts)
 		honkPar.FilterType = Enum.RaycastFilterType.Include
 		local lastHonkChk, honkSince, carDist = 0, nil, nil
 		local lastChase, lastFollow, lastSig, sigOffAt = 0, 0, 0, nil
+		local lastLight, redDist = 0, nil
 		local passUntil, passSide, carStopT = 0, 0, nil -- going around a car that blocks the lane
 		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
 		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
@@ -1218,6 +1380,24 @@ function Drive.To(targetPos, opts)
 			local target = math.min(allowed * corner * pm, math.sqrt(2 * 10 * math.max(remainRoute - arrive, 0)) + 8)
 			target = math.max(target, 14)
 			if opts.maxSpeed then target = math.min(allowed * corner, math.max(opts.maxSpeed * math.min(1, remainRoute / 10), 2.5)) end
+			-- speed cameras: be at the limit when passing one.  Red lights: stop in front of them while they are red (Auto Drive; the farm opts in with Drive.FarmLights)
+			local capped, stopHold = false, false
+			if not opts.exact then
+				if Drive.CameraSlow ~= false then
+					local cc = cameraCap(pos, fwd)
+					if cc and cc < target then target, capped = cc, true end
+				end
+				if (opts.npc and Drive.RedLights ~= false) or (not opts.npc and Drive.FarmLights == true) then
+					if nowT - lastLight > 0.12 then lastLight = nowT; redDist = redLightDist(pos, fwd, spd) end
+					if redDist then
+						redDist = redDist - 0 -- (refreshed every 0.12 s)
+						target = math.min(target, math.sqrt(2 * 9 * math.max(redDist - 1, 0)))
+						capped = true
+						stopHold = redDist < 3
+						if nowT - (Drive.lastRedLog or -99) > 6 then Drive.lastRedLog = nowT; log(("red light %.0f studs ahead: stopping"):format(redDist)) end
+					end
+				end
+			end
 			if offRoad then target = math.min(target, 18) end
 			if nowT < slowUntil then target = math.min(target, 22) end
 			local thrCmd = cur.Throttle
@@ -1226,6 +1406,9 @@ function Drive.To(targetPos, opts)
 			elseif spd < target - 3 then thrCmd = 1
 			elseif spd > target + 8 then thrCmd = -1
 			elseif spd > target + 2 then thrCmd = 0 end
+
+			if capped and spd > target + 3 then thrCmd = -1 end
+			if stopHold then thrCmd = spd > 1 and -1 or 0 end
 
 			-- safety brake: a car-sized box ahead; anything solid and upright inside the stopping distance means brake NOW
 			if nowT - lastScan > 0.1 and not reversing then
