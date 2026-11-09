@@ -290,18 +290,20 @@ local function cameraCap(pos, fwd)
 	return cap
 end
 
--- traffic lights: lamps (parts named Red / Orange / Green inside Workspace.Roads."Traffic Lights"). Which lamp is lit is read from the part
--- (neon material, a light switched on in it, how opaque / bright it is) and compared between the three, so no exact property has to be known.
+-- traffic lights (measured with tools/traffic_probe.lua): every lamp is a Neon MeshPart; the LIT lamp has its colour (red 1,0,0 / orange .85,.52,.25 /
+-- green 0,1,0), an unlit one is dark grey (.12). A TrafficLight model has two phases ("Primary" / "Secondary" folders, one per road), each with
+-- Red / Orange / Green folders that hold the lamp heads. Cycle: red -> red+orange -> green -> orange -> red.
 local lampGroups, lampT = {}, -99
-local function lampScore(p)
-	if not p then return 0 end
-	local s = (1 - p.Transparency) + (p.Color.R + p.Color.G + p.Color.B) / 3
-	if p.Material == Enum.Material.Neon then s = s + 2 end
-	for _, c in ipairs(p:GetDescendants()) do
-		if c:IsA("Light") and c.Enabled then s = s + 2 end
-		if (c:IsA("Decal") or c:IsA("Texture")) then s = s + (1 - c.Transparency) end
+local function lampLit(p)
+	local c = p.Color
+	return math.max(c.R, c.G, c.B) > 0.4
+end
+local function folderLit(f)
+	if not f then return false end
+	for _, d in ipairs(f:GetChildren()) do
+		if d:IsA("BasePart") and lampLit(d) then return true end
 	end
-	return s
+	return false
 end
 local function refreshLamps(center)
 	lampT = os.clock()
@@ -313,14 +315,10 @@ local function refreshLamps(center)
 	for _, d in ipairs(tl:GetDescendants()) do
 		if d:IsA("BasePart") and d.Name == "Red" and d.Parent and d.Parent.Name == "Red" then
 			if (d.Position.X - center.X) ^ 2 + (d.Position.Z - center.Z) ^ 2 < 400 * 400 then
-				local holder = d.Parent.Parent
-				local o = holder and holder:FindFirstChild("Orange")
-				local g = holder and holder:FindFirstChild("Green")
-				o = o and (o:FindFirstChild("Orange") or o)
-				g = g and (g:FindFirstChild("Green") or g)
+				local phase = d.Parent.Parent -- the "Primary" / "Secondary" folder
 				local model = d
 				while model and model ~= tl and model:GetAttribute("on") == nil do model = model.Parent end
-				lampGroups[#lampGroups + 1] = { red = d, orange = (o and o:IsA("BasePart")) and o or nil, green = (g and g:IsA("BasePart")) and g or nil, model = (model ~= tl) and model or nil }
+				lampGroups[#lampGroups + 1] = { red = d, phase = phase, model = (model ~= tl) and model or nil }
 			end
 		end
 		n = n + 1
@@ -329,13 +327,12 @@ local function refreshLamps(center)
 end
 local function lampState(gp)
 	if gp.model and (gp.model:GetAttribute("on") == false or gp.model:GetAttribute("broken") == true) then return "off" end
-	local r, o, g = lampScore(gp.red), lampScore(gp.orange), lampScore(gp.green)
-	local best, second, who = -1, -1, nil
-	for name, sc in pairs({ red = r, orange = o, green = g }) do
-		if sc > best then second, best, who = best, sc, name elseif sc > second then second = sc end
-	end
-	if best - second < 0.25 then return "unknown", r, o, g end
-	return who, r, o, g
+	local ph = gp.phase
+	local r, o, g = folderLit(ph:FindFirstChild("Red")), folderLit(ph:FindFirstChild("Orange")), folderLit(ph:FindFirstChild("Green"))
+	if r then return "red", r, o, g end
+	if o then return "orange", r, o, g end
+	if g then return "green", r, o, g end
+	return "off", r, o, g
 end
 -- distance (studs) to the stop line of the red light we are driving towards, or nil
 local loggedLamp = setmetatable({}, { __mode = "k" })
@@ -356,10 +353,10 @@ local function redLightDist(pos, fwd, spd)
 					local st, r, o, g = lampState(gp)
 					if not loggedLamp[red] then
 						loggedLamp[red] = true
-						log(("traffic light at (%.0f,%.0f): %s (scores red %.2f, orange %.2f, green %.2f)"):format(red.Position.X, red.Position.Z, st, r or 0, o or 0, g or 0))
+						log(("traffic light at (%.0f,%.0f), %s phase: %s"):format(red.Position.X, red.Position.Z, tostring(gp.phase and gp.phase.Name), st))
 					end
 					if st == "red" or (st == "orange" and along > spd * 1.3 + 10) then
-						local d = along - 13
+						local d = along - 9 -- the lamp heads hang over the stop line: stop about 9 studs before them
 						if not best or d < best then best = d end
 					end
 				end
