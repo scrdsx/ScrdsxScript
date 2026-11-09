@@ -337,11 +337,26 @@ function Plan.Route(ax, az, bx, bz, opts)
 		end
 		return true
 	end
+	-- a shortcut may only replace the lane path when it stays within ~5 studs of it: otherwise the route cuts across the road (it used to drift
+	-- over to the road edge on long chords and to turn in far too early at corners)
+	local function corridorOk(i, j)
+		local a, b = path[i], path[j]
+		local abx, abz = b[1] - a[1], b[2] - a[2]
+		local l2 = abx * abx + abz * abz
+		if l2 < 1 then return true end
+		for m = i + 1, j - 1 do
+			local px, pz = path[m][1] - a[1], path[m][2] - a[2]
+			local t = max(0, min(1, (px * abx + pz * abz) / l2))
+			local dx, dz = px - abx * t, pz - abz * t
+			if dx * dx + dz * dz > 30 then return false end
+		end
+		return true
+	end
 	local keep = { path[1] }
 	local i = 1
 	while i < #path do
-		local j = #path
-		while j > i + 1 and not lineOk(path[i], path[j]) do j = j - 1 end
+		local j = min(#path, i + 30)
+		while j > i + 1 and not (corridorOk(i, j) and lineOk(path[i], path[j])) do j = j - 1 end
 		keep[#keep + 1] = path[j]
 		i = j
 	end
@@ -355,6 +370,42 @@ function Plan.Route(ax, az, bx, bz, opts)
 			local f = t / steps
 			out[#out + 1] = { a[1] + (b[1] - a[1]) * f, a[3] + (b[3] - a[3]) * f, a[2] + (b[2] - a[2]) * f }
 		end
+	end
+	-- keep to the right-hand side of wide roads (right-hand traffic): shift the line sideways by up to 8 studs, more on wider roads, smoothly,
+	-- never in roundabouts and never into something blocked / off the road
+	if opts.lane ~= false and #out > 2 then
+		local lv, sh = {}, {}
+		for n, pt in ipairs(out) do
+			lv[n] = floor(pt[2] / 6 + 0.5)
+			local k = find(floor(pt[1] / CELL), floor(pt[3] / CELL), lv[n])
+			if k and not (ringDir and ringDir[k]) then sh[n] = max(0, min(8, (edge[k] or 0) * CELL - 7)) else sh[n] = 0 end
+		end
+		for _ = 1, 2 do
+			local nxt = {}
+			for n = 1, #out do
+				nxt[n] = (n > 1 and n < #out) and (sh[n - 1] + sh[n] * 2 + sh[n + 1]) / 4 or 0
+			end
+			sh = nxt
+		end
+		local moved = {}
+		for n = 2, #out - 1 do
+			local a, b = out[n - 1], out[n + 1]
+			local dx, dz = b[1] - a[1], b[3] - a[3]
+			local l = sqrt(dx * dx + dz * dz)
+			local x, z = out[n][1], out[n][3]
+			if l > 0.5 and sh[n] > 0.3 then
+				local rx, rz = -dz / l, dx / l
+				local s2 = sh[n]
+				for _ = 1, 4 do
+					local nx, nz = x + rx * s2, z + rz * s2
+					local k = find(floor(nx / CELL), floor(nz / CELL), lv[n])
+					if k and (edge[k] or 0) >= 1 and not (blocked and blocked(nx, nz)) then x, z = nx, nz; break end
+					s2 = s2 / 2
+				end
+			end
+			moved[n] = { x, z }
+		end
+		for n = 2, #out - 1 do out[n][1], out[n][3] = moved[n][1], moved[n][2] end
 	end
 	-- each point as { x, y, z }
 	local res = {}
