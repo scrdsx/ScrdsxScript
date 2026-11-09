@@ -213,7 +213,7 @@ function Plan.Route(ax, az, bx, bz, opts)
 						local nk, nl = find(i + di, j + dj, l)
 						if nk and not closed[nk] then
 							local e = edge[nk] or 0
-							if e >= minEdge or nk == g then
+							if e >= minEdge or nk == g or (e >= 1 and ringDir and ringDir[nk]) then
 								local ok = true
 								if di ~= 0 and dj ~= 0 then
 									ok = find(i + di, j, l) ~= nil and find(i, j + dj, l) ~= nil
@@ -224,6 +224,7 @@ function Plan.Route(ax, az, bx, bz, opts)
 									local step = (di ~= 0 and dj ~= 0) and 1.4142 or 1
 									local pen = 1 + 0.35 * max(0, WANT - e)
 									local rd = ringDir and ringDir[nk]
+									if rd then pen = 1 end -- the roundabout lane is narrow by nature: no edge penalty, so it beats detours through side streets
 									if rd and (rd[1] * di + rd[2] * dj) < -0.3 then pen = pen * 1.8 end -- against the roundabout's direction
 									-- the first stretch behind the car costs extra: leave in the direction the car faces if the road allows it
 									if head then

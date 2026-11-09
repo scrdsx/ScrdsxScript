@@ -98,7 +98,7 @@ for (x, z) in rb:
     else:
         centres.append([x, z, 1])
 rings = [(c[0] / c[2], c[1] / c[2]) for c in centres]
-ISLAND, RING_OUT = 40.0, 84.0
+ISLAND, RING_OUT = 58.0, 80.0 # the island (statue, sidewalk, curb) is a disc of radius ~57; the lane is the ring around it; street lamps stand just outside it on the diagonals
 for (cx, cz) in rings:
     for i in range(int((cx - ISLAND) // 4), int((cx + ISLAND) // 4) + 1):
         for j in range(int((cz - ISLAND) // 4), int((cz + ISLAND) // 4) + 1):
@@ -106,7 +106,16 @@ for (cx, cz) in rings:
                 for l in range(-20, 21):
                     if (i, j, l) in grid.cells:
                         blocked.add((i, j, l))
-print(len(rings), "roundabouts (island radius %d closed)" % ISLAND)
+# the four corners of the module outside the ring (sidewalk, street lamps, trees) are not for cars either; the arms (+-22 studs round the axes) stay open
+for (cx, cz) in rings:
+    for i in range(int((cx - 92) // 4), int((cx + 92) // 4) + 1):
+        for j in range(int((cz - 92) // 4), int((cz + 92) // 4) + 1):
+            dx, dz = i * 4 + 2 - cx, j * 4 + 2 - cz
+            if math.hypot(dx, dz) > RING_OUT and abs(dx) > 22 and abs(dz) > 22:
+                for l in range(-20, 21):
+                    if (i, j, l) in grid.cells:
+                        blocked.add((i, j, l))
+print(len(rings), "roundabouts (island radius %d + corners closed)" % ISLAND)
 # inflate by one cell (the car is 6 wide)
 infl = set(blocked)
 for (i, j, l) in blocked:
