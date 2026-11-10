@@ -31,8 +31,13 @@ local function find(i, j, l)
 	if cells[k] then return k, l + 1 end
 	return nil
 end
+-- planning works in slices of ~4 ms: the game keeps its frame rate while a long route is planned (it used to freeze for whole frames at a time)
+local lastYield = 0
 local function yield(n)
-	if Plan.Yield and n % 4000 == 0 then Plan.Yield() end
+	if Plan.Yield and n % 128 == 0 then
+		local t = os.clock()
+		if t - lastYield > 0.004 then Plan.Yield(); lastYield = os.clock() end
+	end
 end
 
 local function build()
@@ -299,7 +304,7 @@ function Plan.Route(ax, az, bx, bz, opts)
 									if ng < (gs[nk] or math.huge) then
 										gs[nk], parent[nk] = ng, k
 										local hx, hz = cx - gx, cz - gz
-										push(nk, ng + sqrt(hx * hx + hz * hz) / CELL)
+										push(nk, ng + 1.5 * sqrt(hx * hx + hz * hz) / CELL) -- weighted A*: far fewer cells to look at, still a good route
 									end
 								end
 							end

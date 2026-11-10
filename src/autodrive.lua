@@ -170,26 +170,64 @@ local function isTemporary(inst)
 end
 -- everything solid inside Workspace.Emergencies / PoliceBlockades (construction sites, roadblocks, crashed cars) becomes a block BEFORE the
 -- route is planned, so the planner drives round them instead of finding out at 100 studs/s
-local function blockDynamic()
-	local n = 0
+-- Dynamic obstacles (roadworks, police roadblocks, crashes): the list of their solid parts is kept for 3 s, so it can be checked often
+local dynParts, dynT = {}, -99
+local function refreshDyn()
+	if os.clock() - dynT < 3 then return end
+	dynT = os.clock()
+	dynParts = {}
 	for _, nm in ipairs({ "Emergencies", "PoliceBlockades" }) do
 		local f = workspace:FindFirstChild(nm)
 		for _, d in ipairs(f and f:GetDescendants() or {}) do
 			if d:IsA("BasePart") and d.CanCollide and d.Size.Y > 0.8 and math.max(d.Size.X, d.Size.Z) > 1.5 then
-				local p, sz = d.Position, d.Size
-				local len = math.max(sz.X, sz.Z)
-				local ax = sz.X >= sz.Z and d.CFrame.RightVector or d.CFrame.LookVector
-				for t = -len / 2, len / 2 + 0.01, 8 do addTempBlock(p.X + ax.X * t, p.Z + ax.Z * t) end
-				n = n + 1
-				if n >= 250 then return n end
+				dynParts[#dynParts + 1] = d
+				if #dynParts >= 400 then return end
 			end
+		end
+	end
+end
+local function blockDynamic()
+	refreshDyn()
+	local n = 0
+	for _, d in ipairs(dynParts) do
+		if d.Parent then
+			local p, sz = d.Position, d.Size
+			local len = math.max(sz.X, sz.Z)
+			local ax = sz.X >= sz.Z and d.CFrame.RightVector or d.CFrame.LookVector
+			for t = -len / 2, len / 2 + 0.01, 8 do addTempBlock(p.X + ax.X * t, p.Z + ax.Z * t) end
+			n = n + 1
 		end
 	end
 	return n
 end
+-- is one of those parts on (or right next to) the route ahead?  returns the distance along the route (studs) or nil
+local function dynamicOnRoute(path, fromI, ahead)
+	refreshDyn()
+	if #dynParts == 0 then return nil end
+	local acc = 0
+	for i = fromI, math.min(#path - 1, fromI + ahead) do
+		local a = path[i]
+		acc = acc + (i > fromI and flat(path[i - 1], a) or 0)
+		for _, d in ipairs(dynParts) do
+			if d.Parent then
+				local p, sz = d.Position, d.Size
+				local r = math.max(sz.X, sz.Z) / 2 + 7
+				local dx, dz = p.X - a.X, p.Z - a.Z
+				if dx * dx + dz * dz < r * r then return acc, d end
+			end
+		end
+	end
+	return nil
+end
 local function blockObstacle(inst, hitX, hitZ, why)
 	local temp = isTemporary(inst)
-	if temp then addTempBlock(hitX, hitZ); log("blocked (temporary): " .. tostring(why)) else addBlock(hitX, hitZ, why) end
+	if temp then
+		addTempBlock(hitX, hitZ)
+		local nb = blockDynamic()
+		log(("blocked (temporary): %s: all %d loaded roadblock / roadwork parts are blocked now"):format(tostring(why), nb))
+	else
+		addBlock(hitX, hitZ, why)
+	end
 	local grp = inst and inst.Parent
 	if not grp or grp == workspace or grp == workspace:FindFirstChild("Roads") then return end
 	local n = 0
@@ -337,7 +375,7 @@ end
 -- distance (studs) to the stop line of the red light we are driving towards, or nil
 local loggedLamp = setmetatable({}, { __mode = "k" })
 local function redLightDist(pos, fwd, spd)
-	if os.clock() - lampT > 6 then refreshLamps(pos) end
+	if os.clock() - lampT > 20 then refreshLamps(pos) end
 	local right = V3(-fwd.Z, 0, fwd.X)
 	local best
 	for _, gp in ipairs(lampGroups) do
@@ -889,6 +927,10 @@ function Drive.To(targetPos, opts)
 				if i > 1 then len = len + flat(w[i], w[i - 1]) end
 			end
 			wps, wpKeys, endPos = w, k, w[#w]
+			if opts.strict and len > 2.5 * flat(seat.Position, targetPos) + 600 then
+				log(("the route is %.0f studs for %.0f studs as the crow flies: too long a detour, picking another place"):format(len, flat(seat.Position, targetPos)))
+				return false, "detour too long"
+			end
 			log(("route (road surface): %d points, %.0f studs, planned in %.2f s, ends %.0f studs from the target"):format(#w, len, os.clock() - t0, flat(endPos, targetPos)))
 			local hits = {}
 			for _, h in ipairs(scanRoute(wps, seat.Position, car)) do
@@ -1154,6 +1196,7 @@ function Drive.To(targetPos, opts)
 		local lastHonkChk, honkSince, carDist = 0, nil, nil
 		local lastChase, lastFollow, lastSig, sigOffAt = 0, 0, 0, nil
 		local lastLight, redDist = 0, nil
+		local lastCam, camCap, lastDyn = 0, nil, 0
 		local passUntil, passSide, carStopT = 0, 0, nil -- going around a car that blocks the lane
 		local lastScan, danger, dangerStopT, lastDangerLog = 0, nil, nil, 0
 		local lastRoadChk, offRoadSince, roadPt = 0, nil, nil
@@ -1242,6 +1285,18 @@ function Drive.To(targetPos, opts)
 				lastFollow = nowT
 				local tp = opts.follow()
 				if tp and flat(tp, targetPos) > 40 then release(); closePiece(); saveTune(); return false, "retarget" end
+			end
+
+			-- roadworks / roadblocks that streamed in after the route was planned: if one is on the route ahead, plan again around ALL of them now
+			if opts.waypoints == nil and nowT - lastDyn > 1.0 then
+				lastDyn = nowT
+				local dist, part = dynamicOnRoute(path, bestI, 60)
+				if dist and dist > 35 and (opts.replans or 0) < 5 then
+					local nb = blockDynamic()
+					log(("roadblock / roadwork ahead on the route (%.0f studs, %s): %d parts blocked, planning round it"):format(dist, part and part:GetFullName() or "?", nb))
+					release(); closePiece(); saveTune()
+					return false, "replan"
+				end
 			end
 
 			-- police behind us while wanted: stop this trip, the caller runs away first (Drive.Flee)
@@ -1381,8 +1436,8 @@ function Drive.To(targetPos, opts)
 			local capped, stopHold = false, false
 			if not opts.exact then
 				if Drive.CameraSlow ~= false then
-					local cc = cameraCap(pos, fwd)
-					if cc and cc < target then target, capped = cc, true end
+					if nowT - lastCam > 0.25 then lastCam = nowT; camCap = cameraCap(pos, fwd) end
+					if camCap and camCap < target then target, capped = camCap, true end
 				end
 				if (opts.npc and Drive.RedLights ~= false) or (not opts.npc and Drive.FarmLights == true) then
 					if nowT - lastLight > 0.12 then lastLight = nowT; redDist = redLightDist(pos, fwd, spd) end
