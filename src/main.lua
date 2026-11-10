@@ -203,6 +203,19 @@ tTele:Button({ Name = "Save my position as a spot", Callback = function()
 end })
 Tele.Scan(addLocations)
 
+-- Hospital: lie down in a bed to heal / revive (waits for the respawn when you are dead)
+local mHosp
+mHosp = tTele:Module({ Name = "Hospital bed (revive)", Default = false, NoSave = true, Callback = function(on)
+	Farm.AutoRevive = on
+	win:Notify(on and "Auto revive on: after you die it goes to a hospital bed" or "Auto revive off", 3)
+end })
+mHosp:Label({ Name = "Toggle = go to a bed by itself after every death", Value = "" })
+local hospKey = mHosp:Keybind({ Name = "Go to a hospital bed now", Default = Enum.KeyCode.J })
+mHosp:Button({ Name = "Go lie in a hospital bed now", Callback = function()
+	local ok, why = Farm.GoHospital(true)
+	if not ok then win:Notify("Hospital: " .. tostring(why)) end
+end })
+
 -- AutoFarm tab (modules get added here)
 local tFarm = win:Tab("AutoFarm", { Section = "Farming", Icon = 6 })
 Farm.Tele = Tele
@@ -525,6 +538,14 @@ end))
 table.insert(win.conns, UIS.InputEnded:Connect(function(i)
 	if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if Aim.Hold and aimKey:Get() == i.KeyCode then Aim.KeyEvent(false) end
+end))
+
+-- hospital key
+table.insert(win.conns, UIS.InputBegan:Connect(function(i)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or hospKey:IsListening() then return end
+	if hospKey:Get() ~= i.KeyCode then return end
+	local ok, why = Farm.GoHospital(true)
+	if not ok then win:Notify("Hospital: " .. tostring(why)) end
 end))
 
 -- park key: the car lines up with the space under the crosshair and rolls in straight

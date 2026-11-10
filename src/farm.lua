@@ -1364,6 +1364,8 @@ end
 
 function Farm.Destroy()
 	Farm.Stop()
+	Farm.AutoRevive = false
+	for _, c in ipairs(deathConns) do pcall(function() c:Disconnect() end) end
 	Farm.Changed = nil
 end
 
@@ -1442,6 +1444,109 @@ function Farm.LootNearby(radius)
 	end)
 	return true
 end
+-- Hospital: lie down in a hospital bed (the game heals whoever sits in one: +1/60 of max health per second). Works from the dead too: it waits
+-- for the respawn first. The beds are Seats tagged "Hospital Bed Interactable"; "Lay Down" is the interaction 82y (instant). NOTE: the game's
+-- interaction code refuses anything while you are below 25% health, so when that happens the script falls back to sitting on the bed by touch.
+local HOSPITAL_BEDS = { V3(-58.6, 4.4, 1072.9), V3(-108.2, 4.4, 1095.3), V3(-108.2, 4.4, 1074.3), V3(-58.6, 4.4, 1093.9) }
+local function hospitalBeds()
+	local list = {}
+	for _, s in ipairs(CS:GetTagged("Hospital Bed Interactable")) do
+		if s:IsA("BasePart") then list[#list + 1] = { seat = s, pos = s.Position, free = (s:IsA("Seat") and s.Occupant == nil) or not s:IsA("Seat") } end
+	end
+	if #list == 0 then
+		for _, p in ipairs(HOSPITAL_BEDS) do list[#list + 1] = { pos = p, free = true } end
+	end
+	return list
+end
+local function nearestBed(from)
+	local best
+	for _, b in ipairs(hospitalBeds()) do
+		if b.free and (not best or (b.pos - from).Magnitude < (best.pos - from).Magnitude) then best = b end
+	end
+	return best
+end
+
+function Farm.GoHospital(stay)
+	if Farm.Busy then return false, "busy (stop Auto Rob first)" end
+	Farm.Busy, Farm.Cancel = true, false
+	task.spawn(function()
+		local ok, err = pcall(function()
+			say("hospital: waiting for a living character")
+			local t0 = os.clock()
+			while os.clock() - t0 < 40 and not Farm.Cancel do
+				local _, h = parts()
+				if h and h.Health > 0 and h.RootPart then break end
+				task.wait(0.4)
+			end
+			task.wait(0.8)
+			local _, hum, hrp = parts()
+			if not (hum and hrp and hum.Health > 0) then say("hospital: you are not alive yet (respawn first)"); return end
+			local bed = nearestBed(hrp.Position)
+			if not bed then say("hospital: every bed is taken"); return end
+			say("hospital: going to a bed")
+			flog(("hospital: bed at (%.0f,%.0f,%.0f), %.0f studs away, health %d/%d"):format(bed.pos.X, bed.pos.Y, bed.pos.Z, (hrp.Position - bed.pos).Magnitude, hum.Health, hum.MaxHealth))
+			if (hrp.Position - bed.pos).Magnitude > 140 then
+				if not goNear(bed.pos, "the hospital") then flog("hospital: could not drive there, trying on foot") end
+			end
+			_, hum, hrp = parts()
+			if not (hum and hrp) then return end
+			bed = nearestBed(hrp.Position) or bed -- the beds only exist in the game once you are near the hospital
+			walkTo(bed.pos + V3(0, 1.5, 0), nil, 3.5)
+			_, hum, hrp = parts()
+			if not (hum and hrp) then return end
+			local seat = bed.seat
+			if not seat then
+				for _, s in ipairs(CS:GetTagged("Hospital Bed Interactable")) do
+					if s:IsA("BasePart") and (s.Position - hrp.Position).Magnitude < 14 and (not seat or (s.Position - hrp.Position).Magnitude < (seat.Position - hrp.Position).Magnitude) then seat = s end
+				end
+			end
+			if not seat then say("hospital: no bed found here"); return end
+			local pct = math.floor(hum.Health / math.max(hum.MaxHealth, 1) * 100)
+			for attempt = 1, 4 do
+				if hum.SeatPart == seat then break end
+				if attempt <= 2 then
+					fire(ID.INTERACT, seat, "82y", "stop") -- "Lay Down"
+				else
+					-- below 25% health the game ignores interactions: climb onto the bed by touch instead
+					hrp.CFrame = seat.CFrame * CFrame.new(0, 2.8, 0)
+					hum.Sit = true
+				end
+				local t = os.clock()
+				while os.clock() - t < 2 and hum.SeatPart ~= seat do task.wait(0.1) end
+				flog(("hospital: lay-down try %d: %s (health %d%%)"):format(attempt, hum.SeatPart == seat and "in the bed" or "not seated", pct))
+			end
+			if hum.SeatPart ~= seat then say(("hospital: could not lie down (health %d%%)"):format(pct)); return end
+			say("hospital: lying in the bed")
+			local t1 = os.clock()
+			while stay ~= false and not Farm.Cancel and hum.SeatPart == seat and os.clock() - t1 < 100 and hum.Health < hum.MaxHealth * 0.98 do
+				say(("hospital: healing %d%%"):format(math.floor(hum.Health / math.max(hum.MaxHealth, 1) * 100)))
+				task.wait(1)
+			end
+			if stay ~= false and hum.SeatPart == seat then hum.Sit = false end
+			say(("hospital: done, health %d%%"):format(math.floor(hum.Health / math.max(hum.MaxHealth, 1) * 100)))
+		end)
+		if not ok then flog("hospital error: " .. tostring(err)) end
+		Farm.Busy, Farm.Cancel = false, true
+	end)
+	return true
+end
+
+-- optional: after every death, go to a hospital bed by yourself
+Farm.AutoRevive = false
+local deathConns = {}
+local function watchCharacter(ch)
+	local h = ch:WaitForChild("Humanoid", 10)
+	if not h then return end
+	table.insert(deathConns, h.Died:Connect(function()
+		if Farm.AutoRevive and not Farm.Busy then
+			flog("you died: auto revive will go to a hospital bed after the respawn")
+			task.delay(1, function() Farm.GoHospital(true) end)
+		end
+	end))
+end
+table.insert(deathConns, lp.CharacterAdded:Connect(watchCharacter))
+if lp.Character then task.spawn(watchCharacter, lp.Character) end
+
 function Farm.StopLoot() if Farm.Busy and not Farm.Enabled then Farm.Cancel = true end end
 
 stats()
