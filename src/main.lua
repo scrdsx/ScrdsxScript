@@ -14,10 +14,21 @@ local Farm = __import("farm")
 local Drive = __import("autodrive")
 local ESP = __import("esp")
 local Aim = __import("aim")
+local Extras = __import("extras")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
 print("[Scrdsx] running " .. SUBTITLE)
+
+-- a module that fails to start must not take the whole script down: every Start() goes through safe()
+local startErrors = {}
+local function safe(name, f)
+	local ok, err = pcall(f)
+	if not ok then
+		startErrors[#startErrors + 1] = name .. ": " .. tostring(err)
+		warn("[Scrdsx] " .. name .. " failed to start: " .. tostring(err))
+	end
+end
 
 -- re-run safe: tear down a previous instance
 if getgenv then
@@ -37,7 +48,7 @@ mSusp:Slider({ Name = "Height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, De
 mSusp:Toggle({ Name = "Set game's suspensionHeight", Default = true, Callback = function(v) Vehicle.UseAttribute = v end })
 mSusp:Toggle({ Name = "Also raise springs", Default = false, Callback = function(v) Vehicle.UseSprings = v end })
 Vehicle.Changed = function() lCar:Set(Vehicle.Info) end
-Vehicle.Start()
+safe("vehicle", Vehicle.Start)
 
 local mAnti = tVeh:Module({ Name = "Anti Crash Damage", Default = false, Callback = function(on)
 	if not Anti.SetEnabled(on) then
@@ -61,7 +72,7 @@ mSpeed:Slider({ Name = "Armor level", Min = 0, Max = 6, Step = 1, Default = 0, C
 mSpeed:Slider({ Name = "Acceleration multiplier", Min = 1, Max = 10, Step = 0.5, Default = 1, Suffix = "x", Callback = function(v) Speed.AccelMult = v end })
 mSpeed:Slider({ Name = "Top speed multiplier", Min = 1, Max = 5, Step = 0.25, Default = 1, Suffix = "x", Callback = function(v) Speed.TopMult = v end })
 Speed.Changed = function() lSpeed:Set(Speed.Info) end
-Speed.Start()
+safe("speed", Speed.Start)
 
 local mFlat = tVeh:Module({ Name = "Anti Flat Tires", Default = false, Callback = function(on) AntiFlat.SetEnabled(on) end })
 local lFlatState = mFlat:Label({ Name = "Status", Value = AntiFlat.Info })
@@ -90,14 +101,14 @@ mFly:Toggle({ Name = "Car-style steering (A/D turn)", Default = Fly.SteerMode, C
 mFly:Slider({ Name = "Turn speed", Min = 0.5, Max = 6, Step = 0.25, Default = Fly.TurnSpeed, Suffix = " rad/s", Callback = function(v) Fly.TurnSpeed = v end })
 mFly:Toggle({ Name = "Reverse heading (if W goes backwards)", Default = Fly.ReverseHeading, Callback = function(v) Fly.ReverseHeading = v end })
 mFly:Toggle({ Name = "Stabilize (no spin)", Default = Fly.Stabilize, Callback = function(v) Fly.Stabilize = v end })
-Fly.Start()
+safe("fly", Fly.Start)
 
 -- Player tab
 local tPlayer = win:Tab("Player", { Icon = 2 })
 local mStam = tPlayer:Module({ Name = "Inf Stamina", Default = false, Callback = function(on) Player.SetInfStamina(on) end })
 local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
-Player.Start()
+safe("player", Player.Start)
 
 -- ESP tab
 local tEsp = win:Tab("ESP", { Section = "Game", Icon = 3 })
@@ -124,7 +135,7 @@ mEsp:Toggle({ Name = "Show other jobs / prisoners", Default = true, Callback = f
 local mRadar = tEsp:Module({ Name = "Police radar (escape helper)", Default = true, Callback = function(on) ESP.Radar = on end })
 mRadar:Slider({ Name = "Warn within", Min = 100, Max = 800, Step = 25, Default = ESP.RadarDist, Suffix = " st", Callback = function(v) ESP.RadarDist = v end })
 ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) end
-ESP.Start()
+safe("esp", ESP.Start)
 
 -- Aim tab
 local tAim = win:Tab("Aim", { Section = "Game", Icon = 4 })
@@ -168,7 +179,27 @@ Aim.OnTarget = function(plr)
 		win:Notify("Camlock: no target", 1.5)
 	end
 end
-Aim.Start()
+safe("aim", Aim.Start)
+
+-- World tab: client-side helpers (lighting, camera, movement)
+local tWorld = win:Tab("World", { Section = "Game", Icon = 3 })
+tWorld:Section("Lighting")
+tWorld:Toggle({ Name = "Fullbright (no darkness)", Default = false, Callback = function(v) Extras.Fullbright = v; Extras.Refresh() end })
+tWorld:Toggle({ Name = "No fog", Default = false, Callback = function(v) Extras.NoFog = v; Extras.Refresh() end })
+tWorld:Toggle({ Name = "Lock the time of day", Default = false, Callback = function(v) Extras.LockTime = v; Extras.Refresh() end })
+tWorld:Slider({ Name = "Time of day", Min = 0, Max = 24, Step = 0.5, Default = Extras.Time, Suffix = " h", Callback = function(v) Extras.Time = v end })
+tWorld:Section("Camera")
+tWorld:Toggle({ Name = "Custom field of view", Default = false, Callback = function(v) Extras.FovOn = v end })
+tWorld:Slider({ Name = "Field of view", Min = 40, Max = 120, Step = 1, Default = Extras.Fov, Callback = function(v) Extras.Fov = v end })
+tWorld:Toggle({ Name = "Unlimited camera zoom", Default = false, Callback = function(v) Extras.Zoom = v end })
+tWorld:Section("Movement (risky: the server may notice)")
+tWorld:Toggle({ Name = "Infinite jump", Default = false, Callback = function(v) Extras.InfJump = v end })
+tWorld:Toggle({ Name = "Noclip (walk through walls)", Default = false, Callback = function(v) Extras.Noclip = v end })
+tWorld:Toggle({ Name = "Custom walk speed", Default = false, Callback = function(v) Extras.SpeedOn = v end })
+tWorld:Slider({ Name = "Walk speed", Min = 16, Max = 80, Step = 1, Default = Extras.Speed, Callback = function(v) Extras.Speed = v end })
+tWorld:Section("Utility")
+tWorld:Toggle({ Name = "Anti AFK (never kicked for idling)", Default = Extras.AntiAfk, Callback = function(v) Extras.AntiAfk = v end })
+safe("extras", Extras.Start)
 
 -- Travel tab: the new teleport system (instant jump first, every move checked, falls back to hops -> walking -> car)
 local Travel = __import("travel")
@@ -272,7 +303,7 @@ tEsc:Button({ Name = "Save this spot as a hideout", Callback = function()
 end })
 tEsc:Button({ Name = "Stop", Callback = function() Escape.Stop() end })
 tEsc:Label({ Name = "Police radar", Value = "ESP tab" })
-Escape.Start()
+safe("escape", Escape.Start)
 
 -- AutoFarm tab (modules get added here)
 local tFarm = win:Tab("AutoFarm", { Section = "Farming", Icon = 6 })
@@ -364,6 +395,34 @@ local hud = Hud.new({
 	Title = TITLE,
 	Version = (getgenv and getgenv() or _G).ScrdsxVersion,
 	GetLocations = function() return Tele.Locations end,
+	GetStatus = function()
+		local good, warnC, bad, sub = Color3.fromRGB(120, 220, 140), Color3.fromRGB(240, 190, 90), Color3.fromRGB(240, 100, 100), Color3.fromRGB(138, 138, 152)
+		local rows = {}
+		local me = game:GetService("Players").LocalPlayer
+		local c = me.Character
+		local hrp = c and c:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			local w = hrp:GetAttribute("IsWanted") == true
+			rows[#rows + 1] = { "Wanted", w and "YES" or "no", w and bad or good }
+			local best
+			for _, p in ipairs(ESP.PolicePositions(false)) do
+				local d = (p - hrp.Position).Magnitude
+				if not best or d < best then best = d end
+			end
+			rows[#rows + 1] = { "Police", best and ("%d st"):format(best) or "none near", best and (best < 150 and bad or (best < 350 and warnC or sub)) or sub }
+		end
+		if NPC.Enabled then rows[#rows + 1] = { "Auto Drive", NPC.Info, good } end
+		if Travel.Busy then rows[#rows + 1] = { "Travel", Travel.Info, warnC } end
+		if Escape.Busy then rows[#rows + 1] = { "Escape", Escape.Info, bad } end
+		if Farm.Busy then rows[#rows + 1] = { "Farm", Farm.Info, warnC } end
+		local car = workspace:FindFirstChild("Vehicles") and workspace.Vehicles:FindFirstChild(me.Name)
+		local seat = car and car:FindFirstChild("DriveSeat")
+		if seat and hrp then
+			local lim = Drive.SpeedLimitAt and Drive.SpeedLimitAt(seat.Position)
+			if lim then rows[#rows + 1] = { "Limit", lim >= 500 and "none" or (lim .. " km/h"), sub } end
+		end
+		return rows
+	end,
 	GetFarm = function() return { info = Farm.Info, stats = Farm.Stats, drive = Drive.State, pois = Farm.POIs(), earned = Farm.Earned(), busy = Farm.Busy } end,
 	GetModules = function()
 		local list = {}
@@ -379,6 +438,7 @@ tHud:Toggle({ Name = "Watermark", Default = hud:IsOn("watermark"), Callback = fu
 tHud:Toggle({ Name = "Player info (health, position, nearest spot)", Default = hud:IsOn("info"), Callback = function(v) hud:SetWidget("info", v) end })
 tHud:Toggle({ Name = "Vehicle (speed, fuel, health, tires)", Default = hud:IsOn("vehicle"), Callback = function(v) hud:SetWidget("vehicle", v) end })
 tHud:Toggle({ Name = "AutoFarm navigation (status + route map)", Default = hud:IsOn("farm"), Callback = function(v) hud:SetWidget("farm", v) end })
+tHud:Toggle({ Name = "Status (wanted, police, travel, auto drive)", Default = hud:IsOn("status"), Callback = function(v) hud:SetWidget("status", v) end })
 tHud:Toggle({ Name = "Active modules list", Default = hud:IsOn("modules"), Callback = function(v) hud:SetWidget("modules", v) end })
 tHud:Slider({ Name = "HUD size", Min = 0.6, Max = 1.6, Step = 0.05, Default = hud.scale, Callback = function(v) hud:SetScale(v) end })
 tHud:Button({ Name = "Move HUD (closes this window; press / when done)", Callback = function()
@@ -507,6 +567,57 @@ end })
 if parseHex(theme.accent) then accentPick:Set(parseHex(theme.accent), true) end
 if parseHex(theme.bg) then bgPick:Set(parseHex(theme.bg), true) end
 if theme.accent ~= "" or theme.bg ~= "" then task.defer(applyTheme, false) end
+tSet:Section("Theme presets")
+for _, pr in ipairs({
+	{ "Blue", Color3.fromRGB(64, 132, 255) }, { "Violet", Color3.fromRGB(146, 104, 255) }, { "Green", Color3.fromRGB(46, 196, 120) },
+	{ "Red", Color3.fromRGB(236, 82, 82) }, { "Orange", Color3.fromRGB(245, 160, 60) }, { "Silver", Color3.fromRGB(205, 205, 214) },
+}) do
+	tSet:Button({ Name = "Accent: " .. pr[1], Callback = function()
+		accentPick:Set(pr[2], true)
+		theme.accent = toHex(pr[2])
+		applyTheme(true)
+	end })
+end
+tSet:Section("Help")
+tSet:Button({ Name = "Check my keybinds for clashes", Callback = function()
+	local GAME = { M = "Map", Tab = "Phone", L = "Headlights", H = "Horn", P = "Parking brake", G = "Hazard lights", Q = "Indicate left", E = "Indicate right", N = "Engine" }
+	local byKey, msgs = {}, {}
+	for id, f in pairs(win.flags) do
+		if f.kind == "key" then
+			local k = f.obj:Get()
+			if k then
+				byKey[k.Name] = byKey[k.Name] or {}
+				table.insert(byKey[k.Name], (id:match("([^/]+)$")) or id)
+			end
+		end
+	end
+	for k, list in pairs(byKey) do
+		if #list > 1 then msgs[#msgs + 1] = k .. " is used twice: " .. table.concat(list, ", ") end
+		if GAME[k] then msgs[#msgs + 1] = k .. " is also the game's key for " .. GAME[k] .. " (" .. table.concat(list, ", ") .. ")" end
+	end
+	if #msgs == 0 then win:Notify("No key clashes found", 3) else win:Notify(table.concat(msgs, "  |  "), 8) end
+end })
+tSet:Button({ Name = "Copy diagnostics (send me this when something breaks)", Callback = function()
+	local env = getgenv and getgenv() or _G
+	local L = {}
+	local function add(s) L[#L + 1] = s end
+	add("Scrdsx " .. tostring(env.ScrdsxVersion) .. " (" .. tostring(env.ScrdsxCommit) .. ")")
+	local okE, ex = pcall(function() return identifyexecutor and table.concat({ identifyexecutor() }, " ") end)
+	add("executor: " .. tostring(okE and ex or "unknown"))
+	local caps = {}
+	for _, n in ipairs({ "getgc", "writefile", "readfile", "isfile", "getcustomasset", "gethui", "setclipboard", "getconnections", "firesignal", "hookfunction", "hookmetamethod", "request", "mousemoverel" }) do
+		local ok2, v = pcall(function() return loadstring("return " .. n)() end)
+		caps[#caps + 1] = n .. "=" .. tostring(ok2 and v ~= nil)
+	end
+	add("functions: " .. table.concat(caps, " "))
+	add(("streaming=%s place=%s players=%d fps=%d"):format(tostring(workspace.StreamingEnabled), tostring(game.PlaceId), #game:GetService("Players"):GetPlayers(), math.floor(1 / math.max(game:GetService("RunService").RenderStepped:Wait(), 0.001))))
+	add("status: farm=" .. tostring(Farm.Info) .. " | drive=" .. tostring(NPC.Info) .. " | travel=" .. tostring(Travel.Info) .. " (last method " .. tostring(Travel.LastMethod) .. ", instant refused " .. tostring(Travel.instantFails) .. "x) | escape=" .. tostring(Escape.Info) .. " | aim=" .. tostring(Aim.Info) .. " | esp=" .. tostring(ESP.Info) .. " | stamina=" .. tostring(Player.Info))
+	add("start errors: " .. (#startErrors == 0 and "none" or table.concat(startErrors, " ; ")))
+	local txt = table.concat(L, "\n")
+	pcall(function() setclipboard(txt) end)
+	pcall(function() writefile("scrdsx_diagnostics.txt", txt) end)
+	win:Notify("Diagnostics copied (and saved to scrdsx_diagnostics.txt)", 4)
+end })
 tSet:Section("Keys")
 tSet:Label({ Name = "Toggle UI", Value = "RightShift" })
 tSet:Label({ Name = "Search (menu open)", Value = "/" })
@@ -536,6 +647,7 @@ local function unload()
 	Travel.Notify, Travel.Changed, Travel.Log = nil, nil, nil
 	Farm.TravelTo = nil
 	Escape.Destroy()
+	Extras.Destroy()
 	Aim.Changed = nil
 	Aim.Destroy()
 	hud:Destroy()

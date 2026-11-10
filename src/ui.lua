@@ -64,7 +64,7 @@ local SIDE_W, HEAD_H = 204, 54
 
 function UI.new(opts)
 	opts = opts or {}
-	local self = setmetatable({ tabs = {}, rows = {}, conns = {}, flags = {}, active = nil, visible = true, baseScale = 1, lastSection = nil }, UI)
+	local self = setmetatable({ tabs = {}, rows = {}, sections = {}, conns = {}, flags = {}, active = nil, visible = true, baseScale = 1, lastSection = nil }, UI)
 
 	local gui = new("ScreenGui", {
 		Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true,
@@ -290,6 +290,9 @@ function UI:_search(q)
 			t.page.GroupTransparency = t == self.active and 0 or 1
 		end
 		for _, r in ipairs(self.rows) do r.frame.Visible = true end
+		for _, sec in ipairs(self.sections) do
+			if sec.collapsed then for _, fr in ipairs(sec.rows) do fr.Visible = false end end
+		end
 		return
 	end
 	local hits = {}
@@ -403,17 +406,40 @@ local function row(tab, name, height)
 	f.MouseEnter:Connect(function() tween(f, .15, { BackgroundColor3 = T.hover }) end)
 	f.MouseLeave:Connect(function() tween(f, .15, { BackgroundColor3 = T.elem }) end)
 	table.insert(tab.win.rows, { frame = f, name = name:lower(), tab = tab.realTab or tab })
+	local cs = tab.curSection
+	if cs then
+		table.insert(cs.rows, f)
+		if cs.collapsed then f.Visible = false end
+		if cs.count then cs.count() end
+	end
 	return f
 end
 
 -- small group heading between rows, like "Graphic" / "Movement"
 function M:Section(o)
 	local name = type(o) == "table" and o.Name or tostring(o)
-	local f = new("Frame", { Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Parent = self.page })
+	local f = new("Frame", { Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, Parent = self.page })
 	new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 4, .5, 2), Size = UDim2.fromOffset(4, 12), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = f }, { corner(2) })
-	local l = label(name, 12, T.sub, T.bold); l.Position = UDim2.fromOffset(16, 2); l.Size = UDim2.new(1, -16, 1, 0); l.Parent = f
+	local l = label(name:upper(), 11, T.sub, T.bold); l.Position = UDim2.fromOffset(16, 2); l.Size = UDim2.new(1, -60, 1, 0); l.Parent = f
+	local chev = label("v", 12, T.sub, T.bold, Enum.TextXAlignment.Right); chev.AnchorPoint = Vector2.new(1, .5); chev.Position = UDim2.new(1, -8, .5, 2); chev.Size = UDim2.fromOffset(40, 16); chev.Parent = f
+	local sec = { rows = {}, collapsed = o.Collapsed == true }
+	if type(o) ~= "table" then sec.collapsed = false end
+	local function refreshHead()
+		chev.Text = sec.collapsed and (#sec.rows .. "  >") or "v"
+	end
+	sec.count = refreshHead
+	local hit = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = f })
+	hit.MouseEnter:Connect(function() tween(l, .15, { TextColor3 = T.text }) end)
+	hit.MouseLeave:Connect(function() tween(l, .15, { TextColor3 = T.sub }) end)
+	hit.MouseButton1Click:Connect(function()
+		sec.collapsed = not sec.collapsed
+		for _, r in ipairs(sec.rows) do r.Visible = not sec.collapsed end
+		refreshHead()
+	end)
+	self.curSection = sec
+	table.insert(self.win.sections, sec)
 	table.insert(self.win.rows, { frame = f, name = "\0", tab = self.realTab or self }) -- hidden while searching
-	return { frame = f }
+	return { frame = f, Section = sec }
 end
 
 function M:Label(o)

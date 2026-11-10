@@ -305,6 +305,7 @@ local function speedLimitAt(p)
 	return best
 end
 
+Drive.SpeedLimitAt = speedLimitAt
 -- a speed camera ahead: the speed we may still have (studs/s) so that we are at the limit when we pass it
 local function cameraCap(pos, fwd)
 	local cams = CSV:GetTagged("Speed Camera")

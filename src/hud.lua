@@ -26,6 +26,7 @@ local DEFAULTS = {
 	vehicle = { x = 0.010, y = 0.600 },
 	modules = { x = 0.880, y = 0.015 },
 	farm = { x = 0.760, y = 0.300 },
+	status = { x = 0.010, y = 0.340 },
 }
 
 local function new(class, props, children)
@@ -192,6 +193,7 @@ function HUD.new(opts)
 	local veh = widget("vehicle", "Vehicle")
 	local mods = widget("modules", "Active")
 	local farm = widget("farm", nil)
+	local statusW = widget("status", "Status")
 
 	-- AutoFarm mini-map in the style of the game's own map: you in the middle, shops / dealers as round icons, the route as a line,
 	-- and an info bar underneath (green: earned, blue: car / autopilot state)
@@ -413,6 +415,12 @@ function HUD.new(opts)
 			local line = fd.info or "idle"
 			if st and st.wps then line = line .. "  -  " .. tostring(math.floor(st.remain or 0)) .. " st" end
 			statusText.Text = line
+		end
+
+		if statusW.enabled then
+			local rows = opts.GetStatus and opts.GetStatus() or {}
+			if #rows == 0 then rows = { { "", "all quiet", T.sub } } end
+			setRows(statusW, rows)
 		end
 
 		if mods.enabled then
