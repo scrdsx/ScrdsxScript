@@ -153,18 +153,19 @@ function Tele.Scan(done)
 	end)
 end
 
-function Tele.SaveHere()
+function Tele.SaveHere(prefix)
+	prefix = prefix or "Spot"
 	local c = lp.Character
 	local hrp = c and c:FindFirstChild("HumanoidRootPart")
 	if not hrp then say("No character"); return nil end
 	local n = 1
 	while true do
 		local taken = false
-		for _, s in ipairs(Tele.Saved) do if s.name == "Spot " .. n then taken = true break end end
+		for _, s in ipairs(Tele.Saved) do if s.name == prefix .. " " .. n then taken = true break end end
 		if not taken then break end
 		n = n + 1
 	end
-	local loc = { name = "Spot " .. n, pos = hrp.Position }
+	local loc = { name = prefix .. " " .. n, pos = hrp.Position }
 	Tele.Saved[#Tele.Saved + 1] = loc
 	persistSaved()
 	table.insert(Tele.Locations, loc)

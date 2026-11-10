@@ -163,6 +163,25 @@ local function nearestPolice(origin)
 	return best, bpos
 end
 
+-- every police player / police car position (activeOnly: only cars with their lights on)
+function ESP.PolicePositions(activeOnly)
+	local out = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= lp and plr.Team and plr.Team.Name == "Police" then
+			local h = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+			if h then out[#out + 1] = h.Position end
+		end
+	end
+	local vf = workspace:FindFirstChild("Vehicles")
+	for _, m in ipairs(vf and vf:GetChildren() or {}) do
+		if m.Name ~= lp.Name and tostring(m:GetAttribute("Config") or ""):lower():find("police") and (not activeOnly or m:GetAttribute("EmergencyLights") == true) then
+			local ok, p = pcall(function() return m:GetPivot().Position end)
+			if ok then out[#out + 1] = p end
+		end
+	end
+	return out
+end
+
 local lastRadar, lastNotify = 0, -99
 local function updateRadar(cam, origin)
 	local now = os.clock()

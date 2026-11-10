@@ -1466,6 +1466,8 @@ local function nearestBed(from)
 	return best
 end
 
+Farm.WalkTo = walkTo
+Farm.GoNear = goNear
 function Farm.GoHospital(stay)
 	if Farm.Busy then return false, "busy (stop Auto Rob first)" end
 	Farm.Busy, Farm.Cancel = true, false
@@ -1485,8 +1487,14 @@ function Farm.GoHospital(stay)
 			if not bed then say("hospital: every bed is taken"); return end
 			say("hospital: going to a bed")
 			flog(("hospital: bed at (%.0f,%.0f,%.0f), %.0f studs away, health %d/%d"):format(bed.pos.X, bed.pos.Y, bed.pos.Z, (hrp.Position - bed.pos).Magnitude, hum.Health, hum.MaxHealth))
-			if (hrp.Position - bed.pos).Magnitude > 140 then
-				if not goNear(bed.pos, "the hospital") then flog("hospital: could not drive there, trying on foot") end
+			if (hrp.Position - bed.pos).Magnitude > 6 then
+				if Farm.TravelTo then
+					-- the Travel system: instant jump first, then hops, then walking (never your car unless you allowed it)
+					local okT, how = Farm.TravelTo(bed.pos + V3(0, 2, 0), { name = "the hospital bed", waitAlive = false })
+					flog("hospital: travel " .. tostring(okT) .. " (" .. tostring(how) .. ")")
+				elseif (hrp.Position - bed.pos).Magnitude > 140 then
+					if not goNear(bed.pos, "the hospital") then flog("hospital: could not drive there, trying on foot") end
+				end
 			end
 			_, hum, hrp = parts()
 			if not (hum and hrp) then return end

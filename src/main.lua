@@ -170,51 +170,109 @@ Aim.OnTarget = function(plr)
 end
 Aim.Start()
 
--- Teleports tab
-local tTele = win:Tab("Teleports", { Icon = 5 })
-local lTele = tTele:Label({ Name = "Status", Value = Tele.Info })
-Tele.Notify = function(m) win:Notify(m) end
-Tele.Changed = function() lTele:Set(Tele.Info) end
-tTele:Button({ Name = "Go to my vehicle (get in)", Callback = function() Tele.GoToCar() end })
-tTele:Toggle({ Name = "Fly there (velocity, like Vehicle Fly)", Default = Tele.Mode == "Fly", Callback = function(v) Tele.Mode = v and "Fly" or "Glide" end })
-tTele:Toggle({ Name = "Get in my car first", Default = Tele.GetIn, Callback = function(v) Tele.GetIn = v end })
-tTele:Toggle({ Name = "Face the location when I arrive", Default = Tele.Face, Callback = function(v) Tele.Face = v end })
-tTele:Toggle({ Name = "Hide the trip from other players (risky)", Default = Tele.Stealth, Callback = function(v) Tele.Stealth = v end })
-tTele:Toggle({ Name = "Phase through objects while travelling", Default = Tele.Ghost, Callback = function(v) Tele.Ghost = v end })
-tTele:Slider({ Name = "Travel speed", Min = 100, Max = 3000, Step = 50, Default = Tele.Speed, Suffix = " st/s", Callback = function(v) Tele.Speed = v end })
-tTele:Slider({ Name = "Acceleration (lower = gentler, stays seated)", Min = 100, Max = 1500, Step = 50, Default = Tele.Accel, Suffix = " st/s2", Callback = function(v) Tele.Accel = v end })
-tTele:Slider({ Name = "Cruise height", Min = 10, Max = 200, Step = 5, Default = Tele.Height, Suffix = " st", Callback = function(v) Tele.Height = v end })
-tTele:Button({ Name = "Cancel teleport", Callback = function() Tele.Stop() end })
+-- Travel tab: the new teleport system (instant jump first, every move checked, falls back to hops -> walking -> car)
+local Travel = __import("travel")
+local Escape = __import("escape")
+local tTele = win:Tab("Travel", { Icon = 5 })
+local lTele = tTele:Label({ Name = "Status", Value = Travel.Info })
+Travel.Notify = function(m) win:Notify(m, 3) end
+Travel.Changed = function() lTele:Set(Travel.Info) end
+Travel.Log = function(m) Farm.Trace("travel: " .. m) end
+Tele.Notify = function(m) win:Notify(m) end -- messages from the car fallback
+Tele.Changed = function() end
+Farm.TravelTo = function(pos, opts) return Travel.ToSync(pos, opts) end
+local backKey
+tTele:Section("Quick")
+tTele:Button({ Name = "Hospital bed (lie down and heal)", Callback = function()
+	local ok, why = Farm.GoHospital(true)
+	if not ok then win:Notify("Hospital: " .. tostring(why)) end
+end })
+tTele:Button({ Name = "Back to where I was", Callback = function()
+	local ok, why = Travel.Back()
+	if not ok then win:Notify("Travel: " .. tostring(why)) end
+end })
+tTele:Button({ Name = "Get into my car", Callback = function() Tele.GoToCar() end })
+tTele:Button({ Name = "Cancel", Callback = function() Travel.Stop(); Tele.Stop() end })
+backKey = tTele:Keybind({ Name = "Back key", Default = Enum.KeyCode.B })
+tTele:Section("How it travels")
+tTele:Toggle({ Name = "Allow my car as the last fallback", Default = Travel.AllowCar, Callback = function(v) Travel.AllowCar = v end })
+tTele:Toggle({ Name = "Phase through objects while hopping", Default = Travel.Ghost, Callback = function(v) Travel.Ghost = v end })
+tTele:Slider({ Name = "Hop length (shrinks by itself when refused)", Min = 20, Max = 400, Step = 10, Default = Travel.HopLen, Suffix = " st", Callback = function(v) Travel.HopLen = v end })
+tTele:Slider({ Name = "Hop delay", Min = 0.05, Max = 0.4, Step = 0.01, Default = Travel.HopDelay, Suffix = " s", Callback = function(v) Travel.HopDelay = v end })
+tTele:Section("Places")
 local shownLoc = {}
+local function goTo(loc) Travel.To(loc.pos, { name = loc.name, face = loc.pos }) end
 local function addLocations(list)
 	for _, loc in ipairs(list) do
 		if not shownLoc[loc.name] then
 			shownLoc[loc.name] = true
-			tTele:Button({ Name = loc.name, Callback = function() Tele.GoTo(loc) end })
+			tTele:Button({ Name = loc.name, Callback = function() goTo(loc) end })
 		end
 	end
-	Tele.Info = #list .. " locations" .. (#(Tele.Missing or {}) > 0 and (" | not loaded yet: " .. table.concat(Tele.Missing, ", ")) or "")
-	lTele:Set(Tele.Info)
+	lTele:Set(#list .. " places" .. (#(Tele.Missing or {}) > 0 and (" | not loaded yet: " .. table.concat(Tele.Missing, ", ")) or ""))
 end
-tTele:Button({ Name = "Rescan locations", Callback = function() Tele.Scan(addLocations) end })
+tTele:Button({ Name = "Rescan places", Callback = function() Tele.Scan(addLocations) end })
 tTele:Button({ Name = "Save my position as a spot", Callback = function()
 	local loc = Tele.SaveHere()
 	if loc then addLocations({ loc }) end
 end })
+tTele:Section("Players")
+local playerBtns = {}
+local function refreshPlayers()
+	for _, b in ipairs(playerBtns) do pcall(function() b.Destroy() end) end
+	playerBtns = {}
+	for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+		if p ~= game:GetService("Players").LocalPlayer then
+			playerBtns[#playerBtns + 1] = tTele:Button({ Name = "To " .. p.DisplayName .. " (@" .. p.Name .. ")", Callback = function()
+				local ok, why = Travel.ToPlayer(p)
+				if not ok then win:Notify("Travel: " .. tostring(why)) end
+			end })
+		end
+	end
+end
+tTele:Button({ Name = "Refresh the player list", Callback = refreshPlayers })
+refreshPlayers()
 Tele.Scan(addLocations)
 
--- Hospital: lie down in a bed to heal / revive (waits for the respawn when you are dead)
+-- Hospital: after every death, lie down in a bed (waits for the respawn)
 local mHosp
-mHosp = tTele:Module({ Name = "Hospital bed (revive)", Default = false, NoSave = true, Callback = function(on)
+mHosp = tTele:Module({ Name = "Auto revive at the hospital", Default = false, NoSave = true, Callback = function(on)
 	Farm.AutoRevive = on
 	win:Notify(on and "Auto revive on: after you die it goes to a hospital bed" or "Auto revive off", 3)
 end })
-mHosp:Label({ Name = "Toggle = go to a bed by itself after every death", Value = "" })
+mHosp:Label({ Name = "What it does", Value = "after a death: respawn, travel, lie down" })
 local hospKey = mHosp:Keybind({ Name = "Go to a hospital bed now", Default = Enum.KeyCode.J })
-mHosp:Button({ Name = "Go lie in a hospital bed now", Callback = function()
-	local ok, why = Farm.GoHospital(true)
-	if not ok then win:Notify("Hospital: " .. tostring(why)) end
+
+-- Escape tab: get away from the police (uses the Travel system)
+local tEsc = win:Tab("Escape", { Icon = 2 })
+local mEsc
+mEsc = tEsc:Module({ Name = "Auto escape", Default = false, NoSave = true, Callback = function(on)
+	Escape.Auto = on
+	win:Notify(on and "Auto escape on: it jumps away when you are wanted and police get close" or "Auto escape off", 3)
 end })
+local lEsc = mEsc:Label({ Name = "Status", Value = Escape.Info })
+Escape.Changed = function() lEsc:Set(Escape.Info) end
+Escape.Notify = function(m, sec) win:Notify(m, sec or 3) end
+Escape.Log = function(m) Farm.Trace(m) end
+mEsc:Section("When it starts")
+mEsc:Slider({ Name = "Police distance", Min = 60, Max = 500, Step = 10, Default = Escape.Dist, Suffix = " st", Callback = function(v) Escape.Dist = v end })
+mEsc:Toggle({ Name = "Try to break away when I am cuffed (experimental)", Default = false, Callback = function(v) Escape.OnCuff = v end })
+mEsc:Section("After the jump")
+mEsc:Slider({ Name = "Lay low for", Min = 20, Max = 300, Step = 10, Default = Escape.LayLow, Suffix = " s", Callback = function(v) Escape.LayLow = v end })
+mEsc:Toggle({ Name = "Use my saved hideouts first", Default = Escape.SavedFirst, Callback = function(v) Escape.SavedFirst = v end })
+tEsc:Section("Now")
+local panicKey = tEsc:Keybind({ Name = "Panic key (escape right now)", Default = Enum.KeyCode.X })
+tEsc:Button({ Name = "Escape now", Callback = function()
+	local ok, why = Escape.Run("button")
+	if not ok then win:Notify("Escape: " .. tostring(why)) end
+end })
+tEsc:Button({ Name = "Save this spot as a hideout", Callback = function()
+	local loc = Tele.SaveHere("Hideout")
+	if loc then addLocations({ loc }); win:Notify("Saved " .. loc.name) end
+end })
+tEsc:Button({ Name = "Stop", Callback = function() Escape.Stop() end })
+tEsc:Label({ Name = "Police radar", Value = "ESP tab" })
+Escape.Start()
 
 -- AutoFarm tab (modules get added here)
 local tFarm = win:Tab("AutoFarm", { Section = "Farming", Icon = 6 })
@@ -474,6 +532,10 @@ local function unload()
 	ESP.OnPolice = nil
 	ESP.Destroy()
 	NPC.Destroy()
+	Travel.Stop()
+	Travel.Notify, Travel.Changed, Travel.Log = nil, nil, nil
+	Farm.TravelTo = nil
+	Escape.Destroy()
 	Aim.Changed = nil
 	Aim.Destroy()
 	hud:Destroy()
@@ -538,6 +600,18 @@ end))
 table.insert(win.conns, UIS.InputEnded:Connect(function(i)
 	if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if Aim.Hold and aimKey:Get() == i.KeyCode then Aim.KeyEvent(false) end
+end))
+
+-- travel keys: back to the last place, panic = escape now
+table.insert(win.conns, UIS.InputBegan:Connect(function(i)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() then return end
+	if not backKey:IsListening() and backKey:Get() == i.KeyCode then
+		local ok, why = Travel.Back()
+		if not ok then win:Notify("Travel: " .. tostring(why)) end
+	elseif not panicKey:IsListening() and panicKey:Get() == i.KeyCode then
+		local ok, why = Escape.Run("panic key")
+		if not ok then win:Notify("Escape: " .. tostring(why)) end
+	end
 end))
 
 -- hospital key
