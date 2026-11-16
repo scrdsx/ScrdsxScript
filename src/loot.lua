@@ -16,8 +16,7 @@ local lines = {}
 local function log(m)
 	lines[#lines + 1] = os.date("%H:%M:%S") .. "  " .. m
 	if #lines > 200 then table.remove(lines, 1) end
-	pcall(function() if writefile then writefile("scrdsx_loot_log.txt", table.concat(lines, "
-")) end end)
+	pcall(function() if writefile then writefile("scrdsx_loot_log.txt", table.concat(lines, "\n")) end end)
 end
 local function changed() if Loot.Changed then task.defer(Loot.Changed) end end
 local function say(s) Loot.Info = s; changed() end
