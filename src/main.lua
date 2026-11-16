@@ -7,7 +7,6 @@ local Player = __import("player")
 local Anti = __import("anticrash")
 local AntiFlat = __import("antiflat")
 local Speed = __import("speed")
-local Hud = __import("hud")
 local Config = __import("config")
 local Drive = __import("autodrive")
 local ESP = __import("esp")
@@ -17,8 +16,8 @@ local Crosshair = __import("crosshair")
 local Visuals = __import("visuals")
 local Skins = __import("skins")
 
-local TITLE = "Scrdsx Solutions"
-local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
+local TITLE = "Scrdsx"
+local SUBTITLE = "Solutions  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
 print("[Scrdsx] running " .. SUBTITLE)
 
 -- a module that fails to start must not take the whole script down: every Start() goes through safe()
@@ -202,7 +201,7 @@ task.spawn(function() -- the live counters in the module rows
 end)
 
 -- CROSSHAIR -------------------------------------------------------------------------------------------------------------
-local tCross = win:Tab("Crosshair", { Section = "Combat", Icon = 4 })
+local tCross = win:Tab("Crosshair", { Section = "Combat", Icon = 5 })
 local mCross = tCross:Module({ Name = "Custom crosshair", Default = false, Callback = function(on) Crosshair.SetEnabled(on) end })
 cycle(mCross, "Style", Crosshair.Styles, function() return Crosshair.Style end, function(v) Crosshair.Style = v; Crosshair.Rebuild() end)
 mCross:ColorPicker({ Name = "Colour", Default = Crosshair.Color, Callback = function(c) Crosshair.Color = c; Crosshair.Rebuild() end })
@@ -223,7 +222,7 @@ mCross:Toggle({ Name = "Hide the normal cursor", Default = Crosshair.HideCursor,
 safe("crosshair", Crosshair.Start)
 
 -- SKINS -----------------------------------------------------------------------------------------------------------------
-local tSkin = win:Tab("Skins", { Section = "Combat", Icon = 2 })
+local tSkin = win:Tab("Skins", { Section = "Combat", Icon = 7 })
 local lSkinNote = tSkin:Label({ Name = "Only you see these", Value = "client-side" })
 local mPaint = tSkin:Module({ Name = "My skin (paint my character)", Default = false, Callback = function(on) Skins.Paint.Enabled = on; Skins.Refresh() end })
 mPaint:ColorPicker({ Name = "Colour", Default = Skins.Paint.Color, Callback = function(c) Skins.Paint.Color = c end })
@@ -376,70 +375,14 @@ mNpc:Button({ Name = "Park straight at the crosshair now", Callback = function()
 	if not ok then win:Notify("Parking: " .. tostring(why)) end
 end })
 
--- HUD tab: widgets that stay on screen; press / (window closed) to move them
-local hud = Hud.new({
-	Title = TITLE,
-	Version = (getgenv and getgenv() or _G).ScrdsxVersion,
-	GetStatus = function()
-		local good, warnC, bad, sub = Color3.fromRGB(120, 220, 140), Color3.fromRGB(240, 190, 90), Color3.fromRGB(240, 100, 100), Color3.fromRGB(138, 138, 152)
-		local rows = {}
-		local me = game:GetService("Players").LocalPlayer
-		local c = me.Character
-		local hrp = c and c:FindFirstChild("HumanoidRootPart")
-		if hrp then
-			local w = hrp:GetAttribute("IsWanted") == true
-			rows[#rows + 1] = { "Wanted", w and "YES" or "no", w and bad or good }
-			local best
-			for _, p in ipairs(ESP.PolicePositions(false)) do
-				local d = (p - hrp.Position).Magnitude
-				if not best or d < best then best = d end
-			end
-			rows[#rows + 1] = { "Police", best and ("%d st"):format(best) or "none near", best and (best < 150 and bad or (best < 350 and warnC or sub)) or sub }
-		end
-		if NPC.Enabled then rows[#rows + 1] = { "Auto Drive", NPC.Info, good } end
-		local car = workspace:FindFirstChild("Vehicles") and workspace.Vehicles:FindFirstChild(me.Name)
-		local seat = car and car:FindFirstChild("DriveSeat")
-		if seat and hrp then
-			local lim = Drive.SpeedLimitAt and Drive.SpeedLimitAt(seat.Position)
-			if lim then rows[#rows + 1] = { "Limit", lim >= 500 and "none" or (lim .. " km/h"), sub } end
-		end
-		return rows
-	end,
-	GetModules = function()
-		local list = {}
-		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
-			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Player ESP"] = mEsp, ["Camlock"] = mAim, ["Aim Assist"] = mAssist, ["Triggerbot"] = mTrig,
-			["Chams"] = mCham, ["Pointers"] = mPoint, ["Avatar markers"] = mMark, ["Crosshair"] = mCross, ["My skin"] = mPaint, ["Auto Drive"] = mNpc }) do
-			if m:Get() then list[#list + 1] = name end
-		end
-		return list
-	end,
-})
-pcall(function() hud:SetWidget("farm", false) end)
-local tHud = win:Tab("HUD", { Section = "Client", Icon = 7 })
-tHud:Toggle({ Name = "Watermark", Default = hud:IsOn("watermark"), Callback = function(v) hud:SetWidget("watermark", v) end })
-tHud:Toggle({ Name = "Player info (health, position, nearest spot)", Default = hud:IsOn("info"), Callback = function(v) hud:SetWidget("info", v) end })
-tHud:Toggle({ Name = "Vehicle (speed, fuel, health, tires)", Default = hud:IsOn("vehicle"), Callback = function(v) hud:SetWidget("vehicle", v) end })
-tHud:Toggle({ Name = "Status (wanted, police, auto drive)", Default = hud:IsOn("status"), Callback = function(v) hud:SetWidget("status", v) end })
-tHud:Toggle({ Name = "Active modules list", Default = hud:IsOn("modules"), Callback = function(v) hud:SetWidget("modules", v) end })
-tHud:Slider({ Name = "HUD size", Min = 0.6, Max = 1.6, Step = 0.05, Default = hud.scale, Callback = function(v) hud:SetScale(v) end })
-tHud:Button({ Name = "Move HUD (closes this window; press / when done)", Callback = function()
-	win:SetVisible(false)
-	hud:SetEdit(true)
-end })
-tHud:Button({ Name = "Reset HUD positions", Callback = function() hud:ResetPositions() end })
-hud.EditChanged = function(on)
-	if not on and not win.visible then win:Notify("HUD saved. RightShift opens the menu") end
-end
-
--- Configs tab: everything you change (modules on/off, sliders, keybinds, HUD layout) is saved and loaded again next time
+-- Configs tab: everything you change (modules on/off, sliders, keybinds) is saved and loaded again next time
 local tCfg = win:Tab("Configs", { Icon = 8 })
 local current = Config.GetAutoload() or "default"
 local lCurrent = tCfg:Label({ Name = "Current config", Value = current })
 local autosave, newName, lastSnap = true, "", nil
 local cfgButtons = {}
 
-local function snapshot() return { v = 1, flags = win:GetConfig(), hud = hud:GetLayout() } end
+local function snapshot() return { v = 1, flags = win:GetConfig() } end
 local function deepEq(a, b)
 	if type(a) ~= type(b) then return false end
 	if type(a) ~= "table" then return a == b end
@@ -458,7 +401,6 @@ local function applyConfig(name)
 	local data = Config.Read(name)
 	if not data then win:Notify("Could not read config: " .. name); return false end
 	win:ApplyConfig(data.flags or {})
-	if data.hud then hud:SetLayout(data.hud) end
 	current = name
 	lCurrent:Set(name)
 	Config.SetAutoload(name)
@@ -510,7 +452,7 @@ end
 -- Settings tab
 local tSet = win:Tab("Settings", { Icon = 9 })
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
--- theme: accent + background as hex, applied to the window and the HUD, remembered between sessions
+-- theme: accent + background as hex, applied to the window, remembered between sessions
 local THEME_FILE = "ScrdsxScript/theme.json"
 local theme = { accent = "", bg = "" }
 local function parseHex(t)
@@ -522,7 +464,6 @@ end
 local function applyTheme(save)
 	local P = UI.Palette(parseHex(theme.accent), parseHex(theme.bg))
 	local map = win:ApplyPalette(P)
-	pcall(function() hud:ApplyTheme(map, P) end)
 	if save then
 		pcall(function()
 			if writefile then
@@ -603,7 +544,6 @@ end })
 tSet:Section("Keys")
 tSet:Label({ Name = "Toggle UI", Value = "RightShift" })
 tSet:Label({ Name = "Search (menu open)", Value = "/" })
-tSet:Label({ Name = "Move HUD (menu closed)", Value = "/" })
 
 local env = getgenv and getgenv() or _G
 local alive = true
@@ -618,7 +558,6 @@ local function unload()
 	Anti.Destroy()
 	AntiFlat.Destroy()
 	Speed.Destroy()
-	hud.EditChanged = nil
 	Drive.Stop()
 	ESP.OnPolice = nil
 	ESP.Destroy()
@@ -629,7 +568,6 @@ local function unload()
 	Skins.Destroy()
 	Aim.Changed = nil
 	Aim.Destroy()
-	hud:Destroy()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
@@ -662,17 +600,10 @@ end
 
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 	if i.KeyCode == Enum.KeyCode.RightShift then
-		if hud.editing then hud:SetEdit(false) end
 		win:Toggle()
-	elseif i.KeyCode == Enum.KeyCode.Slash then
-		if win.visible then
-			if not gp then -- menu open: search (chat uses / too, so not while typing)
-				win.searchBox:CaptureFocus()
-				task.defer(function() win.searchBox.Text = "" end)
-			end
-		elseif hud.editing or not gp then -- menu closed: start / stop moving the HUD
-			hud:ToggleEdit()
-		end
+	elseif i.KeyCode == Enum.KeyCode.Slash and win.visible and not gp then -- menu open: search (chat uses / too, so not while typing)
+		win.searchBox:CaptureFocus()
+		task.defer(function() win.searchBox.Text = "" end)
 	end
 end))
 

@@ -138,20 +138,22 @@ end
 -- POINTERS (arrows around the crosshair) and MARKERS (picture above the head) -------------------------------------------
 local function makePointer()
 	local root = mk("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1, Visible = false }, gui)
-	local badge = mk("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(38, 38), BackgroundColor3 = BG, BorderSizePixel = 0 }, root)
+	local badge = mk("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(40, 40), BackgroundColor3 = BG, BorderSizePixel = 0 }, root)
 	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
-	local st = mk("UIStroke", { Thickness = 2.2 }, badge)
+	local st = mk("UIStroke", { Thickness = 2.4 }, badge)
 	local img = mk("ImageLabel", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.new(1, -6, 1, -6), BackgroundTransparency = 1, Image = "" }, badge)
 	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, img)
-	local lbl = mk("TextLabel", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 1, 3), Size = UDim2.fromOffset(90, 14), BackgroundTransparency = 1, Text = "",
-		TextSize = 11, Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.45 }, badge)
+	-- text pill under the picture
+	local chip = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 1, 4), Size = UDim2.fromOffset(40, 16), BackgroundColor3 = BG, BackgroundTransparency = 0.15, BorderSizePixel = 0 }, badge)
+	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, chip)
+	local lbl = mk("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", TextSize = 11, Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1, 1, 1) }, chip)
 	-- arrow head built from thin rows (rotates cleanly, no image needed)
-	local arrow = mk("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(16, 14), BackgroundTransparency = 1 }, root)
+	local arrow = mk("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1 }, root)
 	local rows = {}
 	for i = 1, 7 do
 		rows[i] = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, (i - 1) * 2), Size = UDim2.fromOffset(i * 2, 2), BorderSizePixel = 0 }, arrow)
 	end
-	return { root = root, badge = badge, stroke = st, img = img, lbl = lbl, arrow = arrow, rows = rows }
+	return { root = root, badge = badge, stroke = st, img = img, lbl = lbl, chip = chip, arrow = arrow, rows = rows }
 end
 
 local function makeMarker()
@@ -201,12 +203,12 @@ local function frameStep()
 				local _, _, group = ESP.RoleOf(plr)
 				-- pointers
 				if P.Enabled and P.Teams[group] and d <= P.MaxDist then
-					local sp = cam:WorldToViewportPoint(hrp.Position)
-					local on = sp.Z > 0 and sp.X >= 0 and sp.X <= vs.X and sp.Y >= 0 and sp.Y <= vs.Y
-					if P.Mode == "Always" or not on then
-						local v = Vector2.new(sp.X, sp.Y) - center
-						if sp.Z <= 0 then v = -v end
-						if v.Magnitude < 1 then v = Vector2.new(0, -1) end
+					local _, onScreen = cam:WorldToViewportPoint(hrp.Position)
+					if P.Mode == "Always" or not onScreen then
+						-- direction from the camera's own axes: right = +X, up = +Y (screen y points down). Works behind the camera too: it points the way you turn.
+						local rel = cam.CFrame:PointToObjectSpace(hrp.Position)
+						local v = Vector2.new(rel.X, -rel.Y)
+						if v.Magnitude < 1e-3 then v = Vector2.new(0, 1) end
 						local u = v.Unit
 						local base = math.min(vs.X, vs.Y) * P.Radius
 						local rx, ry = base * 1.45, base
@@ -215,29 +217,34 @@ local function frameStep()
 						local e = getFrom(pool.pointers, plr, makePointer)
 						seenP[plr] = true
 						nP = nP + 1
+						e.cur = e.cur and e.cur:Lerp(pos, 0.4) or pos
 						local col = colourOf(plr, P)
-						local s = P.Scale
+						local s = P.Scale * (d > 700 and 0.85 or 1)
 						e.root.Visible = true
-						e.root.Position = UDim2.fromOffset(pos.X, pos.Y)
-						e.badge.Size = UDim2.fromOffset(38 * s, 38 * s)
+						e.root.Position = UDim2.fromOffset(e.cur.X, e.cur.Y)
+						e.badge.Size = UDim2.fromOffset(40 * s, 40 * s)
 						e.badge.Visible = P.Avatar
 						e.stroke.Color = col
 						local want = P.Avatar and avatarFor(plr.UserId, P.Kind) or ""
 						if e.img.Image ~= want then e.img.Image = want end
-						local ar = (19 * s + 12)
+						-- arrow sits on the outer edge of the picture and points along the direction
+						local ar = (20 * s + 11)
+						if not P.Avatar then ar = 0 end
 						e.arrow.Position = UDim2.fromOffset(u.X * ar, u.Y * ar)
 						e.arrow.Rotation = math.deg(math.atan2(u.X, -u.Y))
-						e.arrow.Size = UDim2.fromOffset(16 * s, 14 * s)
 						for i, r in ipairs(e.rows) do
 							r.BackgroundColor3 = col
 							r.Position = UDim2.new(.5, 0, 0, (i - 1) * 2 * s)
 							r.Size = UDim2.fromOffset(i * 2 * s, 2 * s)
 						end
+						e.arrow.Size = UDim2.fromOffset(14 * s, 14 * s)
 						local txt = ""
 						if P.Name then txt = plr.DisplayName end
 						if P.Distance then txt = txt .. (txt ~= "" and "  " or "") .. math.floor(d) .. " st" end
+						e.chip.Visible = txt ~= "" and P.Avatar
 						e.lbl.Text = txt
-						e.lbl.Visible = txt ~= ""
+						e.chip.Size = UDim2.fromOffset(math.max(34, #txt * 6.2 + 12), 16)
+						e.chip.Position = UDim2.new(.5, 0, 1, 4)
 					end
 				end
 				-- markers

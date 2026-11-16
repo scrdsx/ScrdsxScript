@@ -4,7 +4,7 @@
 local env = getgenv and getgenv() or _G
 local BASE = env.ScrdsxBase or "https://raw.githubusercontent.com/scrdsx/ScrdsxScript/main/"
 local LOCAL = env.ScrdsxLocal
-local MODULES = { "logo", "icons", "ui", "loading", "vehicle", "fly", "player", "esp", "aim", "crosshair", "visuals", "skins", "anticrash", "antiflat", "speed", "hud", "config", "roaddata", "roadplan", "autodrive", "autonpc", "extras", "main" } -- main last
+local MODULES = { "logo", "icons", "ui", "loading", "vehicle", "fly", "player", "esp", "aim", "crosshair", "visuals", "skins", "anticrash", "antiflat", "speed", "config", "roaddata", "roadplan", "autodrive", "autonpc", "extras", "main" } -- main last
 
 -- raw.githubusercontent.com caches files for ~5 minutes (and some executors cache on top), so a plain
 -- fetch can hand back an old release. Pin to the latest commit SHA instead: those URLs never go stale.
