@@ -1,5 +1,6 @@
--- Camlock: turns the camera towards the best player while you hold (or toggle) the key. Customisable: which body part, field of view,
--- smoothness, range, wall check, movement prediction, which teams, wanted players only. Draws the field-of-view circle.
+-- Aim modules: Camlock (hold / toggle, snaps the camera onto the best target), Aim Assist (a soft pull while you hold a mouse button) and Triggerbot
+-- (clicks when your crosshair is on a player). Customisable: body part, field of view, smoothness, range, wall check, prediction, target priority,
+-- teams, wanted only, target line and a styled field-of-view circle.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -7,16 +8,22 @@ local lp = Players.LocalPlayer
 
 local Aim = {
 	Enabled = false, Hold = true, Part = "Head", FOV = 180, Smooth = 0.3, MaxDist = 400, WallCheck = true, Prediction = 0.06,
-	Sticky = true, WantedOnly = false, ShowFOV = true, MouseLock = false,
+	Sticky = true, WantedOnly = false, ShowFOV = true, MouseLock = false, Priority = "Crosshair", ShowLine = false,
+	FovColor = Color3.fromRGB(235, 235, 240), FovThick = 1.2, FovFilled = false, LineColor = Color3.fromRGB(255, 82, 82),
+	AssistEnabled = false, AssistFOV = 140, AssistStrength = 0.16, AssistButton = "Right",
+	Trigger = false, TriggerDelay = 0.09, TriggerRange = 300, TriggerKey = nil, TriggerHold = false,
 	Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
-	Active = false, Target = nil, Info = "off",
+	Active = false, Target = nil, Info = "off", Shots = 0,
 }
 local PARTS = { "Head", "Torso", "Root" }
 Aim.PartList = PARTS
+Aim.Priorities = { "Crosshair", "Distance", "Health" }
+Aim.AssistButtons = { "Right", "Left", "Always" }
 
-local gui, circle, circleStroke, rp
+local gui, circle, circleStroke, line, rp
 local lastT
 local lockedMouse, prevMouse = false, nil
+local lastShot = 0
 
 local function releaseMouse()
 	if lockedMouse then
@@ -45,7 +52,7 @@ local function partOf(ch)
 	return ch:FindFirstChild("HumanoidRootPart")
 end
 
-local function usable(plr, cam, origin)
+local function usable(plr, cam, origin, range)
 	if plr == lp or not Aim.Teams[groupOf(plr)] then return nil end
 	local ch = plr.Character
 	local hum = ch and ch:FindFirstChildOfClass("Humanoid")
@@ -53,14 +60,75 @@ local function usable(plr, cam, origin)
 	local part = ch and partOf(ch)
 	if not (hum and hrp and part and hum.Health > 0) then return nil end
 	if Aim.WantedOnly and hrp:GetAttribute("IsWanted") ~= true then return nil end
-	if (hrp.Position - origin).Magnitude > Aim.MaxDist then return nil end
+	if (hrp.Position - origin).Magnitude > (range or Aim.MaxDist) then return nil end
 	local pos = part.Position + part.AssemblyLinearVelocity * Aim.Prediction
 	if Aim.WallCheck then
 		rp.FilterDescendantsInstances = { lp.Character }
 		local res = workspace:Raycast(cam.CFrame.Position, pos - cam.CFrame.Position, rp)
 		if res and not res.Instance:IsDescendantOf(ch) then return nil end
 	end
-	return pos, ch
+	return pos, ch, hum
+end
+
+-- the best player inside `fov` pixels of `center`, by the chosen priority (closest to the crosshair, nearest, or weakest)
+local function pickTarget(cam, origin, center, fov)
+	local best, bestScore, bestPos
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local ch = plr.Character
+		local part = ch and partOf(ch)
+		if part then
+			local sp, on = cam:WorldToViewportPoint(part.Position)
+			if on then
+				local dpx = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+				if dpx <= fov then
+					local pos, _, hum = usable(plr, cam, origin)
+					if pos then
+						local score = dpx
+						if Aim.Priority == "Distance" then score = (part.Position - origin).Magnitude
+						elseif Aim.Priority == "Health" then score = hum.Health end
+						if not bestScore or score < bestScore then best, bestScore, bestPos = plr, score, pos end
+					end
+				end
+			end
+		end
+	end
+	return best, bestPos
+end
+
+local function pull(cam, aimPos, smooth, dt)
+	local want = CFrame.lookAt(cam.CFrame.Position, aimPos)
+	-- frame-rate independent smoothing: 1 = snap, small = slow glide
+	local a = 1 - (1 - math.clamp(smooth, 0.02, 1)) ^ ((dt or 0.016) * 60)
+	cam.CFrame = cam.CFrame:Lerp(want, a)
+end
+
+local function click()
+	local ok = pcall(function()
+		if mouse1click then mouse1click() else
+			local vim = game:GetService("VirtualInputManager")
+			local m = UIS:GetMouseLocation()
+			vim:SendMouseButtonEvent(m.X, m.Y, 0, true, game, 0)
+			task.delay(0.02, function() vim:SendMouseButtonEvent(m.X, m.Y, 0, false, game, 0) end)
+		end
+	end)
+	return ok
+end
+
+local function triggerStep(cam, origin)
+	if not Aim.Trigger then return end
+	if os.clock() - lastShot < Aim.TriggerDelay then return end
+	if Aim.TriggerHold and not (Aim.TriggerKey and UIS:IsKeyDown(Aim.TriggerKey)) then return end
+	if UIS:GetFocusedTextBox() then return end
+	local mouse = lp:GetMouse()
+	local tgt = mouse and mouse.Target
+	if not tgt then return end
+	local model = tgt:FindFirstAncestorOfClass("Model")
+	local plr = model and Players:GetPlayerFromCharacter(model)
+	if not plr then return end
+	local pos = usable(plr, cam, origin, Aim.TriggerRange)
+	if not pos then return end
+	lastShot = os.clock()
+	if click() then Aim.Shots = Aim.Shots + 1 end
 end
 
 local function step(dt)
@@ -69,12 +137,20 @@ local function step(dt)
 	if not cam then return end
 	local vs = cam.ViewportSize
 	local center = (UIS.MouseBehavior == Enum.MouseBehavior.LockCenter) and Vector2.new(vs.X / 2, vs.Y / 2) or UIS:GetMouseLocation()
-	circle.Visible = Aim.Enabled and Aim.ShowFOV
+	local origin = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+	origin = origin and origin.Position or cam.CFrame.Position
+
+	-- field of view circle (colour, thickness, optional fill)
+	circle.Visible = (Aim.Enabled or Aim.AssistEnabled) and Aim.ShowFOV
 	if circle.Visible then
-		circle.Size = UDim2.fromOffset(Aim.FOV * 2, Aim.FOV * 2)
+		local fov = (Aim.Enabled and Aim.FOV) or Aim.AssistFOV
+		circle.Size = UDim2.fromOffset(fov * 2, fov * 2)
 		circle.Position = UDim2.fromOffset(center.X, center.Y)
-		circleStroke.Color = Aim.Active and Color3.fromRGB(255, 82, 82) or Color3.fromRGB(235, 235, 240)
-		circleStroke.Transparency = Aim.Active and 0.1 or 0.55
+		circle.BackgroundTransparency = Aim.FovFilled and 0.9 or 1
+		circle.BackgroundColor3 = Aim.FovColor
+		circleStroke.Thickness = Aim.FovThick
+		circleStroke.Color = Aim.Active and Color3.fromRGB(255, 82, 82) or Aim.FovColor
+		circleStroke.Transparency = Aim.Active and 0.1 or 0.5
 	end
 	-- mouse lock: while aiming the cursor sits in the screen centre (like shift lock); let go again afterwards
 	if Aim.Enabled and Aim.Active and Aim.MouseLock then
@@ -86,47 +162,49 @@ local function step(dt)
 	else
 		releaseMouse()
 	end
-	if not (Aim.Enabled and Aim.Active) then Aim.Target, lastT = nil, nil; return end
 
-	local origin = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-	origin = origin and origin.Position or cam.CFrame.Position
+	triggerStep(cam, origin)
 
-	-- keep the current target while the key is held (sticky), otherwise pick the one closest to the crosshair inside the FOV
 	local aimPos
-	if Aim.Sticky and Aim.Target then
-		local plr = Aim.Target
-		local pos = usable(plr, cam, origin)
-		if pos then aimPos = pos else Aim.Target = nil end
-	end
-	if not aimPos then
-		local best, bestD, bestPos
-		for _, plr in ipairs(Players:GetPlayers()) do
-			local ch = plr.Character
-			local part = ch and partOf(ch)
-			if part then
-				local sp, on = cam:WorldToViewportPoint(part.Position)
-				if on then
-					local dpx = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-					if dpx <= Aim.FOV and (not bestD or dpx < bestD) then
-						local pos = usable(plr, cam, origin)
-						if pos then best, bestD, bestPos = plr, dpx, pos end
-					end
-				end
+	if Aim.Enabled and Aim.Active then
+		-- keep the current target while the key is held (sticky), otherwise pick by priority inside the FOV
+		if Aim.Sticky and Aim.Target then
+			local pos = usable(Aim.Target, cam, origin)
+			if pos then aimPos = pos else Aim.Target = nil end
+		end
+		if not aimPos then Aim.Target, aimPos = pickTarget(cam, origin, center, Aim.FOV) end
+		-- tell the UI when the lock changes (a new player, or the target was lost)
+		if Aim.Target ~= lastT then
+			lastT = Aim.Target
+			if Aim.OnTarget then task.spawn(Aim.OnTarget, Aim.Target) end
+		end
+		if aimPos then pull(cam, aimPos, Aim.Smooth, dt) end
+	else
+		Aim.Target, lastT = nil, nil
+		-- aim assist: a gentle pull towards the nearest player to the crosshair while the chosen mouse button is held
+		if Aim.AssistEnabled then
+			local held = Aim.AssistButton == "Always"
+				or (Aim.AssistButton == "Right" and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2))
+				or (Aim.AssistButton == "Left" and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1))
+			if held then
+				local plr, pos = pickTarget(cam, origin, center, Aim.AssistFOV)
+				if pos then aimPos = pos; pull(cam, pos, Aim.AssistStrength, dt) end
 			end
 		end
-		Aim.Target, aimPos = best, bestPos
 	end
-	-- tell the UI when the lock changes (a new player, or the target was lost)
-	if Aim.Target ~= lastT then
-		lastT = Aim.Target
-		if Aim.OnTarget then task.spawn(Aim.OnTarget, Aim.Target) end
-	end
-	if not aimPos then return end
 
-	local want = CFrame.lookAt(cam.CFrame.Position, aimPos)
-	-- frame-rate independent smoothing: Smooth 1 = snap, small = slow glide
-	local a = 1 - (1 - math.clamp(Aim.Smooth, 0.02, 1)) ^ ((dt or 0.016) * 60)
-	cam.CFrame = cam.CFrame:Lerp(want, a)
+	-- line from the crosshair to the target
+	local showLine = Aim.ShowLine and aimPos ~= nil
+	line.Visible = showLine
+	if showLine then
+		local sp = cam:WorldToViewportPoint(aimPos)
+		local a, b = center, Vector2.new(sp.X, sp.Y)
+		local d = b - a
+		line.Size = UDim2.fromOffset(d.Magnitude, 1.6)
+		line.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
+		line.Rotation = math.deg(math.atan2(d.Y, d.X))
+		line.BackgroundColor3 = Aim.LineColor
+	end
 end
 
 -- key down / up from the keybind (hold mode follows the key, toggle mode flips on press)
@@ -157,6 +235,8 @@ function Aim.Start()
 	circle.AnchorPoint = Vector2.new(.5, .5); circle.BackgroundTransparency = 1; circle.BorderSizePixel = 0; circle.Visible = false; circle.Parent = gui
 	Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
 	circleStroke = Instance.new("UIStroke"); circleStroke.Thickness = 1.2; circleStroke.Color = Color3.fromRGB(235, 235, 240); circleStroke.Parent = circle
+	line = Instance.new("Frame")
+	line.AnchorPoint = Vector2.new(.5, .5); line.BorderSizePixel = 0; line.BackgroundColor3 = Aim.LineColor; line.Visible = false; line.Parent = gui
 	pcall(function()
 		RunService:BindToRenderStep(BIND, Enum.RenderPriority.Camera.Value + 1, function(dt)
 			local ok, err = pcall(step, dt)
@@ -170,8 +250,9 @@ function Aim.Destroy()
 	Aim.OnTarget = nil
 	pcall(function() RunService:UnbindFromRenderStep(BIND) end)
 	if gui then pcall(function() gui:Destroy() end) end
-	gui, circle, circleStroke = nil, nil, nil
+	gui, circle, circleStroke, line = nil, nil, nil, nil
 	Aim.Enabled, Aim.Active, Aim.Target = false, false, nil
+	Aim.AssistEnabled, Aim.Trigger = false, false
 end
 
 return Aim

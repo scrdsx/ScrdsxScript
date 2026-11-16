@@ -13,8 +13,8 @@ local Logo = __import("logo")
 local UIlib = __import("ui")
 
 local T = {
-	bg = Color3.fromRGB(9, 9, 11), stroke = Color3.fromRGB(36, 36, 42), text = Color3.fromRGB(245, 245, 248),
-	sub = Color3.fromRGB(138, 138, 152), accent = Color3.fromRGB(64, 132, 255), accentSoft = Color3.fromRGB(120, 168, 255),
+	bg = Color3.fromRGB(11, 11, 15), stroke = Color3.fromRGB(38, 38, 51), text = Color3.fromRGB(244, 244, 250),
+	sub = Color3.fromRGB(140, 140, 158), accent = Color3.fromRGB(139, 92, 246), accentSoft = Color3.fromRGB(190, 166, 255),
 	good = Color3.fromRGB(120, 220, 140), warn = Color3.fromRGB(240, 190, 90), bad = Color3.fromRGB(240, 100, 100),
 	font = Enum.Font.GothamMedium, bold = Enum.Font.GothamBold,
 }

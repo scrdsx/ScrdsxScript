@@ -7,14 +7,15 @@ local Player = __import("player")
 local Anti = __import("anticrash")
 local AntiFlat = __import("antiflat")
 local Speed = __import("speed")
-local Tele = __import("teleport")
 local Hud = __import("hud")
 local Config = __import("config")
-local Farm = __import("farm")
 local Drive = __import("autodrive")
 local ESP = __import("esp")
 local Aim = __import("aim")
 local Extras = __import("extras")
+local Crosshair = __import("crosshair")
+local Visuals = __import("visuals")
+local Skins = __import("skins")
 
 local TITLE = "Scrdsx Solutions"
 local SUBTITLE = "Script  v" .. tostring((getgenv and getgenv() or _G).ScrdsxVersion or "?") -- TODO: set the script name
@@ -39,6 +40,223 @@ end
 Loading.run(TITLE, SUBTITLE)
 
 local win = UI.new({ Title = TITLE, Subtitle = SUBTITLE })
+
+-- helper: a button that cycles through a list (the UI has no dropdown)
+local function cycle(parent, title, list, get, set)
+	local idx = 1
+	for i, v in ipairs(list) do if v == get() then idx = i end end
+	local b
+	b = parent:Button({ Name = title .. ": " .. tostring(list[idx]), NoSave = true, Callback = function()
+		idx = idx % #list + 1
+		set(list[idx])
+		b:SetText(title .. ": " .. tostring(list[idx]))
+	end })
+	return b
+end
+
+-- COMBAT ---------------------------------------------------------------------------------------------------------------
+local tAim = win:Tab("Aim", { Section = "Combat", Icon = 4 })
+local mAim = tAim:Module({ Name = "Camlock", Default = false, Callback = function(on) Aim.SetEnabled(on) end })
+local lAim = mAim:Label({ Name = "Status", Value = Aim.Info })
+Aim.Changed = function() lAim:Set(Aim.Info) end
+mAim:Section("Activation")
+local aimKey = mAim:Keybind({ Name = "Aim key", Default = Enum.KeyCode.Z })
+mAim:Toggle({ Name = "Hold the key (off = press to toggle)", Default = Aim.Hold, Callback = function(v) Aim.Hold = v; Aim.Active = false end })
+mAim:Toggle({ Name = "Mouse lock (cursor stays in the centre while aiming)", Default = Aim.MouseLock, Callback = function(v) Aim.MouseLock = v end })
+mAim:Section("Targeting")
+mAim:Toggle({ Name = "Aim at the head (off = body)", Default = true, Callback = function(v) Aim.Part = v and "Head" or "Torso" end })
+cycle(mAim, "Target priority", Aim.Priorities, function() return Aim.Priority end, function(v) Aim.Priority = v end)
+mAim:Slider({ Name = "Field of view", Min = 40, Max = 600, Step = 10, Default = Aim.FOV, Suffix = " px", Callback = function(v) Aim.FOV = v end })
+mAim:Slider({ Name = "Smoothness (low = slow glide, 1 = snap)", Min = 0.05, Max = 1, Step = 0.05, Default = Aim.Smooth, Callback = function(v) Aim.Smooth = v end })
+mAim:Slider({ Name = "Range", Min = 50, Max = 1500, Step = 25, Default = Aim.MaxDist, Suffix = " st", Callback = function(v) Aim.MaxDist = v end })
+mAim:Slider({ Name = "Predict movement", Min = 0, Max = 0.4, Step = 0.01, Default = Aim.Prediction, Suffix = " s", Callback = function(v) Aim.Prediction = v end })
+mAim:Section("Rules")
+mAim:Toggle({ Name = "Only players I can see (wall check)", Default = Aim.WallCheck, Callback = function(v) Aim.WallCheck = v end })
+mAim:Toggle({ Name = "Stay on the first target while held", Default = Aim.Sticky, Callback = function(v) Aim.Sticky = v end })
+mAim:Toggle({ Name = "Wanted players only", Default = Aim.WantedOnly, Callback = function(v) Aim.WantedOnly = v end })
+mAim:Section("Teams")
+mAim:Toggle({ Name = "Target police", Default = true, Callback = function(v) Aim.Teams.Police = v end })
+mAim:Toggle({ Name = "Target fire department", Default = true, Callback = function(v) Aim.Teams.FireDepartment = v end })
+mAim:Toggle({ Name = "Target citizens", Default = true, Callback = function(v) Aim.Teams.Citizen = v end })
+mAim:Toggle({ Name = "Target other jobs / prisoners", Default = true, Callback = function(v) Aim.Teams.Other = v end })
+mAim:Section("Display")
+mAim:Toggle({ Name = "Show field of view circle", Default = Aim.ShowFOV, Callback = function(v) Aim.ShowFOV = v end })
+mAim:Toggle({ Name = "Filled circle", Default = Aim.FovFilled, Callback = function(v) Aim.FovFilled = v end })
+mAim:Slider({ Name = "Circle thickness", Min = 0.5, Max = 4, Step = 0.1, Default = Aim.FovThick, Callback = function(v) Aim.FovThick = v end })
+mAim:ColorPicker({ Name = "Circle colour", Default = Aim.FovColor, Callback = function(c) Aim.FovColor = c end })
+mAim:Toggle({ Name = "Line to the target", Default = Aim.ShowLine, Callback = function(v) Aim.ShowLine = v end })
+mAim:ColorPicker({ Name = "Line colour", Default = Aim.LineColor, Callback = function(c) Aim.LineColor = c end })
+local lastLockMsg = 0
+Aim.OnTarget = function(plr)
+	if os.clock() - lastLockMsg < 0.8 then return end
+	lastLockMsg = os.clock()
+	if plr then
+		local ch = plr.Character
+		local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+		local myChar = game:GetService("Players").LocalPlayer.Character
+		local me = myChar and myChar:FindFirstChild("HumanoidRootPart")
+		local role = ESP.RoleOf(plr)
+		local d = (hrp and me) and (" - %d st"):format((hrp.Position - me.Position).Magnitude) or ""
+		win:Notify(("Locked on: %s (@%s, %s)%s"):format(plr.DisplayName, plr.Name, role, d), 2.5)
+	else
+		win:Notify("Camlock: no target", 1.5)
+	end
+end
+
+local mAssist = tAim:Module({ Name = "Aim Assist (soft pull)", Default = false, Callback = function(on) Aim.AssistEnabled = on end })
+mAssist:Label({ Name = "What it does", Value = "gentle pull while you aim" })
+cycle(mAssist, "Active while", Aim.AssistButtons, function() return Aim.AssistButton end, function(v) Aim.AssistButton = v end)
+mAssist:Slider({ Name = "Pull strength", Min = 0.02, Max = 0.6, Step = 0.02, Default = Aim.AssistStrength, Callback = function(v) Aim.AssistStrength = v end })
+mAssist:Slider({ Name = "Assist field of view", Min = 40, Max = 400, Step = 10, Default = Aim.AssistFOV, Suffix = " px", Callback = function(v) Aim.AssistFOV = v end })
+
+local mTrig = tAim:Module({ Name = "Triggerbot", Default = false, Callback = function(on) Aim.Trigger = on end })
+mTrig:Label({ Name = "What it does", Value = "clicks when the crosshair is on a player" })
+mTrig:Slider({ Name = "Delay between shots", Min = 0.03, Max = 0.6, Step = 0.01, Default = Aim.TriggerDelay, Suffix = " s", Callback = function(v) Aim.TriggerDelay = v end })
+mTrig:Slider({ Name = "Range", Min = 20, Max = 1000, Step = 10, Default = Aim.TriggerRange, Suffix = " st", Callback = function(v) Aim.TriggerRange = v end })
+mTrig:Toggle({ Name = "Only while a key is held", Default = Aim.TriggerHold, Callback = function(v) Aim.TriggerHold = v end })
+mTrig:Keybind({ Name = "Trigger key", Default = Enum.KeyCode.X, Callback = function(k) Aim.TriggerKey = k end })
+Aim.TriggerKey = Enum.KeyCode.X
+safe("aim", Aim.Start)
+
+-- VISUALS ---------------------------------------------------------------------------------------------------------------
+local tEsp = win:Tab("Visuals", { Section = "Combat", Icon = 3 })
+local mEsp = tEsp:Module({ Name = "Player ESP", Default = false, Callback = function(on) ESP.SetEnabled(on) end })
+mEsp:Section("Shapes")
+mEsp:Toggle({ Name = "Box", Default = ESP.Boxes, Callback = function(v) ESP.Boxes = v end })
+mEsp:Toggle({ Name = "Corner box style (off = full outline)", Default = ESP.CornerBox, Callback = function(v) ESP.CornerBox = v end })
+mEsp:Toggle({ Name = "Skeleton", Default = ESP.Skeleton, Callback = function(v) ESP.Skeleton = v end })
+mEsp:Toggle({ Name = "Tracers", Default = ESP.Tracers, Callback = function(v) ESP.Tracers = v end })
+mEsp:Section("Info")
+mEsp:Toggle({ Name = "Name + role (police blue, fire red)", Default = ESP.Names, Callback = function(v) ESP.Names = v end })
+mEsp:Toggle({ Name = "Health bar", Default = ESP.Health, Callback = function(v) ESP.Health = v end })
+mEsp:Toggle({ Name = "Distance", Default = ESP.Distance, Callback = function(v) ESP.Distance = v end })
+mEsp:Toggle({ Name = "Wanted tag (red)", Default = ESP.Wanted, Callback = function(v) ESP.Wanted = v end })
+mEsp:Toggle({ Name = "Hover card (point at a player)", Default = ESP.Hover, Callback = function(v) ESP.Hover = v end })
+mEsp:Section("Range")
+mEsp:Slider({ Name = "Max distance", Min = 100, Max = 3000, Step = 50, Default = ESP.MaxDist, Suffix = " st", Callback = function(v) ESP.MaxDist = v end })
+mEsp:Toggle({ Name = "Fade with distance", Default = ESP.Fade, Callback = function(v) ESP.Fade = v end })
+mEsp:Section("Who to show")
+mEsp:Toggle({ Name = "Show police", Default = true, Callback = function(v) ESP.Teams.Police = v end })
+mEsp:Toggle({ Name = "Show fire department", Default = true, Callback = function(v) ESP.Teams.FireDepartment = v end })
+mEsp:Toggle({ Name = "Show citizens", Default = true, Callback = function(v) ESP.Teams.Citizen = v end })
+mEsp:Toggle({ Name = "Show other jobs / prisoners", Default = true, Callback = function(v) ESP.Teams.Other = v end })
+local mRadar = tEsp:Module({ Name = "Police radar (escape helper)", Default = true, Callback = function(on) ESP.Radar = on end })
+mRadar:Slider({ Name = "Warn within", Min = 100, Max = 800, Step = 25, Default = ESP.RadarDist, Suffix = " st", Callback = function(v) ESP.RadarDist = v end })
+ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) end
+safe("esp", ESP.Start)
+
+local mCham = tEsp:Module({ Name = "Chams (glowing outlines through walls)", Default = false, Callback = function(on) Visuals.Chams.Enabled = on end })
+local lCham = mCham:Label({ Name = "Players lit", Value = 0 })
+mCham:Toggle({ Name = "Team colours (police blue, fire red, wanted red)", Default = Visuals.Chams.TeamColors, Callback = function(v) Visuals.Chams.TeamColors = v end })
+mCham:ColorPicker({ Name = "Fill colour (when team colours are off)", Default = Visuals.Chams.Fill, Callback = function(c) Visuals.Chams.Fill = c end })
+mCham:ColorPicker({ Name = "Outline colour (when team colours are off)", Default = Visuals.Chams.Outline, Callback = function(c) Visuals.Chams.Outline = c end })
+mCham:Slider({ Name = "Fill see-through", Min = 0, Max = 1, Step = 0.05, Default = Visuals.Chams.FillAlpha, Callback = function(v) Visuals.Chams.FillAlpha = v end })
+mCham:Slider({ Name = "Outline see-through", Min = 0, Max = 1, Step = 0.05, Default = Visuals.Chams.OutlineAlpha, Callback = function(v) Visuals.Chams.OutlineAlpha = v end })
+mCham:Toggle({ Name = "Show through walls", Default = Visuals.Chams.AlwaysOnTop, Callback = function(v) Visuals.Chams.AlwaysOnTop = v end })
+mCham:Toggle({ Name = "Wanted players pulse", Default = Visuals.Chams.Pulse, Callback = function(v) Visuals.Chams.Pulse = v end })
+mCham:Toggle({ Name = "Also light myself", Default = Visuals.Chams.Self, Callback = function(v) Visuals.Chams.Self = v end })
+mCham:Slider({ Name = "Max distance", Min = 100, Max = 3000, Step = 50, Default = Visuals.Chams.MaxDist, Suffix = " st", Callback = function(v) Visuals.Chams.MaxDist = v end })
+mCham:Toggle({ Name = "Police", Default = true, Callback = function(v) Visuals.Chams.Teams.Police = v end })
+mCham:Toggle({ Name = "Fire department", Default = true, Callback = function(v) Visuals.Chams.Teams.FireDepartment = v end })
+mCham:Toggle({ Name = "Citizens", Default = true, Callback = function(v) Visuals.Chams.Teams.Citizen = v end })
+mCham:Toggle({ Name = "Other jobs / prisoners", Default = true, Callback = function(v) Visuals.Chams.Teams.Other = v end })
+
+local mPoint = tEsp:Module({ Name = "Player pointers (arrows + avatar)", Default = false, Callback = function(on) Visuals.Pointers.Enabled = on end })
+local lPoint = mPoint:Label({ Name = "Pointing at", Value = 0 })
+cycle(mPoint, "Show", { "Offscreen", "Always" }, function() return Visuals.Pointers.Mode end, function(v) Visuals.Pointers.Mode = v end)
+cycle(mPoint, "Picture", Visuals.Kinds, function() return Visuals.Pointers.Kind end, function(v) Visuals.Pointers.Kind = v end)
+mPoint:Toggle({ Name = "Show the avatar picture", Default = Visuals.Pointers.Avatar, Callback = function(v) Visuals.Pointers.Avatar = v end })
+mPoint:Toggle({ Name = "Distance", Default = Visuals.Pointers.Distance, Callback = function(v) Visuals.Pointers.Distance = v end })
+mPoint:Toggle({ Name = "Name", Default = Visuals.Pointers.Name, Callback = function(v) Visuals.Pointers.Name = v end })
+mPoint:Toggle({ Name = "Team colours", Default = Visuals.Pointers.TeamColors, Callback = function(v) Visuals.Pointers.TeamColors = v end })
+mPoint:ColorPicker({ Name = "Colour (when team colours are off)", Default = Visuals.Pointers.Color, Callback = function(c) Visuals.Pointers.Color = c end })
+mPoint:Slider({ Name = "Ring size", Min = 0.2, Max = 0.48, Step = 0.01, Default = Visuals.Pointers.Radius, Callback = function(v) Visuals.Pointers.Radius = v end })
+mPoint:Slider({ Name = "Arrow / picture size", Min = 0.6, Max = 2, Step = 0.05, Default = Visuals.Pointers.Scale, Callback = function(v) Visuals.Pointers.Scale = v end })
+mPoint:Slider({ Name = "Max distance", Min = 100, Max = 5000, Step = 100, Default = Visuals.Pointers.MaxDist, Suffix = " st", Callback = function(v) Visuals.Pointers.MaxDist = v end })
+mPoint:Toggle({ Name = "Police", Default = true, Callback = function(v) Visuals.Pointers.Teams.Police = v end })
+mPoint:Toggle({ Name = "Fire department", Default = true, Callback = function(v) Visuals.Pointers.Teams.FireDepartment = v end })
+mPoint:Toggle({ Name = "Citizens", Default = true, Callback = function(v) Visuals.Pointers.Teams.Citizen = v end })
+mPoint:Toggle({ Name = "Other jobs / prisoners", Default = true, Callback = function(v) Visuals.Pointers.Teams.Other = v end })
+
+local mMark = tEsp:Module({ Name = "Avatar markers (picture above heads)", Default = false, Callback = function(on) Visuals.Markers.Enabled = on end })
+local lMark = mMark:Label({ Name = "Markers", Value = 0 })
+cycle(mMark, "Picture", Visuals.Kinds, function() return Visuals.Markers.Kind end, function(v) Visuals.Markers.Kind = v end)
+mMark:Slider({ Name = "Size", Min = 24, Max = 90, Step = 2, Default = Visuals.Markers.Size, Suffix = " px", Callback = function(v) Visuals.Markers.Size = v end })
+mMark:Toggle({ Name = "Name", Default = Visuals.Markers.Name, Callback = function(v) Visuals.Markers.Name = v end })
+mMark:Toggle({ Name = "Distance", Default = Visuals.Markers.Distance, Callback = function(v) Visuals.Markers.Distance = v end })
+mMark:Toggle({ Name = "Team colours", Default = Visuals.Markers.TeamColors, Callback = function(v) Visuals.Markers.TeamColors = v end })
+mMark:ColorPicker({ Name = "Colour (when team colours are off)", Default = Visuals.Markers.Color, Callback = function(c) Visuals.Markers.Color = c end })
+mMark:Slider({ Name = "Max distance", Min = 50, Max = 2000, Step = 50, Default = Visuals.Markers.MaxDist, Suffix = " st", Callback = function(v) Visuals.Markers.MaxDist = v end })
+mMark:Toggle({ Name = "Police", Default = true, Callback = function(v) Visuals.Markers.Teams.Police = v end })
+mMark:Toggle({ Name = "Fire department", Default = true, Callback = function(v) Visuals.Markers.Teams.FireDepartment = v end })
+mMark:Toggle({ Name = "Citizens", Default = true, Callback = function(v) Visuals.Markers.Teams.Citizen = v end })
+mMark:Toggle({ Name = "Other jobs / prisoners", Default = true, Callback = function(v) Visuals.Markers.Teams.Other = v end })
+safe("visuals", Visuals.Start)
+task.spawn(function() -- the live counters in the module rows
+	while true do
+		task.wait(0.5)
+		pcall(function()
+			lCham:Set(Visuals.Chams.Count); lPoint:Set(Visuals.Pointers.Count); lMark:Set(Visuals.Markers.Count)
+		end)
+	end
+end)
+
+-- CROSSHAIR -------------------------------------------------------------------------------------------------------------
+local tCross = win:Tab("Crosshair", { Section = "Combat", Icon = 4 })
+local mCross = tCross:Module({ Name = "Custom crosshair", Default = false, Callback = function(on) Crosshair.SetEnabled(on) end })
+cycle(mCross, "Style", Crosshair.Styles, function() return Crosshair.Style end, function(v) Crosshair.Style = v; Crosshair.Rebuild() end)
+mCross:ColorPicker({ Name = "Colour", Default = Crosshair.Color, Callback = function(c) Crosshair.Color = c; Crosshair.Rebuild() end })
+mCross:ColorPicker({ Name = "Colour over a player", Default = Crosshair.TargetColor, Callback = function(c) Crosshair.TargetColor = c end })
+mCross:Slider({ Name = "Size", Min = 2, Max = 40, Step = 1, Default = Crosshair.Size, Suffix = " px", Callback = function(v) Crosshair.Size = v; Crosshair.Rebuild() end })
+mCross:Slider({ Name = "Gap", Min = 0, Max = 24, Step = 1, Default = Crosshair.Gap, Suffix = " px", Callback = function(v) Crosshair.Gap = v; Crosshair.Rebuild() end })
+mCross:Slider({ Name = "Thickness", Min = 1, Max = 8, Step = 1, Default = Crosshair.Thickness, Suffix = " px", Callback = function(v) Crosshair.Thickness = v; Crosshair.Rebuild() end })
+mCross:Slider({ Name = "See-through", Min = 0, Max = 0.9, Step = 0.05, Default = 1 - Crosshair.Alpha, Callback = function(v) Crosshair.Alpha = 1 - v; Crosshair.Rebuild() end })
+mCross:Toggle({ Name = "Dark outline", Default = Crosshair.Outline, Callback = function(v) Crosshair.Outline = v; Crosshair.Rebuild() end })
+mCross:Toggle({ Name = "Centre dot", Default = Crosshair.CenterDot, Callback = function(v) Crosshair.CenterDot = v; Crosshair.Rebuild() end })
+mCross:Toggle({ Name = "Turn red over a player", Default = Crosshair.ColorOnTarget, Callback = function(v) Crosshair.ColorOnTarget = v end })
+mCross:Toggle({ Name = "Rainbow", Default = Crosshair.Rainbow, Callback = function(v) Crosshair.Rainbow = v end })
+mCross:Toggle({ Name = "Spread while moving", Default = Crosshair.Dynamic, Callback = function(v) Crosshair.Dynamic = v end })
+mCross:Toggle({ Name = "Spin", Default = Crosshair.Spin, Callback = function(v) Crosshair.Spin = v end })
+mCross:Slider({ Name = "Spin speed", Min = 10, Max = 360, Step = 10, Default = Crosshair.SpinSpeed, Suffix = " deg/s", Callback = function(v) Crosshair.SpinSpeed = v end })
+mCross:Toggle({ Name = "Follow the mouse cursor (off = screen centre)", Default = Crosshair.FollowMouse, Callback = function(v) Crosshair.FollowMouse = v end })
+mCross:Toggle({ Name = "Hide the normal cursor", Default = Crosshair.HideCursor, Callback = function(v) Crosshair.SetHideCursor(v) end })
+safe("crosshair", Crosshair.Start)
+
+-- SKINS -----------------------------------------------------------------------------------------------------------------
+local tSkin = win:Tab("Skins", { Section = "Combat", Icon = 2 })
+local lSkinNote = tSkin:Label({ Name = "Only you see these", Value = "client-side" })
+local mPaint = tSkin:Module({ Name = "My skin (paint my character)", Default = false, Callback = function(on) Skins.Paint.Enabled = on; Skins.Refresh() end })
+mPaint:ColorPicker({ Name = "Colour", Default = Skins.Paint.Color, Callback = function(c) Skins.Paint.Color = c end })
+cycle(mPaint, "Material", Skins.Materials, function() return Skins.Paint.Material end, function(v) Skins.Paint.Material = v end)
+mPaint:Slider({ Name = "See-through", Min = 0, Max = 0.95, Step = 0.05, Default = Skins.Paint.Transparency, Callback = function(v) Skins.Paint.Transparency = v end })
+mPaint:Toggle({ Name = "Rainbow", Default = Skins.Paint.Rainbow, Callback = function(v) Skins.Paint.Rainbow = v end })
+mPaint:Toggle({ Name = "Paint hats / accessories too", Default = Skins.Paint.Accessories, Callback = function(v) Skins.Paint.Accessories = v; Skins.Refresh() end })
+mPaint:Section("Presets")
+for _, pr in ipairs(Skins.Presets) do
+	mPaint:Button({ Name = "Preset: " .. pr.name, NoSave = true, Callback = function()
+		Skins.ApplyPreset(pr)
+		mPaint:Set(true)
+		win:Notify("Skin: " .. pr.name, 2)
+	end })
+end
+
+local mOthers = tSkin:Module({ Name = "Paint other players", Default = false, Callback = function(on) Skins.Others.Enabled = on; Skins.Refresh() end })
+mOthers:Toggle({ Name = "Team colours", Default = Skins.Others.TeamColors, Callback = function(v) Skins.Others.TeamColors = v end })
+mOthers:ColorPicker({ Name = "Colour (when team colours are off)", Default = Skins.Others.Color, Callback = function(c) Skins.Others.Color = c end })
+cycle(mOthers, "Material", Skins.Materials, function() return Skins.Others.Material end, function(v) Skins.Others.Material = v end)
+mOthers:Slider({ Name = "See-through", Min = 0, Max = 0.95, Step = 0.05, Default = Skins.Others.Transparency, Callback = function(v) Skins.Others.Transparency = v end })
+mOthers:Toggle({ Name = "Rainbow", Default = Skins.Others.Rainbow, Callback = function(v) Skins.Others.Rainbow = v end })
+
+tSkin:Section("Copy a Roblox avatar onto me")
+local skinName = ""
+tSkin:TextBox({ Name = "Username or user id", Placeholder = "e.g. Roblox", NoSave = true, Callback = function(t) skinName = t or "" end })
+tSkin:Button({ Name = "Apply that avatar to my character", NoSave = true, Callback = function()
+	local ok, why = Skins.CopyUser(skinName)
+	win:Notify(ok and "Avatar applied (only you see it)" or ("Could not apply: " .. tostring(why)), 3)
+end })
+tSkin:Toggle({ Name = "Keep the avatar after respawning", Default = Skins.KeepLook, Callback = function(v) Skins.KeepLook = v end })
+tSkin:Button({ Name = "Back to my own avatar", NoSave = true, Callback = function() Skins.RestoreLook(); win:Notify("Original avatar restored", 2) end })
+safe("skins", Skins.Start)
 
 -- Vehicle Mods tab
 local tVeh = win:Tab("Vehicle Mods", { Section = "Game", Icon = 1 })
@@ -110,79 +328,8 @@ local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
 safe("player", Player.Start)
 
--- ESP tab
-local tEsp = win:Tab("ESP", { Section = "Game", Icon = 3 })
-local mEsp = tEsp:Module({ Name = "Player ESP", Default = false, Callback = function(on) ESP.SetEnabled(on) end })
-mEsp:Section("Shapes")
-mEsp:Toggle({ Name = "Box", Default = ESP.Boxes, Callback = function(v) ESP.Boxes = v end })
-mEsp:Toggle({ Name = "Corner box style (off = full outline)", Default = ESP.CornerBox, Callback = function(v) ESP.CornerBox = v end })
-mEsp:Toggle({ Name = "Skeleton", Default = ESP.Skeleton, Callback = function(v) ESP.Skeleton = v end })
-mEsp:Toggle({ Name = "Tracers", Default = ESP.Tracers, Callback = function(v) ESP.Tracers = v end })
-mEsp:Section("Info")
-mEsp:Toggle({ Name = "Name + role (police blue, fire red)", Default = ESP.Names, Callback = function(v) ESP.Names = v end })
-mEsp:Toggle({ Name = "Health bar", Default = ESP.Health, Callback = function(v) ESP.Health = v end })
-mEsp:Toggle({ Name = "Distance", Default = ESP.Distance, Callback = function(v) ESP.Distance = v end })
-mEsp:Toggle({ Name = "Wanted tag (red)", Default = ESP.Wanted, Callback = function(v) ESP.Wanted = v end })
-mEsp:Toggle({ Name = "Hover card (point at a player)", Default = ESP.Hover, Callback = function(v) ESP.Hover = v end })
-mEsp:Section("Range")
-mEsp:Slider({ Name = "Max distance", Min = 100, Max = 3000, Step = 50, Default = ESP.MaxDist, Suffix = " st", Callback = function(v) ESP.MaxDist = v end })
-mEsp:Toggle({ Name = "Fade with distance", Default = ESP.Fade, Callback = function(v) ESP.Fade = v end })
-mEsp:Section("Who to show")
-mEsp:Toggle({ Name = "Show police", Default = true, Callback = function(v) ESP.Teams.Police = v end })
-mEsp:Toggle({ Name = "Show fire department", Default = true, Callback = function(v) ESP.Teams.FireDepartment = v end })
-mEsp:Toggle({ Name = "Show citizens", Default = true, Callback = function(v) ESP.Teams.Citizen = v end })
-mEsp:Toggle({ Name = "Show other jobs / prisoners", Default = true, Callback = function(v) ESP.Teams.Other = v end })
-local mRadar = tEsp:Module({ Name = "Police radar (escape helper)", Default = true, Callback = function(on) ESP.Radar = on end })
-mRadar:Slider({ Name = "Warn within", Min = 100, Max = 800, Step = 25, Default = ESP.RadarDist, Suffix = " st", Callback = function(v) ESP.RadarDist = v end })
-ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) end
-safe("esp", ESP.Start)
-
--- Aim tab
-local tAim = win:Tab("Aim", { Section = "Game", Icon = 4 })
-local mAim = tAim:Module({ Name = "Camlock", Default = false, Callback = function(on) Aim.SetEnabled(on) end })
-local lAim = mAim:Label({ Name = "Status", Value = Aim.Info })
-Aim.Changed = function() lAim:Set(Aim.Info) end
-mAim:Section("Activation")
-local aimKey = mAim:Keybind({ Name = "Aim key", Default = Enum.KeyCode.Z })
-mAim:Toggle({ Name = "Hold the key (off = press to toggle)", Default = Aim.Hold, Callback = function(v) Aim.Hold = v; Aim.Active = false end })
-mAim:Toggle({ Name = "Mouse lock (cursor stays in the centre while aiming)", Default = Aim.MouseLock, Callback = function(v) Aim.MouseLock = v end })
-mAim:Section("Targeting")
-mAim:Toggle({ Name = "Aim at the head (off = body)", Default = true, Callback = function(v) Aim.Part = v and "Head" or "Torso" end })
-mAim:Slider({ Name = "Field of view", Min = 40, Max = 600, Step = 10, Default = Aim.FOV, Suffix = " px", Callback = function(v) Aim.FOV = v end })
-mAim:Slider({ Name = "Smoothness (low = slow glide, 1 = snap)", Min = 0.05, Max = 1, Step = 0.05, Default = Aim.Smooth, Callback = function(v) Aim.Smooth = v end })
-mAim:Slider({ Name = "Range", Min = 50, Max = 1500, Step = 25, Default = Aim.MaxDist, Suffix = " st", Callback = function(v) Aim.MaxDist = v end })
-mAim:Slider({ Name = "Predict movement", Min = 0, Max = 0.4, Step = 0.01, Default = Aim.Prediction, Suffix = " s", Callback = function(v) Aim.Prediction = v end })
-mAim:Section("Rules")
-mAim:Toggle({ Name = "Only players I can see (wall check)", Default = Aim.WallCheck, Callback = function(v) Aim.WallCheck = v end })
-mAim:Toggle({ Name = "Stay on the first target while held", Default = Aim.Sticky, Callback = function(v) Aim.Sticky = v end })
-mAim:Toggle({ Name = "Wanted players only", Default = Aim.WantedOnly, Callback = function(v) Aim.WantedOnly = v end })
-mAim:Section("Teams")
-mAim:Toggle({ Name = "Target police", Default = true, Callback = function(v) Aim.Teams.Police = v end })
-mAim:Toggle({ Name = "Target fire department", Default = true, Callback = function(v) Aim.Teams.FireDepartment = v end })
-mAim:Toggle({ Name = "Target citizens", Default = true, Callback = function(v) Aim.Teams.Citizen = v end })
-mAim:Toggle({ Name = "Target other jobs / prisoners", Default = true, Callback = function(v) Aim.Teams.Other = v end })
-mAim:Section("Display")
-mAim:Toggle({ Name = "Show field of view circle", Default = Aim.ShowFOV, Callback = function(v) Aim.ShowFOV = v end })
-local lastLockMsg = 0
-Aim.OnTarget = function(plr)
-	if os.clock() - lastLockMsg < 0.8 then return end
-	lastLockMsg = os.clock()
-	if plr then
-		local ch = plr.Character
-		local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-		local myChar = game:GetService("Players").LocalPlayer.Character
-		local me = myChar and myChar:FindFirstChild("HumanoidRootPart")
-		local role = ESP.RoleOf(plr)
-		local d = (hrp and me) and (" - %d st"):format((hrp.Position - me.Position).Magnitude) or ""
-		win:Notify(("Locked on: %s (@%s, %s)%s"):format(plr.DisplayName, plr.Name, role, d), 2.5)
-	else
-		win:Notify("Camlock: no target", 1.5)
-	end
-end
-safe("aim", Aim.Start)
-
 -- World tab: client-side helpers (lighting, camera, movement)
-local tWorld = win:Tab("World", { Section = "Game", Icon = 3 })
+local tWorld = tPlayer
 tWorld:Section("Lighting")
 tWorld:Toggle({ Name = "Fullbright (no darkness)", Default = false, Callback = function(v) Extras.Fullbright = v; Extras.Refresh() end })
 tWorld:Toggle({ Name = "No fog", Default = false, Callback = function(v) Extras.NoFog = v; Extras.Refresh() end })
@@ -201,171 +348,11 @@ tWorld:Section("Utility")
 tWorld:Toggle({ Name = "Anti AFK (never kicked for idling)", Default = Extras.AntiAfk, Callback = function(v) Extras.AntiAfk = v end })
 safe("extras", Extras.Start)
 
--- Travel tab: the new teleport system (instant jump first, every move checked, falls back to hops -> walking -> car)
-local Travel = __import("travel")
-local Escape = __import("escape")
-local tTele = win:Tab("Travel", { Icon = 5 })
-local lTele = tTele:Label({ Name = "Status", Value = Travel.Info })
-Travel.Notify = function(m) win:Notify(m, 3) end
-Travel.Changed = function() lTele:Set(Travel.Info) end
-Travel.Log = function(m) Farm.Trace("travel: " .. m) end
-Tele.Notify = function(m) win:Notify(m) end -- messages from the car fallback
-Tele.Changed = function() end
-Farm.TravelTo = function(pos, opts) return Travel.ToSync(pos, opts) end
-local backKey
-tTele:Section("Quick")
-tTele:Button({ Name = "Hospital bed (lie down and heal)", Callback = function()
-	local ok, why = Farm.GoHospital(true)
-	if not ok then win:Notify("Hospital: " .. tostring(why)) end
-end })
-tTele:Button({ Name = "Back to where I was", Callback = function()
-	local ok, why = Travel.Back()
-	if not ok then win:Notify("Travel: " .. tostring(why)) end
-end })
-tTele:Button({ Name = "Get into my car", Callback = function() Tele.GoToCar() end })
-tTele:Button({ Name = "Cancel", Callback = function() Travel.Stop(); Tele.Stop() end })
-backKey = tTele:Keybind({ Name = "Back key", Default = Enum.KeyCode.B })
-tTele:Section("How it travels")
-tTele:Toggle({ Name = "Allow my car as the last fallback", Default = Travel.AllowCar, Callback = function(v) Travel.AllowCar = v end })
-tTele:Toggle({ Name = "Phase through objects while hopping", Default = Travel.Ghost, Callback = function(v) Travel.Ghost = v end })
-tTele:Slider({ Name = "Hop length (shrinks by itself when refused)", Min = 20, Max = 400, Step = 10, Default = Travel.HopLen, Suffix = " st", Callback = function(v) Travel.HopLen = v end })
-tTele:Slider({ Name = "Hop delay", Min = 0.05, Max = 0.4, Step = 0.01, Default = Travel.HopDelay, Suffix = " s", Callback = function(v) Travel.HopDelay = v end })
-tTele:Section("Places")
-local shownLoc = {}
-local function goTo(loc) Travel.To(loc.pos, { name = loc.name, face = loc.pos }) end
-local function addLocations(list)
-	for _, loc in ipairs(list) do
-		if not shownLoc[loc.name] then
-			shownLoc[loc.name] = true
-			tTele:Button({ Name = loc.name, Callback = function() goTo(loc) end })
-		end
-	end
-	lTele:Set(#list .. " places" .. (#(Tele.Missing or {}) > 0 and (" | not loaded yet: " .. table.concat(Tele.Missing, ", ")) or ""))
-end
-tTele:Button({ Name = "Rescan places", Callback = function() Tele.Scan(addLocations) end })
-tTele:Button({ Name = "Save my position as a spot", Callback = function()
-	local loc = Tele.SaveHere()
-	if loc then addLocations({ loc }) end
-end })
-tTele:Section("Players")
-local playerBtns = {}
-local function refreshPlayers()
-	for _, b in ipairs(playerBtns) do pcall(function() b.Destroy() end) end
-	playerBtns = {}
-	for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
-		if p ~= game:GetService("Players").LocalPlayer then
-			playerBtns[#playerBtns + 1] = tTele:Button({ Name = "To " .. p.DisplayName .. " (@" .. p.Name .. ")", Callback = function()
-				local ok, why = Travel.ToPlayer(p)
-				if not ok then win:Notify("Travel: " .. tostring(why)) end
-			end })
-		end
-	end
-end
-tTele:Button({ Name = "Refresh the player list", Callback = refreshPlayers })
-refreshPlayers()
-Tele.Scan(addLocations)
-
--- Hospital: after every death, lie down in a bed (waits for the respawn)
-local mHosp
-mHosp = tTele:Module({ Name = "Auto revive at the hospital", Default = false, NoSave = true, Callback = function(on)
-	Farm.AutoRevive = on
-	win:Notify(on and "Auto revive on: after you die it goes to a hospital bed" or "Auto revive off", 3)
-end })
-mHosp:Label({ Name = "What it does", Value = "after a death: respawn, travel, lie down" })
-local hospKey = mHosp:Keybind({ Name = "Go to a hospital bed now", Default = Enum.KeyCode.J })
-
--- Escape tab: get away from the police (uses the Travel system)
-local tEsc = win:Tab("Escape", { Icon = 2 })
-local mEsc
-mEsc = tEsc:Module({ Name = "Auto escape", Default = false, NoSave = true, Callback = function(on)
-	Escape.Auto = on
-	win:Notify(on and "Auto escape on: it jumps away when you are wanted and police get close" or "Auto escape off", 3)
-end })
-local lEsc = mEsc:Label({ Name = "Status", Value = Escape.Info })
-Escape.Changed = function() lEsc:Set(Escape.Info) end
-Escape.Notify = function(m, sec) win:Notify(m, sec or 3) end
-Escape.Log = function(m) Farm.Trace(m) end
-mEsc:Section("When it starts")
-mEsc:Slider({ Name = "Police distance", Min = 60, Max = 500, Step = 10, Default = Escape.Dist, Suffix = " st", Callback = function(v) Escape.Dist = v end })
-mEsc:Toggle({ Name = "Try to break away when I am cuffed (experimental)", Default = false, Callback = function(v) Escape.OnCuff = v end })
-mEsc:Section("After the jump")
-mEsc:Slider({ Name = "Lay low for", Min = 20, Max = 300, Step = 10, Default = Escape.LayLow, Suffix = " s", Callback = function(v) Escape.LayLow = v end })
-mEsc:Toggle({ Name = "Use my saved hideouts first", Default = Escape.SavedFirst, Callback = function(v) Escape.SavedFirst = v end })
-tEsc:Section("Now")
-local panicKey = tEsc:Keybind({ Name = "Panic key (escape right now)", Default = Enum.KeyCode.X })
-tEsc:Button({ Name = "Escape now", Callback = function()
-	local ok, why = Escape.Run("button")
-	if not ok then win:Notify("Escape: " .. tostring(why)) end
-end })
-tEsc:Button({ Name = "Save this spot as a hideout", Callback = function()
-	local loc = Tele.SaveHere("Hideout")
-	if loc then addLocations({ loc }); win:Notify("Saved " .. loc.name) end
-end })
-tEsc:Button({ Name = "Stop", Callback = function() Escape.Stop() end })
-tEsc:Label({ Name = "Police radar", Value = "ESP tab" })
-safe("escape", Escape.Start)
-
--- AutoFarm tab (modules get added here)
-local tFarm = win:Tab("AutoFarm", { Section = "Farming", Icon = 6 })
-Farm.Tele = Tele
-Farm.Notify = function(m) win:Notify(m, 4) end
-Farm.Drive = Drive
-Drive.Log = function(m) Farm.Trace("drive: " .. m) end
-Tele.OnTrace = Farm.Trace
-local lFarm = tFarm:Label({ Name = "Status", Value = Farm.Info })
-local lFarmStats = tFarm:Label({ Name = "Done", Value = Farm.Stats })
-Farm.Changed = function() lFarm:Set(Farm.Info); lFarmStats:Set(Farm.Stats) end
-local mFarm
-Farm.Stopped = function() if mFarm then mFarm:Set(false, true) end end
-mFarm = tFarm:Module({ Name = "Auto Rob", Default = false, NoSave = true, Callback = function(on)
-	Farm.SetEnabled(on)
-	win:Notify(on and "AutoFarm on" or "AutoFarm stopping...")
-end })
-local mLoot = tFarm:Module({ Name = "Quick loot (keybind)", Default = true, Callback = function() end })
-local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items nearby)", Default = Enum.KeyCode.Y })
-mLoot:Section("How it collects")
-mLoot:Label({ Name = "Default", Value = "all piles in reach, at once" })
-mLoot:Toggle({ Name = "Also walk to piles out of reach", Default = false, Callback = function(v) Farm.LootWalk = v end })
-mLoot:Slider({ Name = "Walking range", Min = 20, Max = 250, Step = 5, Default = 90, Suffix = " st", Callback = function(v) Farm.LootRange = v end })
-Farm.LootRange = Farm.LootRange or 90
-mFarm:Section("What to rob")
-mFarm:Toggle({ Name = "Cash registers (gas stations, shops)", Default = Farm.Registers, Callback = function(v) Farm.Registers = v end })
-mFarm:Toggle({ Name = "Bank (buys a bomb, takes money + gold)", Default = Farm.Bank, Callback = function(v) Farm.Bank = v end })
-mFarm:Toggle({ Name = "Jeweler safes (experimental)", Default = Farm.Jeweler, Callback = function(v) Farm.Jeweler = v end })
-mFarm:Toggle({ Name = "Club safe (experimental)", Default = Farm.Club, Callback = function(v) Farm.Club = v end })
-mFarm:Toggle({ Name = "Sell gold at the dealer after the bank", Default = Farm.SellGold, Callback = function(v) Farm.SellGold = v end })
-mFarm:Section("Movement")
-mFarm:Toggle({ Name = "Get into the car with the seat interaction (off = direct)", Default = Farm.SitInteract, NoSave = true, Callback = function(v) Farm.SitInteract = v end })
-mFarm:Toggle({ Name = "Instant teleport on foot (off = walk)", Default = Farm.InstantMove, NoSave = true, Callback = function(v) Farm.InstantMove = v end })
-mFarm:Slider({ Name = "Sell calls", Min = 1, Max = 6, Step = 1, Default = Farm.SellCalls, Callback = function(v) Farm.SellCalls = v end })
-mFarm:Slider({ Name = "Travel speed", Min = 80, Max = 600, Step = 20, Default = Farm.TravelSpeed, NoSave = true, Suffix = " st/s", Callback = function(v) Farm.TravelSpeed = v end })
-mFarm:Section("Autopilot")
-mFarm:Toggle({ Name = "Autopilot: drive the car for real along the roads", Default = Farm.AutoDrive, NoSave = true, Callback = function(v) Farm.AutoDrive = v end })
-mFarm:Toggle({ Name = "Honk at cars in front (H)", Default = true, NoSave = true, Callback = function(v) Drive.Honk = v end })
-mFarm:Toggle({ Name = "Stop at red lights (slower)", Default = false, NoSave = true, Callback = function(v) Drive.FarmLights = v end })
-mFarm:Slider({ Name = "Autopilot speed", Min = 30, Max = 140, Step = 5, Default = Farm.DriveSpeed, Suffix = " st/s", NoSave = true, Callback = function(v) Farm.DriveSpeed = v end })
-mFarm:Toggle({ Name = "I drive myself (no automatic trips)", Default = Farm.Manual, NoSave = true, Callback = function(v) Farm.Manual = v end })
-tFarm:Button({ Name = "Buy a bomb at the nearest dealer", Callback = function() Farm.Once("buybomb") end })
-tFarm:Button({ Name = "Rob nearest cash register now", Callback = function() Farm.Once("registers") end })
-tFarm:Button({ Name = "Rob the bank now", Callback = function() Farm.Once("bank") end })
-tFarm:Button({ Name = "Rob the jeweler now (experimental)", Callback = function() Farm.Once("jeweler") end })
-tFarm:Button({ Name = "Export road map (for training the driving offline)", Callback = function()
-	local ok, info = Drive.ExportMap()
-	win:Notify(ok and ("Road map saved: " .. tostring(info)) or ("Could not export: " .. tostring(info)))
-end })
-tFarm:Button({ Name = "Copy farm log (send me this if it fails)", Callback = function() win:Notify(Farm.CopyLog() and "Farm log copied" or "Could not copy; see workspace/farm_log.txt") end })
-tFarm:Button({ Name = "Stop AutoFarm", Callback = function() mFarm:Set(false, true); Farm.Stop() end })
-
 -- Auto Drive tab: the car drives itself like an NPC (roam the map, follow a player, park straight)
 local NPC = __import("autonpc")
-local tNpc = win:Tab("Auto Drive", { Icon = 1 })
+local tNpc = tVeh
 local mNpc
 mNpc = tNpc:Module({ Name = "Auto Drive", Default = false, NoSave = true, Callback = function(on)
-	if on and Farm.Enabled then
-		win:Notify("Turn Auto Rob off first")
-		mNpc:Set(false, true)
-		return
-	end
 	NPC.SetEnabled(on)
 	win:Notify(on and "Auto Drive on: sit in your car" or "Auto Drive off", 2.5)
 end })
@@ -382,7 +369,6 @@ mNpc:Toggle({ Name = "Honk at cars in front (H)", Default = true, Callback = fun
 mNpc:Section("Traffic rules")
 mNpc:Toggle({ Name = "Stop at red lights", Default = Drive.RedLights ~= false, Callback = function(v) Drive.RedLights = v end })
 mNpc:Toggle({ Name = "Slow down for speed cameras (to the limit)", Default = Drive.CameraSlow ~= false, Callback = function(v) Drive.CameraSlow = v end })
-mNpc:Button({ Name = "Copy log (send me this if it drives badly)", Callback = function() win:Notify(Farm.CopyLog() and "Log copied" or "Could not copy; see workspace/farm_log.txt") end })
 mNpc:Section("Parking")
 local parkKey = mNpc:Keybind({ Name = "Park key (look at the space, press)", Default = Enum.KeyCode.K })
 mNpc:Button({ Name = "Park straight at the crosshair now", Callback = function()
@@ -394,7 +380,6 @@ end })
 local hud = Hud.new({
 	Title = TITLE,
 	Version = (getgenv and getgenv() or _G).ScrdsxVersion,
-	GetLocations = function() return Tele.Locations end,
 	GetStatus = function()
 		local good, warnC, bad, sub = Color3.fromRGB(120, 220, 140), Color3.fromRGB(240, 190, 90), Color3.fromRGB(240, 100, 100), Color3.fromRGB(138, 138, 152)
 		local rows = {}
@@ -412,9 +397,6 @@ local hud = Hud.new({
 			rows[#rows + 1] = { "Police", best and ("%d st"):format(best) or "none near", best and (best < 150 and bad or (best < 350 and warnC or sub)) or sub }
 		end
 		if NPC.Enabled then rows[#rows + 1] = { "Auto Drive", NPC.Info, good } end
-		if Travel.Busy then rows[#rows + 1] = { "Travel", Travel.Info, warnC } end
-		if Escape.Busy then rows[#rows + 1] = { "Escape", Escape.Info, bad } end
-		if Farm.Busy then rows[#rows + 1] = { "Farm", Farm.Info, warnC } end
 		local car = workspace:FindFirstChild("Vehicles") and workspace.Vehicles:FindFirstChild(me.Name)
 		local seat = car and car:FindFirstChild("DriveSeat")
 		if seat and hrp then
@@ -423,22 +405,22 @@ local hud = Hud.new({
 		end
 		return rows
 	end,
-	GetFarm = function() return { info = Farm.Info, stats = Farm.Stats, drive = Drive.State, pois = Farm.POIs(), earned = Farm.Earned(), busy = Farm.Busy } end,
 	GetModules = function()
 		local list = {}
 		for name, m in pairs({ ["Suspension"] = mSusp, ["Anti Crash Damage"] = mAnti, ["Speed"] = mSpeed, ["Anti Flat Tires"] = mFlat,
-			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Auto Rob"] = mFarm, ["Player ESP"] = mEsp, ["Camlock"] = mAim, ["Auto Drive"] = mNpc }) do
+			["Vehicle Fly"] = mFly, ["Inf Stamina"] = mStam, ["Player ESP"] = mEsp, ["Camlock"] = mAim, ["Aim Assist"] = mAssist, ["Triggerbot"] = mTrig,
+			["Chams"] = mCham, ["Pointers"] = mPoint, ["Avatar markers"] = mMark, ["Crosshair"] = mCross, ["My skin"] = mPaint, ["Auto Drive"] = mNpc }) do
 			if m:Get() then list[#list + 1] = name end
 		end
 		return list
 	end,
 })
+pcall(function() hud:SetWidget("farm", false) end)
 local tHud = win:Tab("HUD", { Section = "Client", Icon = 7 })
 tHud:Toggle({ Name = "Watermark", Default = hud:IsOn("watermark"), Callback = function(v) hud:SetWidget("watermark", v) end })
 tHud:Toggle({ Name = "Player info (health, position, nearest spot)", Default = hud:IsOn("info"), Callback = function(v) hud:SetWidget("info", v) end })
 tHud:Toggle({ Name = "Vehicle (speed, fuel, health, tires)", Default = hud:IsOn("vehicle"), Callback = function(v) hud:SetWidget("vehicle", v) end })
-tHud:Toggle({ Name = "AutoFarm navigation (status + route map)", Default = hud:IsOn("farm"), Callback = function(v) hud:SetWidget("farm", v) end })
-tHud:Toggle({ Name = "Status (wanted, police, travel, auto drive)", Default = hud:IsOn("status"), Callback = function(v) hud:SetWidget("status", v) end })
+tHud:Toggle({ Name = "Status (wanted, police, auto drive)", Default = hud:IsOn("status"), Callback = function(v) hud:SetWidget("status", v) end })
 tHud:Toggle({ Name = "Active modules list", Default = hud:IsOn("modules"), Callback = function(v) hud:SetWidget("modules", v) end })
 tHud:Slider({ Name = "HUD size", Min = 0.6, Max = 1.6, Step = 0.05, Default = hud.scale, Callback = function(v) hud:SetScale(v) end })
 tHud:Button({ Name = "Move HUD (closes this window; press / when done)", Callback = function()
@@ -611,7 +593,7 @@ tSet:Button({ Name = "Copy diagnostics (send me this when something breaks)", Ca
 	end
 	add("functions: " .. table.concat(caps, " "))
 	add(("streaming=%s place=%s players=%d fps=%d"):format(tostring(workspace.StreamingEnabled), tostring(game.PlaceId), #game:GetService("Players"):GetPlayers(), math.floor(1 / math.max(game:GetService("RunService").RenderStepped:Wait(), 0.001))))
-	add("status: farm=" .. tostring(Farm.Info) .. " | drive=" .. tostring(NPC.Info) .. " | travel=" .. tostring(Travel.Info) .. " (last method " .. tostring(Travel.LastMethod) .. ", instant refused " .. tostring(Travel.instantFails) .. "x) | escape=" .. tostring(Escape.Info) .. " | aim=" .. tostring(Aim.Info) .. " | esp=" .. tostring(ESP.Info) .. " | stamina=" .. tostring(Player.Info))
+		add("status: drive=" .. tostring(NPC.Info) .. " | aim=" .. tostring(Aim.Info) .. " | esp=" .. tostring(ESP.Info) .. " | visuals=" .. tostring(Visuals.Info) .. " | crosshair=" .. tostring(Crosshair.Info) .. " | skins=" .. tostring(Skins.Info) .. " | stamina=" .. tostring(Player.Info))
 	add("start errors: " .. (#startErrors == 0 and "none" or table.concat(startErrors, " ; ")))
 	local txt = table.concat(L, "\n")
 	pcall(function() setclipboard(txt) end)
@@ -636,18 +618,15 @@ local function unload()
 	Anti.Destroy()
 	AntiFlat.Destroy()
 	Speed.Destroy()
-	Tele.Notify, Tele.Changed = nil, nil
 	hud.EditChanged = nil
 	Drive.Stop()
-	Farm.Destroy()
 	ESP.OnPolice = nil
 	ESP.Destroy()
 	NPC.Destroy()
-	Travel.Stop()
-	Travel.Notify, Travel.Changed, Travel.Log = nil, nil, nil
-	Farm.TravelTo = nil
-	Escape.Destroy()
 	Extras.Destroy()
+	Crosshair.Destroy()
+	Visuals.Destroy()
+	Skins.Destroy()
 	Aim.Changed = nil
 	Aim.Destroy()
 	hud:Destroy()
@@ -714,44 +693,12 @@ table.insert(win.conns, UIS.InputEnded:Connect(function(i)
 	if Aim.Hold and aimKey:Get() == i.KeyCode then Aim.KeyEvent(false) end
 end))
 
--- travel keys: back to the last place, panic = escape now
-table.insert(win.conns, UIS.InputBegan:Connect(function(i)
-	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() then return end
-	if not backKey:IsListening() and backKey:Get() == i.KeyCode then
-		local ok, why = Travel.Back()
-		if not ok then win:Notify("Travel: " .. tostring(why)) end
-	elseif not panicKey:IsListening() and panicKey:Get() == i.KeyCode then
-		local ok, why = Escape.Run("panic key")
-		if not ok then win:Notify("Escape: " .. tostring(why)) end
-	end
-end))
-
--- hospital key
-table.insert(win.conns, UIS.InputBegan:Connect(function(i)
-	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or hospKey:IsListening() then return end
-	if hospKey:Get() ~= i.KeyCode then return end
-	local ok, why = Farm.GoHospital(true)
-	if not ok then win:Notify("Hospital: " .. tostring(why)) end
-end))
-
 -- park key: the car lines up with the space under the crosshair and rolls in straight
 table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or parkKey:IsListening() then return end
 	if parkKey:Get() ~= i.KeyCode then return end
 	local ok, why = NPC.ParkAtCrosshair()
 	if not ok then win:Notify("Parking: " .. tostring(why), 3) end
-end))
-
--- quick loot key: first press collects everything in range, pressing it again while collecting stops it
-table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
-	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or lootKey:IsListening() or not mLoot:Get() then return end
-	if lootKey:Get() ~= i.KeyCode then return end
-	if Farm.Busy then
-		if not Farm.Enabled then Farm.StopLoot(); win:Notify("Quick loot stopped") end
-		return
-	end
-	win:Notify(Farm.LootWalk and ("Quick loot: walking to piles within " .. tostring(Farm.LootRange) .. " st (press again to stop)") or "Quick loot: picking up everything in reach", 2.5)
-	Farm.LootNearby(Farm.LootRange)
 end))
 
 win:Notify(TITLE .. " loaded  v" .. tostring(env.ScrdsxVersion or "?"))
