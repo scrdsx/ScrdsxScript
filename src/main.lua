@@ -12,6 +12,7 @@ local Drive = __import("autodrive")
 local ESP = __import("esp")
 local Aim = __import("aim")
 local Extras = __import("extras")
+local Loot = __import("loot")
 local Crosshair = __import("crosshair")
 local Visuals = __import("visuals")
 local Skins = __import("skins")
@@ -327,6 +328,15 @@ local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
 safe("player", Player.Start)
 
+local mLoot = tPlayer:Module({ Name = "Quick loot", Default = true, Callback = function() end })
+local lLoot = mLoot:Label({ Name = "Status", Value = Loot.Info })
+local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items in reach)", Default = Enum.KeyCode.Y })
+mLoot:Label({ Name = "How it works", Value = "everything in reach, all at once" })
+mLoot:Toggle({ Name = "Auto loot (pick up whatever is in reach)", Default = false, Callback = function(v) Loot.Auto = v end })
+Loot.Notify = function(m) win:Notify(m, 2.5) end
+Loot.Changed = function() lLoot:Set(Loot.Info) end
+safe("loot", Loot.Start)
+
 -- World tab: client-side helpers (lighting, camera, movement)
 local tWorld = tPlayer
 tWorld:Section("Lighting")
@@ -563,6 +573,7 @@ local function unload()
 	ESP.Destroy()
 	NPC.Destroy()
 	Extras.Destroy()
+	Loot.Destroy()
 	Crosshair.Destroy()
 	Visuals.Destroy()
 	Skins.Destroy()
@@ -630,6 +641,14 @@ table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 	if parkKey:Get() ~= i.KeyCode then return end
 	local ok, why = NPC.ParkAtCrosshair()
 	if not ok then win:Notify("Parking: " .. tostring(why), 3) end
+end))
+
+-- quick loot key: first press collects everything in reach, pressing it again while collecting stops it
+table.insert(win.conns, UIS.InputBegan:Connect(function(i)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or lootKey:IsListening() or not mLoot:Get() then return end
+	if lootKey:Get() ~= i.KeyCode then return end
+	if Loot.Busy then Loot.Stop(); win:Notify("Quick loot stopped"); return end
+	Loot.Run(false)
 end))
 
 win:Notify(TITLE .. " loaded  v" .. tostring(env.ScrdsxVersion or "?"))
