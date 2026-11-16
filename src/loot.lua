@@ -12,6 +12,13 @@ local REACH = 9.5
 
 local Loot = { Auto = false, Busy = false, Cancel = false, Info = "ready", Count = 0, Notify = nil, Changed = nil }
 
+local lines = {}
+local function log(m)
+	lines[#lines + 1] = os.date("%H:%M:%S") .. "  " .. m
+	if #lines > 200 then table.remove(lines, 1) end
+	pcall(function() if writefile then writefile("scrdsx_loot_log.txt", table.concat(lines, "
+")) end end)
+end
 local function changed() if Loot.Changed then task.defer(Loot.Changed) end end
 local function say(s) Loot.Info = s; changed() end
 
@@ -30,7 +37,10 @@ end
 
 local function fire(part, id, mode)
 	local r = interact()
-	if r then pcall(function() r:FireServer(part, id, mode) end) end
+	if not r then return false end
+	local ok, err = pcall(function() r:FireServer(part, id, mode) end)
+	if not ok then log("FireServer failed: " .. tostring(err)) end
+	return ok
 end
 
 local function root()
@@ -82,7 +92,20 @@ function Loot.Run(quiet)
 	local h = root()
 	if not h then return false end
 	local list, near = candidates(h)
+	if not interact() then
+		log("the interaction remote was not found (the game may have changed its id)")
+		if not quiet then notify("Quick loot: the game's pickup remote was not found (the game was updated?). Send me scrdsx_loot_log.txt") end
+		return false
+	end
 	if #list == 0 then
+		local tagged, enabled = 0, 0
+		for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
+			for _, d in ipairs(CS:GetTagged(tg)) do
+				tagged = tagged + 1
+				if d:GetAttribute("Enabled") == true then enabled = enabled + 1 end
+			end
+		end
+		log(("nothing in reach: tagged piles loaded=%d, enabled=%d, nearest=%s"):format(tagged, enabled, near and (math.floor(near) .. " st") or "none"))
 		if not quiet then
 			notify(near and ("Quick loot: nothing in reach (nearest pile is %d st away; the game only lets you pick up within 10 st)"):format(near)
 				or "Quick loot: nothing collectable is loaded right now")
@@ -90,6 +113,7 @@ function Loot.Run(quiet)
 		return false
 	end
 	Loot.Busy, Loot.Cancel = true, false
+	log(("starting: %d pile(s) in reach, in a car: %s"):format(#list, tostring(lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") and lp.Character:FindFirstChildOfClass("Humanoid").SeatPart ~= nil)))
 	task.spawn(function()
 		local got = 0
 		local ok, err = pcall(function()
@@ -99,6 +123,7 @@ function Loot.Run(quiet)
 				local l = candidates(hh)
 				if #l == 0 then break end
 				say(("picking up %d at once"):format(#l))
+				log(("round: holding %d pickups"):format(#l))
 				hold(l)
 				task.wait(0.25)
 				for _, it in ipairs(l) do
@@ -108,6 +133,7 @@ function Loot.Run(quiet)
 		end)
 		if not ok then warn("[loot] " .. tostring(err)) end
 		Loot.Busy, Loot.Cancel = false, false
+		log(("done: %d picked up"):format(got))
 		Loot.Count = Loot.Count + got
 		say(("last: picked up %d"):format(got))
 		if got > 0 or not quiet then notify(("Quick loot: picked up %d"):format(got)) end
