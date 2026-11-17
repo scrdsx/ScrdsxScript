@@ -35,6 +35,7 @@ local function findServer(bad)
 	local best, cursor = {}, nil
 	for _ = 1, 6 do
 		local data, lastErr
+		local errs = {}
 		for _, host in ipairs({ "games.roblox.com", "games.roproxy.com" }) do
 			local url = ("https://%s/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s"):format(host, game.PlaceId, cursor and ("&cursor=" .. cursor) or "")
 			local body
@@ -42,7 +43,7 @@ local function findServer(bad)
 				local okr, res = pcall(request, { Url = url, Method = "GET" })
 				if okr and type(res) == "table" then
 					body = res.Body
-					if res.StatusCode and res.StatusCode ~= 200 then lastErr = host .. " status " .. tostring(res.StatusCode) end
+					if res.StatusCode and res.StatusCode ~= 200 then lastErr = host .. " status " .. tostring(res.StatusCode); errs[#errs+1] = lastErr end
 				else lastErr = host .. " " .. tostring(res) end
 			end
 			if not body then
@@ -52,12 +53,13 @@ local function findServer(bad)
 			if type(body) == "string" then
 				local okj, d = pcall(function() return HttpService:JSONDecode(body) end)
 				if okj and type(d) == "table" and type(d.data) == "table" then data = d; break end
-				lastErr = host .. ": " .. body:sub(1, 80)
+				lastErr = host:sub(1,5) .. ": " .. body:sub(1, 60):gsub("%s+", " "); errs[#errs+1] = lastErr
 			end
 		end
 		if not data then
-			if type(writefile) == "function" then pcall(writefile, "scrdsx_hop_log.txt", tostring(lastErr)) end
-			return nil, "server list failed: " .. tostring(lastErr):sub(1, 90)
+			if type(writefile) == "function" then pcall(writefile, "scrdsx_hop_log.txt", table.concat(errs, "
+")) end
+			return nil, "server list failed: " .. table.concat(errs, " | "):sub(1, 160)
 		end
 		for _, s in ipairs(data.data) do
 			local playing, max = tonumber(s.playing) or 0, tonumber(s.maxPlayers) or 0
