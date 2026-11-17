@@ -34,11 +34,31 @@ end
 local function findServer(bad)
 	local best, cursor = {}, nil
 	for _ = 1, 6 do
-		local url = ("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100%s"):format(game.PlaceId, cursor and ("&cursor=" .. cursor) or "")
-		local ok, body = pcall(function() return game:HttpGet(url) end)
-		if not ok then return nil, "server list request failed (rate limit? wait a few seconds)" end
-		local okj, data = pcall(function() return HttpService:JSONDecode(body) end)
-		if not okj or type(data) ~= "table" or type(data.data) ~= "table" then return nil, "server list unreadable" end
+		local data, lastErr
+		for _, host in ipairs({ "games.roblox.com", "games.roproxy.com" }) do
+			local url = ("https://%s/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s"):format(host, game.PlaceId, cursor and ("&cursor=" .. cursor) or "")
+			local body
+			if type(request) == "function" then
+				local okr, res = pcall(request, { Url = url, Method = "GET" })
+				if okr and type(res) == "table" then
+					body = res.Body
+					if res.StatusCode and res.StatusCode ~= 200 then lastErr = host .. " status " .. tostring(res.StatusCode) end
+				else lastErr = host .. " " .. tostring(res) end
+			end
+			if not body then
+				local ok, b = pcall(function() return game:HttpGet(url) end)
+				if ok then body = b else lastErr = host .. " " .. tostring(b) end
+			end
+			if type(body) == "string" then
+				local okj, d = pcall(function() return HttpService:JSONDecode(body) end)
+				if okj and type(d) == "table" and type(d.data) == "table" then data = d; break end
+				lastErr = host .. ": " .. body:sub(1, 80)
+			end
+		end
+		if not data then
+			if type(writefile) == "function" then pcall(writefile, "scrdsx_hop_log.txt", tostring(lastErr)) end
+			return nil, "server list failed: " .. tostring(lastErr):sub(1, 90)
+		end
 		for _, s in ipairs(data.data) do
 			local playing, max = tonumber(s.playing) or 0, tonumber(s.maxPlayers) or 0
 			if s.id ~= game.JobId and not bad[s.id] and playing >= Hop.MinPlayers and playing < max - 1 then
