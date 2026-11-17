@@ -357,7 +357,7 @@ mFly:Toggle({ Name = "Stabilize (no spin)", Default = Fly.Stabilize, Callback = 
 safe("fly", Fly.Start)
 
 -- Player tab
-local tPlayer = win:Tab("Player", { Icon = 2 })
+local tPlayer = win:Tab("Player", { Section = "Game", Icon = 2 })
 local mStam = tPlayer:Module({ Name = "Inf Stamina", Default = false, Callback = function(on) Player.SetInfStamina(on) end })
 local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
@@ -467,7 +467,7 @@ mNpc:Button({ Name = "Park straight at the crosshair now", Callback = function()
 end })
 
 -- Configs tab: everything you change (modules on/off, sliders, keybinds) is saved and loaded again next time
-local tCfg = win:Tab("Configs", { Icon = 8 })
+local tCfg = win:Tab("Configs", { Section = "Client", Icon = 8 })
 local current = Config.GetAutoload() or "default"
 local lCurrent = tCfg:Label({ Name = "Current config", Value = current })
 local autosave, newName, lastSnap = true, "", nil
@@ -541,7 +541,7 @@ else
 end
 
 -- Settings tab
-local tSet = win:Tab("Settings", { Icon = 9 })
+local tSet = win:Tab("Settings", { Section = "Client", Icon = 9 })
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
 -- theme: accent + background as hex, applied to the window, remembered between sessions
 local THEME_FILE = "ScrdsxScript/theme.json"

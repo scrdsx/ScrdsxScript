@@ -95,7 +95,7 @@ function UI.new(opts)
 	self.scale = new("UIScale", { Scale = .9, Parent = root })
 
 	-- layout: a floating glass window. Top row = brand, search, you, close. Second row = tab pills. Pages below, centred.
-	local sbH, tabH = 64, 46
+	local sbH = 64
 	local head = new("Frame", { Size = UDim2.new(1, 0, 0, sbH), BackgroundTransparency = 1, Parent = root })
 	local brand = new("Frame", { Size = UDim2.fromOffset(260, sbH), BackgroundTransparency = 1, Parent = head })
 	Logo.Make(brand, 34, UDim2.fromOffset(24, 15))
@@ -151,15 +151,16 @@ function UI.new(opts)
 	end)
 	box:GetPropertyChangedSignal("Text"):Connect(function() self:_search(box.Text) end)
 
-	-- tab pills: one horizontal strip (scrolls sideways when there are many)
+	-- sidebar: tabs grouped under small section headings, scrolls when there are many
 	local nav = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(0, sbH), Size = UDim2.new(1, 0, 0, tabH), BackgroundTransparency = 1, BorderSizePixel = 0,
-		ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.X, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.X, Parent = root,
+		Position = UDim2.fromOffset(0, sbH + 6), Size = UDim2.new(0, SIDE_W, 1, -(sbH + 6)), BackgroundTransparency = 1, BorderSizePixel = 0,
+		ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y, Parent = root,
 	})
-	new("UIListLayout", { Padding = UDim.new(0, 6), FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Parent = nav })
-	new("UIPadding", { PaddingLeft = UDim.new(0, 22), PaddingRight = UDim.new(0, 22), Parent = nav })
+	new("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = nav })
+	new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 14), Parent = nav })
 	self.nav = nav
-	new("Frame", { Position = UDim2.fromOffset(22, sbH + tabH + 2), Size = UDim2.new(1, -44, 0, 1), BackgroundColor3 = T.stroke, BackgroundTransparency = .55, BorderSizePixel = 0, Parent = root })
+	new("Frame", { Position = UDim2.fromOffset(22, sbH), Size = UDim2.new(1, -44, 0, 1), BackgroundColor3 = T.stroke, BackgroundTransparency = .55, BorderSizePixel = 0, Parent = root })
+	new("Frame", { Position = UDim2.fromOffset(SIDE_W, sbH + 14), Size = UDim2.new(0, 1, 1, -(sbH + 28)), BackgroundColor3 = T.stroke, BackgroundTransparency = .6, BorderSizePixel = 0, Parent = root })
 
 	-- drag by the header and the brand
 	do
@@ -189,12 +190,12 @@ function UI.new(opts)
 
 	-- content: pages are centred in a column so rows never stretch too wide
 	local content = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(0, sbH + tabH + 8), Size = UDim2.new(1, 0, 1, -(sbH + tabH + 8)), BackgroundTransparency = 1, BorderSizePixel = 0,
+		Position = UDim2.fromOffset(SIDE_W + 1, sbH + 2), Size = UDim2.new(1, -(SIDE_W + 1), 1, -(sbH + 2)), BackgroundTransparency = 1, BorderSizePixel = 0,
 		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(90, 84, 130), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(), Parent = root,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder, Parent = content })
-	new("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 22), PaddingLeft = UDim.new(0, 70), PaddingRight = UDim.new(0, 76), Parent = content })
+	new("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 22), PaddingLeft = UDim.new(0, 26), PaddingRight = UDim.new(0, 30), Parent = content })
 	self.content = content
 
 	-- toast holder
@@ -213,22 +214,31 @@ function UI.new(opts)
 	return self
 end
 
--- opts: { Icon = n } (Section is accepted and ignored: the tabs are one strip of pills)
+-- opts: { Icon = n, Section = "Combat" }: tabs with the same Section sit together under one small heading in the sidebar
 function UI:Tab(name, opts)
 	opts = opts or {}
 	local idx = #self.tabs + 1
+	self.navOrder = (self.navOrder or 0) + 1
+	if opts.Section and opts.Section ~= self.lastNavSection then
+		self.lastNavSection = opts.Section
+		local h = label(opts.Section:upper(), 10, T.sub, T.bold)
+		h.Size = UDim2.new(1, 0, 0, 22); h.LayoutOrder = self.navOrder; h.TextTransparency = .25
+		h.Parent = self.nav
+		new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 8), Parent = h })
+		self.navOrder = self.navOrder + 1
+	end
 	local btn = new("TextButton", {
-		Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.accentDim, BackgroundTransparency = 1, AutoButtonColor = false,
-		Text = "", LayoutOrder = idx, Parent = self.nav,
-	}, { corner(17), new("UIPadding", { PaddingRight = UDim.new(0, 16) }) })
-	local ico = opts.Icon and Icons.Make(btn, opts.Icon, 18, UDim2.new(0, 13, .5, -9))
+		Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = T.accentDim, BackgroundTransparency = 1, AutoButtonColor = false,
+		Text = "", LayoutOrder = self.navOrder, Parent = self.nav,
+	}, { corner(10) })
+	local ico = opts.Icon and Icons.Make(btn, opts.Icon, 18, UDim2.new(0, 12, .5, -9))
 	if ico then ico.ImageColor3 = T.sub end
 	local dot = ico or new("Frame", { Position = UDim2.new(0, 14, .5, -3), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = T.sub, BorderSizePixel = 0, Parent = btn }, { corner(3) })
-	local baseX = ico and 38 or 28
+	local baseX = ico and 40 or 28
 	local txt = label(name, 13, T.sub, T.font)
-	txt.Position = UDim2.fromOffset(baseX, 0); txt.Size = UDim2.fromOffset(0, 34); txt.AutomaticSize = Enum.AutomaticSize.X; txt.TextTruncate = Enum.TextTruncate.None; txt.Parent = btn
-	-- glow line under the active pill
-	local bar = new("Frame", { AnchorPoint = Vector2.new(.5, 1), Position = UDim2.new(.5, 0, 1, 3), Size = UDim2.fromOffset(0, 3), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = btn }, { corner(2) })
+	txt.Position = UDim2.fromOffset(baseX, 0); txt.Size = UDim2.new(1, -baseX - 6, 1, 0); txt.TextTruncate = Enum.TextTruncate.AtEnd; txt.Parent = btn
+	-- accent bar on the left edge of the active tab
+	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, -6, .5, 0), Size = UDim2.fromOffset(3, 0), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = btn }, { corner(2) })
 
 	local page = new("CanvasGroup", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
@@ -268,7 +278,7 @@ function UI:Select(tab)
 		tween(t.btn, .22, { BackgroundTransparency = on and .25 or 1, BackgroundColor3 = T.accentDim })
 		tween(t.txt, .22, { TextColor3 = on and T.text or T.sub })
 		tween(t.dot, .22, t.dotImg and { ImageColor3 = on and T.accent or T.sub } or { BackgroundColor3 = on and T.accent or T.sub })
-		tween(t.bar, .3, { Size = UDim2.fromOffset(on and 22 or 0, 3) }, Enum.EasingStyle.Back)
+		tween(t.bar, .3, { Size = UDim2.fromOffset(3, on and 18 or 0) }, Enum.EasingStyle.Back)
 		if not on then t.page.Visible = false; t.page.GroupTransparency = 1 end
 	end
 	self.pageTitle.Text = tab.name
