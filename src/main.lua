@@ -17,6 +17,7 @@ local Extras = __import("extras")
 local Loot = __import("loot")
 local FPS = __import("fps")
 local Repair = __import("repair")
+local Hop = __import("hop")
 local Crosshair = __import("crosshair")
 local Visuals = __import("visuals")
 local Skins = __import("skins")
@@ -358,6 +359,14 @@ local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
 safe("player", Player.Start)
 
+local mHop = tPlayer:Module({ Name = "Server hop", Default = true, Callback = function() end })
+mHop:Button({ Name = "Hop to a low server with police", NoSave = true, Callback = function() Hop.Go(false) end })
+local hopKey = mHop:Keybind({ Name = "Hop key", Default = Enum.KeyCode.H })
+mHop:Slider({ Name = "Minimum players", Min = 3, Max = 30, Step = 1, Default = Hop.MinPlayers, Callback = function(v) Hop.MinPlayers = v end })
+mHop:Slider({ Name = "Minimum police", Min = 1, Max = 8, Step = 1, Default = Hop.MinPolice, Callback = function(v) Hop.MinPolice = v end })
+mHop:Toggle({ Name = "Keep hopping until enough police", Default = true, Callback = function(v) Hop.Auto = v end })
+Hop.Notify = function(msg, secs, kind) win:Notify(msg, secs or 3, kind) end
+safe("hop", Hop.Start)
 local mLoot = tPlayer:Module({ Name = "Quick loot", Default = true, Callback = function() end })
 local lLoot = mLoot:Label({ Name = "Status", Value = Loot.Info })
 local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items in reach)", Default = Enum.KeyCode.Y })
@@ -648,6 +657,7 @@ local function unload()
 	Extras.Destroy()
 	Loot.Destroy()
 	Repair.Destroy()
+	Hop.Destroy()
 	FPS.Destroy()
 	Crosshair.Destroy()
 	Visuals.Destroy()
@@ -721,6 +731,11 @@ end))
 table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or repKey:IsListening() or not mRep:Get() then return end
 	if repKey:Get() == i.KeyCode then Repair.Run(false) end
+end))
+
+table.insert(win.conns, UIS.InputBegan:Connect(function(i)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or hopKey:IsListening() or not mHop:Get() then return end
+	if hopKey:Get() == i.KeyCode then Hop.Go(false) end
 end))
 
 -- quick loot key: first press collects everything in reach, pressing it again while collecting stops it

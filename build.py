@@ -2,7 +2,7 @@
 from pathlib import Path
 
 root = Path(__file__).parent
-order = ["logo", "icons", "sfx", "ui", "loading", "vehicle", "fly", "player", "esp", "shops", "aim", "crosshair", "visuals", "skins", "anticrash", "antiflat", "speed", "config", "roaddata", "roadplan", "autodrive", "autonpc", "extras", "loot", "fps", "repair"]  # dependencies first; main runs last
+order = ["logo", "icons", "sfx", "ui", "loading", "vehicle", "fly", "player", "esp", "shops", "aim", "crosshair", "visuals", "skins", "anticrash", "antiflat", "speed", "config", "roaddata", "roadplan", "autodrive", "autonpc", "extras", "loot", "fps", "repair", "hop"]  # dependencies first; main runs last
 
 out = ["local __mods, __cache = {}, {}",
        "local function __import(n)",
