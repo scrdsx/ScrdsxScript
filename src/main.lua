@@ -16,6 +16,7 @@ local Aim = __import("aim")
 local Extras = __import("extras")
 local Loot = __import("loot")
 local FPS = __import("fps")
+local Repair = __import("repair")
 local Crosshair = __import("crosshair")
 local Visuals = __import("visuals")
 local Skins = __import("skins")
@@ -277,6 +278,19 @@ safe("skins", Skins.Start)
 -- Vehicle Mods tab
 local tVeh = win:Tab("Vehicle Mods", { Section = "Game", Icon = 1 })
 local lCar = tVeh:Label({ Name = "Car", Value = Vehicle.Info })
+local mRep = tVeh:Module({ Name = "Quick repair", Default = true, Callback = function() end })
+local lRep = mRep:Label({ Name = "Car health", Value = "-" })
+local repKey = mRep:Keybind({ Name = "Repair key", Default = Enum.KeyCode.J })
+mRep:Toggle({ Name = "Auto repair when damaged", Default = false, Callback = function(v) Repair.Auto = v end })
+mRep:Slider({ Name = "Auto repair below", Min = 10, Max = 90, Step = 5, Default = Repair.Threshold, Suffix = "%", Callback = function(v) Repair.Threshold = v end })
+Repair.Notify = function(msg, secs, kind) win:Notify(msg, secs or 3, kind) end
+safe("repair", Repair.Start)
+task.spawn(function()
+	while true do
+		task.wait(0.7)
+		pcall(function() local p = Repair.Percent(); lRep:Set(p and (math.floor(p + .5) .. "%") or "-") end)
+	end
+end)
 local mSusp = tVeh:Module({ Name = "Suspension", Default = false, Callback = function(on) Vehicle.SetEnabled(on) end })
 mSusp:Slider({ Name = "Height", Min = 0, Max = Vehicle.MaxHeight, Step = 0.5, Default = 0, Suffix = " st", Callback = function(v) Vehicle.SetHeight(v) end })
 mSusp:Toggle({ Name = "Set game's suspensionHeight", Default = true, Callback = function(v) Vehicle.UseAttribute = v end })
@@ -633,6 +647,7 @@ local function unload()
 	NPC.Destroy()
 	Extras.Destroy()
 	Loot.Destroy()
+	Repair.Destroy()
 	FPS.Destroy()
 	Crosshair.Destroy()
 	Visuals.Destroy()
@@ -701,6 +716,11 @@ table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 	if parkKey:Get() ~= i.KeyCode then return end
 	local ok, why = NPC.ParkAtCrosshair()
 	if not ok then win:Notify("Parking: " .. tostring(why), 3) end
+end))
+
+table.insert(win.conns, UIS.InputBegan:Connect(function(i)
+	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or repKey:IsListening() or not mRep:Get() then return end
+	if repKey:Get() == i.KeyCode then Repair.Run(false) end
 end))
 
 -- quick loot key: first press collects everything in reach, pressing it again while collecting stops it
