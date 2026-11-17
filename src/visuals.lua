@@ -222,9 +222,22 @@ local function frameStep()
 						local s = P.Scale * (d > 700 and 0.85 or 1)
 						e.root.Visible = true
 						e.root.Position = UDim2.fromOffset(e.cur.X, e.cur.Y)
-						e.badge.Size = UDim2.fromOffset(40 * s, 40 * s)
-						e.badge.Visible = P.Avatar
-						e.stroke.Color = col
+						-- size and colour only change rarely: set them only when they did (property writes are the costly part)
+						if e.s ~= s then
+							e.s = s
+							e.badge.Size = UDim2.fromOffset(40 * s, 40 * s)
+							e.arrow.Size = UDim2.fromOffset(14 * s, 14 * s)
+							for i, r in ipairs(e.rows) do
+								r.Position = UDim2.new(.5, 0, 0, (i - 1) * 2 * s)
+								r.Size = UDim2.fromOffset(i * 2 * s, 2 * s)
+							end
+						end
+						if e.badge.Visible ~= P.Avatar then e.badge.Visible = P.Avatar end
+						if e.col ~= col then
+							e.col = col
+							e.stroke.Color = col
+							for _, r in ipairs(e.rows) do r.BackgroundColor3 = col end
+						end
 						local want = P.Avatar and avatarFor(plr.UserId, P.Kind) or ""
 						if e.img.Image ~= want then e.img.Image = want end
 						-- arrow sits on the outer edge of the picture and points along the direction
@@ -232,19 +245,15 @@ local function frameStep()
 						if not P.Avatar then ar = 0 end
 						e.arrow.Position = UDim2.fromOffset(u.X * ar, u.Y * ar)
 						e.arrow.Rotation = math.deg(math.atan2(u.X, -u.Y))
-						for i, r in ipairs(e.rows) do
-							r.BackgroundColor3 = col
-							r.Position = UDim2.new(.5, 0, 0, (i - 1) * 2 * s)
-							r.Size = UDim2.fromOffset(i * 2 * s, 2 * s)
-						end
-						e.arrow.Size = UDim2.fromOffset(14 * s, 14 * s)
 						local txt = ""
 						if P.Name then txt = plr.DisplayName end
 						if P.Distance then txt = txt .. (txt ~= "" and "  " or "") .. math.floor(d) .. " st" end
 						e.chip.Visible = txt ~= "" and P.Avatar
-						e.lbl.Text = txt
-						e.chip.Size = UDim2.fromOffset(math.max(34, #txt * 6.2 + 12), 16)
-						e.chip.Position = UDim2.new(.5, 0, 1, 4)
+						if e.txt ~= txt then
+							e.txt = txt
+							e.lbl.Text = txt
+							e.chip.Size = UDim2.fromOffset(math.max(34, #txt * 6.2 + 12), 16)
+						end
 					end
 				end
 				-- markers

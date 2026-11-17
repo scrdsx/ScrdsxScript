@@ -33,6 +33,7 @@ end
 
 local conns = {}
 local noclipParts = {}
+local ncChar, ncT, ncList = nil, 0, {}
 local lastLight = 0
 local origFov, origZoom, origSpeed
 
@@ -95,8 +96,17 @@ function Extras.Start()
 		if Extras.Noclip then
 			local c = char()
 			if c then
-				for _, d in ipairs(c:GetDescendants()) do
-					if d:IsA("BasePart") and d.CanCollide then noclipParts[d] = true; d.CanCollide = false end
+				-- the character's parts are listed once per character (and re-listed every 2 s for new accessories), not every physics step
+				local now = os.clock()
+				if ncChar ~= c or now - ncT > 2 then
+					ncChar, ncT = c, now
+					ncList = {}
+					for _, d in ipairs(c:GetDescendants()) do
+						if d:IsA("BasePart") then ncList[#ncList + 1] = d end
+					end
+				end
+				for _, d in ipairs(ncList) do
+					if d.CanCollide then noclipParts[d] = true; d.CanCollide = false end
 				end
 			end
 		elseif next(noclipParts) then

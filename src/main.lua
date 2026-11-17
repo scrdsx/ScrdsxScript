@@ -132,6 +132,8 @@ mEsp:Toggle({ Name = "Name + role (police blue, fire red)", Default = ESP.Names,
 mEsp:Toggle({ Name = "Health bar", Default = ESP.Health, Callback = function(v) ESP.Health = v end })
 mEsp:Toggle({ Name = "Distance", Default = ESP.Distance, Callback = function(v) ESP.Distance = v end })
 mEsp:Toggle({ Name = "Wanted tag (red)", Default = ESP.Wanted, Callback = function(v) ESP.Wanted = v end })
+mEsp:Toggle({ Name = "Wanted stars + bounty (instead of the word WANTED)", Default = ESP.Stars, Callback = function(v) ESP.Stars = v end })
+mEsp:Toggle({ Name = "Car health next to the distance", Default = ESP.CarInfo, Callback = function(v) ESP.CarInfo = v end })
 mEsp:Toggle({ Name = "Hover card (point at a player)", Default = ESP.Hover, Callback = function(v) ESP.Hover = v end })
 mEsp:Section("Range")
 mEsp:Slider({ Name = "Max distance", Min = 100, Max = 3000, Step = 50, Default = ESP.MaxDist, Suffix = " st", Callback = function(v) ESP.MaxDist = v end })
@@ -143,6 +145,10 @@ mEsp:Toggle({ Name = "Show citizens", Default = true, Callback = function(v) ESP
 mEsp:Toggle({ Name = "Show other jobs / prisoners", Default = true, Callback = function(v) ESP.Teams.Other = v end })
 local mRadar = tEsp:Module({ Name = "Police radar (escape helper)", Default = true, Callback = function(on) ESP.Radar = on end })
 mRadar:Slider({ Name = "Warn within", Min = 100, Max = 800, Step = 25, Default = ESP.RadarDist, Suffix = " st", Callback = function(v) ESP.RadarDist = v end })
+local mSpot = tEsp:Module({ Name = "Car weak spots (where to hit)", Default = false, Callback = function(on) ESP.Spots = on end })
+mSpot:Label({ Name = "Marks", Value = "tyres, engine, fuel tank" })
+mSpot:Slider({ Name = "Show within", Min = 60, Max = 500, Step = 10, Default = ESP.SpotDist, Suffix = " st", Callback = function(v) ESP.SpotDist = v end })
+mSpot:Toggle({ Name = "Only cars of wanted players", Default = false, Callback = function(v) ESP.SpotsWantedOnly = v end })
 ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) end
 safe("esp", ESP.Start)
 
