@@ -35,6 +35,7 @@ local targets, pool = {}, {}
 local lastScan, lastState = -99, -99
 local timers = setmetatable({}, { __mode = "k" }) -- model -> os.time when I saw TimedOut turn on
 local hooked = setmetatable({}, { __mode = "k" })
+local known = setmetatable({}, { __mode = "k" }) -- instance -> persistent target (keeps its state between scans, so the tags never blink)
 
 local function robberyRoot(inst)
 	local rob = workspace:FindFirstChild("Robberies")
@@ -65,7 +66,8 @@ local function scan()
 	local function add(inst, kind, name)
 		if seen[inst] then return end
 		seen[inst] = true
-		local t = { inst = inst, kind = kind, name = name, root = robberyRoot(inst) }
+		local t = known[inst]
+		if not t then t = { inst = inst, kind = kind, name = name, root = robberyRoot(inst) }; known[inst] = t end
 		if kind == "register" and not hooked[inst] then
 			hooked[inst] = true
 			-- cooldown timer: remember when the register went into cooldown
@@ -82,6 +84,11 @@ local function scan()
 		if not m:FindFirstAncestor("JewelleryStore") then add(m, "safe", cleanName(m.Parent and m.Parent.Name or m.Name)) end
 	end
 	targets = list
+	local inList = {}
+	for _, t in ipairs(list) do inList[t] = true end
+	for _, e in ipairs(pool) do
+		if e.owner and not inList[e.owner] then e.f.Visible = false; e.owner.tag = nil; e.owner = nil end
+	end
 end
 
 local function alarmOn(root)
@@ -144,10 +151,10 @@ local function riskOf(t, pos, police, alarm)
 end
 
 local function newTag()
-	local f = mk("Frame", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = BG,
-		BackgroundTransparency = 0.18, BorderSizePixel = 0, Visible = false }, gui)
-	mk("UICorner", { CornerRadius = UDim.new(0, 11) }, f)
-	local st = mk("UIStroke", { Thickness = 1.3, Transparency = 0.45, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
+	local f = mk("CanvasGroup", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = BG,
+		BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false, GroupTransparency = 1 }, gui)
+	mk("UICorner", { CornerRadius = UDim.new(0, 12) }, f)
+	local st = mk("UIStroke", { Thickness = 1.2, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
 	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, f)
 	mk("UIListLayout", { Padding = UDim.new(0, 1), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }, f)
 	local function lb(order, size, font)
@@ -157,20 +164,24 @@ local function newTag()
 	return { f = f, st = st, title = lb(1, 13, Enum.Font.GothamBold), status = lb(2, 12, Enum.Font.GothamBold), risk = lb(3, 11, Enum.Font.GothamMedium) }
 end
 
-local function hideFrom(i) for k = i, #pool do pool[k].f.Visible = false end end
+local function freeTag()
+	for _, e in ipairs(pool) do if not e.owner then return e end end
+	local e = newTag()
+	pool[#pool + 1] = e
+	return e
+end
 
-local function step()
+local function step(dt)
 	if not gui then return end
 	local cam = workspace.CurrentCamera
 	if not cam then return end
-	if not Shops.Enabled then hideFrom(1); return end
 	local now = os.clock()
-	if now - lastScan > 4 then lastScan = now; pcall(scan) end
+	if Shops.Enabled and now - lastScan > 4 then lastScan = now; pcall(scan) end
 	local me = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 	local origin = me and me.Position or cam.CFrame.Position
 
 	-- state is recomputed twice a second, drawing happens every frame
-	if now - lastState > 0.5 then
+	if Shops.Enabled and now - lastState > 0.5 then
 		lastState = now
 		local police = Shops.PoliceFn and Shops.PoliceFn(false) or {}
 		for _, t in ipairs(targets) do
@@ -183,18 +194,24 @@ local function step()
 		end
 	end
 
-	local n = 0
+	local k = 1 - math.exp(-dt * 14) -- smoothing for position and fade, independent of the frame rate
 	for _, t in ipairs(targets) do
-		local pos = t.pos
-		if pos and t.status and (pos - origin).Magnitude <= Shops.MaxDist and (not Shops.OnlyReady or t.ready) then
-			local sp, on = cam:WorldToViewportPoint(pos + Vector3.new(0, 6, 0))
-			if on then
-				n = n + 1
-				local e = pool[n]
-				if not e then e = newTag(); pool[n] = e end
-				local d = math.floor((pos - origin).Magnitude)
-				e.f.Visible = true
-				e.f.Position = UDim2.fromOffset(sp.X, sp.Y)
+		local show, sx, sy = false, 0, 0
+		if Shops.Enabled and t.pos and t.status and (t.pos - origin).Magnitude <= Shops.MaxDist and (not Shops.OnlyReady or t.ready) then
+			-- the card floats above the place (about 9 studs up), not on it
+			local sp, on = cam:WorldToViewportPoint(t.pos + Vector3.new(0, 9, 0))
+			if on and sp.Z > 0 then show, sx, sy = true, sp.X, sp.Y end
+		end
+		local e = t.tag
+		if show and not e then
+			e = freeTag(); e.owner = t; t.tag = e; t.a = 1; t.sx, t.sy = sx, sy
+			e.f.Visible = true; e.tt, e.ss, e.rs = nil, nil, nil
+		end
+		if e then
+			if show then
+				t.sx = t.sx + (sx - t.sx) * k; t.sy = t.sy + (sy - t.sy) * k
+				t.a = t.a + (0 - t.a) * k
+				local d = math.floor((t.pos - origin).Magnitude)
 				if e.tt ~= t.name .. d then e.tt = t.name .. d; e.title.Text = ("%s  <font color=\"#8c8ca0\">%d st</font>"):format(t.name, d) end
 				local s = ("<font color=\"%s\">●</font> <font color=\"%s\">%s</font>"):format(hex(t.col), hex(t.col), t.status)
 				if e.ss ~= s then e.ss = s; e.status.Text = s; e.st.Color = t.col end
@@ -206,24 +223,33 @@ local function step()
 				else
 					e.risk.Visible = false
 				end
+			else
+				t.a = t.a + (1 - t.a) * k
+				if t.a > 0.97 then
+					e.f.Visible = false; e.owner = nil; t.tag = nil
+					e = nil
+				end
+			end
+			if e then
+				e.f.Position = UDim2.fromOffset(t.sx, t.sy)
+				e.f.GroupTransparency = t.a
 			end
 		end
 	end
-	hideFrom(n + 1)
-	Shops.Info = n .. " shown"
+	Shops.Info = "tracking " .. #targets
 end
 
 function Shops.SetEnabled(v)
 	Shops.Enabled = v
 	Shops.Info = v and "on" or "off"
-	if not v then hideFrom(1) else lastScan = -99 end
+	if v then lastScan = -99 end
 end
 
 function Shops.Start()
 	if gui then return end
 	gui = mk("ScreenGui", { Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 3, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, guiParent())
-	conn = RunService.RenderStepped:Connect(function()
-		local ok, err = pcall(step)
+	conn = RunService.RenderStepped:Connect(function(dt)
+		local ok, err = pcall(step, dt)
 		if not ok and Shops.Info ~= "error" then Shops.Info = "error"; warn("[shops] " .. tostring(err)) end
 	end)
 end

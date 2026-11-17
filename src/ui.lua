@@ -77,9 +77,9 @@ function UI.new(opts)
 	self.gui = gui
 
 	local root = new("CanvasGroup", {
-		Name = "Root", Size = UDim2.fromOffset(880, 560), AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BackgroundTransparency = 0.1, BorderSizePixel = 0, GroupTransparency = 1,
-	}, { corner(20), stroke(T.stroke) })
+		Name = "Root", Size = UDim2.fromOffset(1000, 620), AnchorPoint = Vector2.new(.5, .5),
+		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BackgroundTransparency = 0.32, BorderSizePixel = 0, GroupTransparency = 1,
+	}, { corner(24), stroke(T.stroke) })
 	new("UIGradient", { Rotation = 35, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(205, 200, 235)), Parent = root })
 	root.Parent = gui
 	self.root = root
@@ -91,89 +91,72 @@ function UI.new(opts)
 	end)
 	self.scale = new("UIScale", { Scale = .9, Parent = root })
 
-	-- sidebar: brand, grouped tabs, you ------------------------------------------------------------------------
-	local side = new("Frame", { Size = UDim2.new(0, SIDE_W, 1, 0), BackgroundColor3 = T.panel, BackgroundTransparency = 0.45, BorderSizePixel = 0, Parent = root })
-	new("Frame", { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = side })
-	self.side = side
-
-	local brand = new("Frame", { Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, HEAD_H), BackgroundTransparency = 1, Parent = side })
-	Logo.Make(brand, 34, UDim2.fromOffset(16, 13))
-	local title = label(opts.Title or "Window", 16, T.text, T.bold)
-	title.Position = UDim2.fromOffset(58, 12); title.Size = UDim2.new(1, -64, 0, 20); title.Parent = brand
+	-- layout: a floating glass window. Top row = brand, search, you, close. Second row = tab pills. Pages below, centred.
+	local sbH, tabH = 64, 46
+	local head = new("Frame", { Size = UDim2.new(1, 0, 0, sbH), BackgroundTransparency = 1, Parent = root })
+	local brand = new("Frame", { Size = UDim2.fromOffset(260, sbH), BackgroundTransparency = 1, Parent = head })
+	Logo.Make(brand, 34, UDim2.fromOffset(24, 15))
+	local title = label(opts.Title or "Window", 17, T.text, T.bold)
+	title.Position = UDim2.fromOffset(68, 14); title.Size = UDim2.new(1, -72, 0, 20); title.Parent = brand
 	local sub = label(opts.Subtitle or "", 11, T.sub)
-	sub.Position = UDim2.fromOffset(58, 32); sub.Size = UDim2.new(1, -64, 0, 14); sub.Parent = brand
-	new("Frame", { Position = UDim2.new(0, 14, 1, -1), Size = UDim2.new(1, -28, 0, 1), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = brand })
+	sub.Position = UDim2.fromOffset(68, 34); sub.Size = UDim2.new(1, -72, 0, 14); sub.Parent = brand
+	self.pageTitle = label("", 1, T.text); self.pageTitle.Visible = false; self.pageTitle.Parent = head -- kept for Select(); the tab pills show the page now
 
-	local nav = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(0, HEAD_H + 6), Size = UDim2.new(1, -1, 1, -HEAD_H - 6 - 64), BackgroundTransparency = 1, BorderSizePixel = 0,
-		ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), Parent = side,
-	})
-	new("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, Parent = nav })
-	new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 2), Parent = nav })
-	self.nav = nav
+	local close = new("TextButton", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -20, .5, 0), Size = UDim2.fromOffset(32, 32), BackgroundColor3 = T.elem, BackgroundTransparency = .35, BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = head }, { corner(16) })
+	local cx = label("×", 20, T.sub, T.bold, Enum.TextXAlignment.Center); cx.Size = UDim2.fromScale(1, 1); cx.Parent = close
+	close.MouseEnter:Connect(function() tween(close, .15, { BackgroundColor3 = Color3.fromRGB(190, 60, 70), BackgroundTransparency = 0 }); tween(cx, .15, { TextColor3 = Color3.new(1, 1, 1) }) end)
+	close.MouseLeave:Connect(function() tween(close, .15, { BackgroundColor3 = T.elem, BackgroundTransparency = .35 }); tween(cx, .15, { TextColor3 = T.sub }) end)
+	close.MouseButton1Click:Connect(function() Sfx.Play("click"); self:SetVisible(false) end)
 
-	-- you (bottom)
+	-- you: avatar + name chip
 	local lp = Players.LocalPlayer
-	local pc = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -10), Size = UDim2.new(1, -20, 0, 46), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = side }, { corner(12) })
-	local av = new("ImageLabel", { Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(30, 30), BackgroundColor3 = T.hover, BorderSizePixel = 0, Image = "", Parent = pc }, { corner(15) })
+	local pc = new("Frame", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -62, .5, 0), Size = UDim2.fromOffset(150, 36), BackgroundColor3 = T.elem, BackgroundTransparency = .4, BorderSizePixel = 0, Parent = head }, { corner(18) })
+	local av = new("ImageLabel", { Position = UDim2.fromOffset(4, 4), Size = UDim2.fromOffset(28, 28), BackgroundColor3 = T.hover, BorderSizePixel = 0, Image = "", Parent = pc }, { corner(14) })
 	task.spawn(function()
 		pcall(function() av.Image = Players:GetUserThumbnailAsync(lp.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100) end)
 	end)
-	local pn = label(lp.DisplayName, 12, T.text, T.bold); pn.Position = UDim2.fromOffset(46, 7); pn.Size = UDim2.new(1, -54, 0, 16); pn.Parent = pc
-	local pu = label("@" .. lp.Name, 10, T.sub); pu.Position = UDim2.fromOffset(46, 24); pu.Size = UDim2.new(1, -54, 0, 14); pu.Parent = pc
+	local pn = label(lp.DisplayName, 12, T.text, T.bold); pn.Position = UDim2.fromOffset(40, 0); pn.Size = UDim2.new(1, -48, 1, 0); pn.Parent = pc
 
-	-- header: page title, search, close -------------------------------------------------------------------------
-	local head = new("Frame", { Position = UDim2.fromOffset(SIDE_W, 0), Size = UDim2.new(1, -SIDE_W, 0, HEAD_H), BackgroundTransparency = 1, Parent = root })
-	local pageTitle = label("", 19, T.text, T.bold)
-	pageTitle.Position = UDim2.fromOffset(24, 0); pageTitle.Size = UDim2.new(0, 260, 1, 0); pageTitle.Parent = head
-	self.pageTitle = pageTitle
-	new("Frame", { Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = head })
-
-	local close = new("TextButton", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -16, .5, 0), Size = UDim2.fromOffset(30, 30), BackgroundColor3 = T.elem, BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = head }, { corner(9) })
-	local cx = label("×", 20, T.sub, T.bold, Enum.TextXAlignment.Center); cx.Size = UDim2.fromScale(1, 1); cx.Parent = close
-	close.MouseEnter:Connect(function() tween(close, .15, { BackgroundColor3 = Color3.fromRGB(170, 52, 60) }); tween(cx, .15, { TextColor3 = Color3.new(1, 1, 1) }) end)
-	close.MouseLeave:Connect(function() tween(close, .15, { BackgroundColor3 = T.elem }); tween(cx, .15, { TextColor3 = T.sub }) end)
-	close.MouseButton1Click:Connect(function() Sfx.Play("click"); self:SetVisible(false) end)
-
-	-- search bar (grows + brightens on focus)
+	-- search pill (grows + brightens on focus)
 	local sb = new("Frame", {
-		AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -56, .5, 0), Size = UDim2.fromOffset(190, 32),
-		BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = head,
-	}, { corner(10) })
-	local sbStroke = stroke(T.stroke); sbStroke.Parent = sb
+		AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -222, .5, 0), Size = UDim2.fromOffset(200, 36),
+		BackgroundColor3 = T.elem, BackgroundTransparency = .4, BorderSizePixel = 0, Parent = head,
+	}, { corner(18) })
+	local sbStroke = stroke(T.stroke); sbStroke.Transparency = .6; sbStroke.Parent = sb
 	local box = new("TextBox", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -44, 1, 0), Position = UDim2.fromOffset(12, 0),
-		Text = "", PlaceholderText = "Search...", PlaceholderColor3 = T.sub, TextColor3 = T.text,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -52, 1, 0), Position = UDim2.fromOffset(16, 0),
+		Text = "", PlaceholderText = "Search settings", PlaceholderColor3 = T.sub, TextColor3 = T.text,
 		Font = T.font, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, Parent = sb,
 	})
-	local hint = new("Frame", {
-		AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -8, .5, 0), Size = UDim2.fromOffset(18, 18),
-		BackgroundColor3 = T.hover, BorderSizePixel = 0, Parent = sb,
-	}, { corner(5) })
-	local hintTxt = label("/", 11, T.sub, T.bold, Enum.TextXAlignment.Center)
-	hintTxt.Size = UDim2.fromScale(1, 1); hintTxt.Parent = hint
-	local sweep = new("Frame", {
-		AnchorPoint = Vector2.new(.5, 1), Position = UDim2.new(.5, 0, 1, 0), Size = UDim2.new(0, 0, 0, 2),
-		BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = sb,
-	}, { corner(2) })
+	local hint = new("Frame", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -10, .5, 0), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = T.hover, BackgroundTransparency = .3, BorderSizePixel = 0, Parent = sb }, { corner(10) })
+	local hintTxt = label("/", 11, T.sub, T.bold, Enum.TextXAlignment.Center); hintTxt.Size = UDim2.fromScale(1, 1); hintTxt.Parent = hint
+	local sweep = new("Frame", { AnchorPoint = Vector2.new(.5, 1), Position = UDim2.new(.5, 0, 1, 0), Size = UDim2.new(0, 0, 0, 2), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = sb }, { corner(2) })
 	self.searchBox = box
 	box.Focused:Connect(function()
-		tween(sb, .28, { Size = UDim2.fromOffset(260, 32) })
-		tween(sbStroke, .2, { Color = T.accent })
-		tween(sb, .2, { BackgroundColor3 = T.hover })
-		tween(sweep, .35, { Size = UDim2.new(1, -16, 0, 2) })
+		tween(sb, .28, { Size = UDim2.fromOffset(280, 36), BackgroundTransparency = .15 })
+		tween(sbStroke, .2, { Color = T.accent, Transparency = .2 })
+		tween(sweep, .35, { Size = UDim2.new(1, -28, 0, 2) })
 		tween(hint, .2, { BackgroundTransparency = 1 }); tween(hintTxt, .2, { TextTransparency = 1 })
 	end)
 	box.FocusLost:Connect(function()
-		tween(sbStroke, .2, { Color = T.stroke })
-		tween(sb, .2, { BackgroundColor3 = T.elem })
+		tween(sbStroke, .2, { Color = T.stroke, Transparency = .6 })
 		tween(sweep, .25, { Size = UDim2.new(0, 0, 0, 2) })
 		if box.Text == "" then
-			tween(sb, .28, { Size = UDim2.fromOffset(190, 32) })
-			tween(hint, .2, { BackgroundTransparency = 0 }); tween(hintTxt, .2, { TextTransparency = 0 })
+			tween(sb, .28, { Size = UDim2.fromOffset(200, 36), BackgroundTransparency = .4 })
+			tween(hint, .2, { BackgroundTransparency = .3 }); tween(hintTxt, .2, { TextTransparency = 0 })
 		end
 	end)
 	box:GetPropertyChangedSignal("Text"):Connect(function() self:_search(box.Text) end)
+
+	-- tab pills: one horizontal strip (scrolls sideways when there are many)
+	local nav = new("ScrollingFrame", {
+		Position = UDim2.fromOffset(0, sbH), Size = UDim2.new(1, 0, 0, tabH), BackgroundTransparency = 1, BorderSizePixel = 0,
+		ScrollBarThickness = 0, AutomaticCanvasSize = Enum.AutomaticSize.X, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.X, Parent = root,
+	})
+	new("UIListLayout", { Padding = UDim.new(0, 6), FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Parent = nav })
+	new("UIPadding", { PaddingLeft = UDim.new(0, 22), PaddingRight = UDim.new(0, 22), Parent = nav })
+	self.nav = nav
+	new("Frame", { Position = UDim2.fromOffset(22, sbH + tabH + 2), Size = UDim2.new(1, -44, 0, 1), BackgroundColor3 = T.stroke, BackgroundTransparency = .55, BorderSizePixel = 0, Parent = root })
 
 	-- drag by the header and the brand
 	do
@@ -188,6 +171,7 @@ function UI.new(opts)
 			end
 		end
 		head.InputBegan:Connect(function(i) begin(i, sb) end)
+		nav.InputBegan:Connect(function(i) begin(i, nav) end)
 		brand.InputBegan:Connect(function(i) begin(i) end)
 		table.insert(self.conns, UIS.InputChanged:Connect(function(i)
 			if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
@@ -200,14 +184,14 @@ function UI.new(opts)
 		end))
 	end
 
-	-- content (all pages live in one list; search shows every page, filtered)
+	-- content: pages are centred in a column so rows never stretch too wide
 	local content = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(SIDE_W, HEAD_H), Size = UDim2.new(1, -SIDE_W, 1, -HEAD_H), BackgroundTransparency = 1, BorderSizePixel = 0,
-		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(70, 70, 86), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Position = UDim2.fromOffset(0, sbH + tabH + 8), Size = UDim2.new(1, 0, 1, -(sbH + tabH + 8)), BackgroundTransparency = 1, BorderSizePixel = 0,
+		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(90, 84, 130), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(), Parent = root,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 14), SortOrder = Enum.SortOrder.LayoutOrder, Parent = content })
-	new("UIPadding", { PaddingTop = UDim.new(0, 16), PaddingBottom = UDim.new(0, 18), PaddingLeft = UDim.new(0, 22), PaddingRight = UDim.new(0, 25), Parent = content })
+	new("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 22), PaddingLeft = UDim.new(0, 70), PaddingRight = UDim.new(0, 76), Parent = content })
 	self.content = content
 
 	-- toast holder
@@ -226,27 +210,22 @@ function UI.new(opts)
 	return self
 end
 
--- opts: { Section = "COMBAT", Icon = n } puts a small heading above the first tab of a new group
+-- opts: { Icon = n } (Section is accepted and ignored: the tabs are one strip of pills)
 function UI:Tab(name, opts)
 	opts = opts or {}
 	local idx = #self.tabs + 1
-	if opts.Section and opts.Section ~= self.lastSection then
-		self.lastSection = opts.Section
-		local sl = label(opts.Section:upper(), 10, Color3.fromRGB(100, 100, 120), T.bold)
-		sl.Size = UDim2.new(1, 0, 0, 24); sl.LayoutOrder = idx * 2 - 1; sl.Parent = self.nav
-		new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 10), Parent = sl })
-	end
 	local btn = new("TextButton", {
-		Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = T.accentDim, BackgroundTransparency = 1, AutoButtonColor = false,
-		Text = "", LayoutOrder = idx * 2, Parent = self.nav,
-	}, { corner(10) })
-	local dot = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 13, .5, 0), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = T.sub, BorderSizePixel = 0, Parent = btn }, { corner(3) })
-	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 0, .5, 0), Size = UDim2.fromOffset(3, 0), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = btn }, { corner(2) })
-	-- a line icon (sprite sheet, tinted) instead of the dot when the executor can load images
-	local ico = opts.Icon and Icons.Make(btn, opts.Icon, 18, UDim2.new(0, 11, .5, -9))
-	if ico then ico.ImageColor3 = T.sub; dot.Visible = false end
-	local txt = label(name, 13, T.sub)
-	txt.Position = UDim2.fromOffset(ico and 40 or 30, 0); txt.Size = UDim2.new(1, ico and -46 or -36, 1, 0); txt.Parent = btn
+		Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.accentDim, BackgroundTransparency = 1, AutoButtonColor = false,
+		Text = "", LayoutOrder = idx, Parent = self.nav,
+	}, { corner(17), new("UIPadding", { PaddingRight = UDim.new(0, 16) }) })
+	local ico = opts.Icon and Icons.Make(btn, opts.Icon, 18, UDim2.new(0, 13, .5, -9))
+	if ico then ico.ImageColor3 = T.sub end
+	local dot = ico or new("Frame", { Position = UDim2.new(0, 14, .5, -3), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = T.sub, BorderSizePixel = 0, Parent = btn }, { corner(3) })
+	local baseX = ico and 38 or 28
+	local txt = label(name, 13, T.sub, T.font)
+	txt.Position = UDim2.fromOffset(baseX, 0); txt.Size = UDim2.fromOffset(0, 34); txt.AutomaticSize = Enum.AutomaticSize.X; txt.TextTruncate = Enum.TextTruncate.None; txt.Parent = btn
+	-- glow line under the active pill
+	local bar = new("Frame", { AnchorPoint = Vector2.new(.5, 1), Position = UDim2.new(.5, 0, 1, 3), Size = UDim2.fromOffset(0, 3), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = btn }, { corner(2) })
 
 	local page = new("CanvasGroup", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
@@ -261,7 +240,6 @@ function UI:Tab(name, opts)
 	setmetatable(tab, { __index = UI.TabMethods })
 	table.insert(self.tabs, tab)
 
-	local baseX = ico and 40 or 30
 	btn.MouseEnter:Connect(function()
 		tween(txt, .2, { Position = UDim2.fromOffset(baseX + 3, 0) })
 		if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = .7, BackgroundColor3 = T.hover }); tween(txt, .15, { TextColor3 = T.text }) end
@@ -284,10 +262,10 @@ function UI:Select(tab)
 	self.active = tab
 	for _, t in ipairs(self.tabs) do
 		local on = t == tab
-		tween(t.btn, .22, { BackgroundTransparency = on and .35 or 1, BackgroundColor3 = T.accentDim })
+		tween(t.btn, .22, { BackgroundTransparency = on and .25 or 1, BackgroundColor3 = T.accentDim })
 		tween(t.txt, .22, { TextColor3 = on and T.text or T.sub })
 		tween(t.dot, .22, t.dotImg and { ImageColor3 = on and T.accent or T.sub } or { BackgroundColor3 = on and T.accent or T.sub })
-		tween(t.bar, .25, { Size = UDim2.fromOffset(3, on and 18 or 0) }, Enum.EasingStyle.Back)
+		tween(t.bar, .3, { Size = UDim2.fromOffset(on and 22 or 0, 3) }, Enum.EasingStyle.Back)
 		if not on then t.page.Visible = false; t.page.GroupTransparency = 1 end
 	end
 	self.pageTitle.Text = tab.name
@@ -463,9 +441,10 @@ function UI:ApplyConfig(cfg)
 end
 
 local function row(tab, name, height)
-	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BackgroundTransparency = 0.28, BorderSizePixel = 0, Parent = tab.page }, { corner(12), stroke(T.stroke) })
-	f.MouseEnter:Connect(function() tween(f, .18, { BackgroundColor3 = T.hover, BackgroundTransparency = 0.12 }) end)
-	f.MouseLeave:Connect(function() tween(f, .22, { BackgroundColor3 = T.elem, BackgroundTransparency = 0.28 }) end)
+	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BackgroundTransparency = 0.42, BorderSizePixel = 0, Parent = tab.page }, { corner(14), stroke(T.stroke) })
+	f:FindFirstChildOfClass("UIStroke").Transparency = 0.55
+	f.MouseEnter:Connect(function() tween(f, .18, { BackgroundColor3 = T.hover, BackgroundTransparency = 0.22 }) end)
+	f.MouseLeave:Connect(function() tween(f, .22, { BackgroundColor3 = T.elem, BackgroundTransparency = 0.42 }) end)
 	table.insert(tab.win.rows, { frame = f, name = name:lower(), tab = tab.realTab or tab })
 	local cs = tab.curSection
 	if cs then
