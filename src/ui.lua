@@ -5,22 +5,24 @@ local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local Logo = __import("logo")
 local Icons = __import("icons")
+local Sfx = __import("sfx")
+local Lighting = game:GetService("Lighting")
 
 local T = {
-	bg = Color3.fromRGB(11, 11, 15),
-	panel = Color3.fromRGB(16, 16, 22),
-	elem = Color3.fromRGB(22, 22, 30),
-	hover = Color3.fromRGB(32, 32, 43),
-	stroke = Color3.fromRGB(38, 38, 51),
+	bg = Color3.fromRGB(12, 11, 20),
+	panel = Color3.fromRGB(19, 17, 31),
+	elem = Color3.fromRGB(28, 26, 44),
+	hover = Color3.fromRGB(41, 38, 64),
+	stroke = Color3.fromRGB(56, 51, 84),
 	text = Color3.fromRGB(244, 244, 250),
 	sub = Color3.fromRGB(140, 140, 158),
-	accent = Color3.fromRGB(139, 92, 246),
-	accentDim = Color3.fromRGB(40, 28, 76),
-	off = Color3.fromRGB(48, 48, 62),
+	accent = Color3.fromRGB(150, 104, 255),
+	accentDim = Color3.fromRGB(48, 34, 92),
+	off = Color3.fromRGB(58, 54, 84),
 	chip = Color3.fromRGB(190, 166, 255),
 	gradA = Color3.fromRGB(110, 66, 226),
 	gradB = Color3.fromRGB(176, 136, 255),
-	strokeOn = Color3.fromRGB(88, 62, 160),
+	strokeOn = Color3.fromRGB(104, 74, 190),
 	font = Enum.Font.GothamMedium,
 	bold = Enum.Font.GothamBold,
 }
@@ -76,14 +78,21 @@ function UI.new(opts)
 
 	local root = new("CanvasGroup", {
 		Name = "Root", Size = UDim2.fromOffset(880, 560), AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BorderSizePixel = 0, GroupTransparency = 1,
-	}, { corner(18), stroke(T.stroke) })
+		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BackgroundTransparency = 0.1, BorderSizePixel = 0, GroupTransparency = 1,
+	}, { corner(20), stroke(T.stroke) })
+	new("UIGradient", { Rotation = 35, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(205, 200, 235)), Parent = root })
 	root.Parent = gui
 	self.root = root
+	-- frosted-glass blur behind the window (removed again on unload; the FPS module leaves it alone)
+	pcall(function()
+		local b = Instance.new("BlurEffect")
+		b.Name = "ScrdsxGlass"; b.Size = 0; b.Parent = Lighting
+		self.blur = b
+	end)
 	self.scale = new("UIScale", { Scale = .9, Parent = root })
 
 	-- sidebar: brand, grouped tabs, you ------------------------------------------------------------------------
-	local side = new("Frame", { Size = UDim2.new(0, SIDE_W, 1, 0), BackgroundColor3 = T.panel, BorderSizePixel = 0, Parent = root })
+	local side = new("Frame", { Size = UDim2.new(0, SIDE_W, 1, 0), BackgroundColor3 = T.panel, BackgroundTransparency = 0.45, BorderSizePixel = 0, Parent = root })
 	new("Frame", { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), BackgroundColor3 = T.stroke, BorderSizePixel = 0, Parent = side })
 	self.side = side
 
@@ -124,7 +133,7 @@ function UI.new(opts)
 	local cx = label("×", 20, T.sub, T.bold, Enum.TextXAlignment.Center); cx.Size = UDim2.fromScale(1, 1); cx.Parent = close
 	close.MouseEnter:Connect(function() tween(close, .15, { BackgroundColor3 = Color3.fromRGB(170, 52, 60) }); tween(cx, .15, { TextColor3 = Color3.new(1, 1, 1) }) end)
 	close.MouseLeave:Connect(function() tween(close, .15, { BackgroundColor3 = T.elem }); tween(cx, .15, { TextColor3 = T.sub }) end)
-	close.MouseButton1Click:Connect(function() self:SetVisible(false) end)
+	close.MouseButton1Click:Connect(function() Sfx.Play("click"); self:SetVisible(false) end)
 
 	-- search bar (grows + brightens on focus)
 	local sb = new("Frame", {
@@ -203,7 +212,7 @@ function UI.new(opts)
 
 	-- toast holder
 	self.toasts = new("Frame", {
-		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -18), Size = UDim2.fromOffset(560, 300),
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -18), Size = UDim2.fromOffset(330, 420), ClipsDescendants = false,
 		BackgroundTransparency = 1, Parent = gui,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 6), VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = self.toasts })
@@ -211,6 +220,9 @@ function UI.new(opts)
 	-- open animation
 	tween(root, .45, { GroupTransparency = 0 })
 	tween(self.scale, .55, { Scale = 1 }, Enum.EasingStyle.Back)
+	Sfx.Preload()
+	task.delay(.1, function() Sfx.Play("open") end)
+	if self.blur then tween(self.blur, .5, { Size = 14 }) end
 	return self
 end
 
@@ -241,6 +253,7 @@ function UI:Tab(name, opts)
 		LayoutOrder = idx, Visible = false, GroupTransparency = 1, Parent = self.content,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = page })
+	new("UIPadding", { Name = "SlidePad", Parent = page })
 	local header = label(name:upper(), 11, T.sub, T.bold)
 	header.Size = UDim2.new(1, 0, 0, 16); header.LayoutOrder = -1; header.Visible = false; header.Parent = page
 
@@ -248,10 +261,19 @@ function UI:Tab(name, opts)
 	setmetatable(tab, { __index = UI.TabMethods })
 	table.insert(self.tabs, tab)
 
-	btn.MouseEnter:Connect(function() if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = .75, BackgroundColor3 = T.hover }); tween(txt, .15, { TextColor3 = T.text }) end end)
-	btn.MouseLeave:Connect(function() if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = 1 }); tween(txt, .15, { TextColor3 = T.sub }) end end)
+	local baseX = ico and 40 or 30
+	btn.MouseEnter:Connect(function()
+		tween(txt, .2, { Position = UDim2.fromOffset(baseX + 3, 0) })
+		if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = .7, BackgroundColor3 = T.hover }); tween(txt, .15, { TextColor3 = T.text }) end
+		Sfx.Play("hover", .5)
+	end)
+	btn.MouseLeave:Connect(function()
+		tween(txt, .2, { Position = UDim2.fromOffset(baseX, 0) })
+		if self.active ~= tab then tween(btn, .15, { BackgroundTransparency = 1 }); tween(txt, .15, { TextColor3 = T.sub }) end
+	end)
 	btn.MouseButton1Click:Connect(function()
 		if self.searchBox.Text ~= "" then self.searchBox.Text = "" end
+		if self.active ~= tab then Sfx.Play("tab") end
 		self:Select(tab)
 	end)
 	if not self.active then self:Select(tab) end
@@ -271,7 +293,9 @@ function UI:Select(tab)
 	self.pageTitle.Text = tab.name
 	tab.page.Visible = true
 	tab.page.GroupTransparency = 1
-	tween(tab.page, .3, { GroupTransparency = 0 })
+	local pad = tab.page:FindFirstChild("SlidePad")
+	if pad then pad.PaddingTop = UDim.new(0, 18); tween(pad, .4, { PaddingTop = UDim.new(0, 0) }, Enum.EasingStyle.Quint) end
+	tween(tab.page, .32, { GroupTransparency = 0 })
 	self.content.CanvasPosition = Vector2.zero
 end
 
@@ -309,20 +333,53 @@ function UI:_search(q)
 	self.content.CanvasPosition = Vector2.zero
 end
 
-function UI:Notify(text, seconds)
-	local f = new("Frame", {
-		Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.panel,
-		BackgroundTransparency = 1, BorderSizePixel = 0, Parent = self.toasts,
-	}, { corner(8), new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) }) })
-	local st = stroke(T.stroke); st.Transparency = 1; st.Parent = f
-	local l = label(text, 13, T.text); l.AutomaticSize = Enum.AutomaticSize.X; l.Size = UDim2.fromOffset(0, 34); l.TextTransparency = 1
-	l.TextTruncate = Enum.TextTruncate.None -- toasts show their whole message (they used to end in "...")
-	l.Parent = f
-	tween(f, .3, { BackgroundTransparency = 0 }); tween(st, .3, { Transparency = 0 }); tween(l, .3, { TextTransparency = 0 })
-	task.delay(seconds or 2.5, function()
-		if not f.Parent then return end
-		tween(f, .3, { BackgroundTransparency = 1 }); tween(st, .3, { Transparency = 1 }); tween(l, .3, { TextTransparency = 1 })
-		task.wait(.35); f:Destroy()
+-- glass toast: slides in from the right, coloured by kind (info / success / warn), with a countdown line. kind is optional; it is guessed from the words.
+local KINDS = {
+	info = { color = Color3.fromRGB(150, 104, 255), glyph = "i", sound = "notify" },
+	success = { color = Color3.fromRGB(86, 214, 140), glyph = "✓", sound = "success" },
+	warn = { color = Color3.fromRGB(255, 176, 72), glyph = "!", sound = "warn" },
+}
+local function guessKind(text)
+	local l = text:lower()
+	if l:find("not found", 1, true) or l:find("failed", 1, true) or l:find("error", 1, true) or l:find("nothing", 1, true) or l:find("no pickup", 1, true)
+		or l:find("changed its", 1, true) or l:find("missing", 1, true) or l:find("can't", 1, true) or l:find("cannot", 1, true) or l:find("no item", 1, true) then return "warn" end
+	if l:find("learned", 1, true) or l:find("picked up", 1, true) or l:find("loaded", 1, true) or l:find("restored", 1, true) or l:find("applied", 1, true)
+		or l:find("saved", 1, true) or l:find(" on", 1, true) or l:find("normal", 1, true) then return "success" end
+	return "info"
+end
+
+function UI:Notify(text, seconds, kind)
+	text = tostring(text)
+	kind = KINDS[kind or ""] and kind or guessKind(text)
+	local K = KINDS[kind]
+	seconds = seconds or 3
+	Sfx.Play(K.sound, .8)
+	local slot = new("Frame", { Size = UDim2.fromOffset(320, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = self.toasts })
+	local card = new("CanvasGroup", {
+		Position = UDim2.fromOffset(340, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.bg, BackgroundTransparency = 0.12,
+		BorderSizePixel = 0, GroupTransparency = 1, Parent = slot,
+	}, { corner(13) })
+	local st = stroke(K.color); st.Transparency = 0.55; st.Parent = card
+	new("UIGradient", { Rotation = 20, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 186, 225)), Parent = card })
+	local body = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = card },
+		{ new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 11), PaddingBottom = UDim.new(0, 14) }) })
+	local badge = new("Frame", { Size = UDim2.fromOffset(26, 26), BackgroundColor3 = K.color, BackgroundTransparency = 0.8, BorderSizePixel = 0, Parent = body }, { corner(13) })
+	local g = label(K.glyph, 15, K.color, T.bold, Enum.TextXAlignment.Center); g.Size = UDim2.fromScale(1, 1); g.Parent = badge
+	local l = label(text, 13, T.text); l.Position = UDim2.fromOffset(38, 0); l.Size = UDim2.new(1, -38, 0, 0); l.AutomaticSize = Enum.AutomaticSize.Y
+	l.TextWrapped = true; l.TextTruncate = Enum.TextTruncate.None; l.TextYAlignment = Enum.TextYAlignment.Center; l.RichText = false
+	l.Parent = body
+	new("UISizeConstraint", { MinSize = Vector2.new(0, 26), Parent = l })
+	-- countdown line
+	local track = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = K.color, BackgroundTransparency = 0.85, BorderSizePixel = 0, Parent = card })
+	local bar = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = K.color, BorderSizePixel = 0, Parent = track })
+	tween(card, .22, { GroupTransparency = 0 })
+	tween(card, .5, { Position = UDim2.fromOffset(0, 0) }, Enum.EasingStyle.Back)
+	tween(bar, seconds, { Size = UDim2.fromScale(0, 1) }, Enum.EasingStyle.Linear)
+	task.delay(seconds, function()
+		if not slot.Parent then return end
+		tween(card, .35, { Position = UDim2.fromOffset(340, 0), GroupTransparency = 1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		task.wait(.38)
+		pcall(function() slot:Destroy() end)
 	end)
 end
 
@@ -331,9 +388,13 @@ function UI:SetVisible(v)
 	if not v and self.openPicker then pcall(function() self.openPicker:Close() end) end
 	if v then
 		self.root.Visible = true
+		Sfx.Play("open")
+		if self.blur then tween(self.blur, .35, { Size = self.blurSize or 14 }) end
 		tween(self.root, .3, { GroupTransparency = 0 }); tween(self.scale, .35, { Scale = self.baseScale }, Enum.EasingStyle.Back)
 	else
 		pcall(function() self.searchBox:ReleaseFocus() end) -- a focused (hidden) search box would swallow the game's keys
+		Sfx.Play("close")
+		if self.blur then tween(self.blur, .25, { Size = 0 }) end
 		tween(self.root, .2, { GroupTransparency = 1 }); tween(self.scale, .2, { Scale = self.baseScale * .93 })
 		task.delay(.22, function() if not self.visible then self.root.Visible = false end end)
 	end
@@ -345,7 +406,13 @@ function UI:SetScale(s)
 	tween(self.scale, .2, { Scale = s })
 end
 
+function UI:SetBlur(size)
+	self.blurSize = size
+	if self.blur and self.visible then tween(self.blur, .3, { Size = size }) end
+end
+
 function UI:Destroy()
+	pcall(function() if self.blur then self.blur:Destroy() end end)
 	for _, c in ipairs(self.conns) do c:Disconnect() end
 	self.gui:Destroy()
 end
@@ -396,9 +463,9 @@ function UI:ApplyConfig(cfg)
 end
 
 local function row(tab, name, height)
-	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BorderSizePixel = 0, Parent = tab.page }, { corner(11), stroke(T.stroke) })
-	f.MouseEnter:Connect(function() tween(f, .15, { BackgroundColor3 = T.hover }) end)
-	f.MouseLeave:Connect(function() tween(f, .15, { BackgroundColor3 = T.elem }) end)
+	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BackgroundTransparency = 0.28, BorderSizePixel = 0, Parent = tab.page }, { corner(12), stroke(T.stroke) })
+	f.MouseEnter:Connect(function() tween(f, .18, { BackgroundColor3 = T.hover, BackgroundTransparency = 0.12 }) end)
+	f.MouseLeave:Connect(function() tween(f, .22, { BackgroundColor3 = T.elem, BackgroundTransparency = 0.28 }) end)
 	table.insert(tab.win.rows, { frame = f, name = name:lower(), tab = tab.realTab or tab })
 	local cs = tab.curSection
 	if cs then
@@ -449,6 +516,7 @@ function M:Button(o)
 	if o.Order then f.LayoutOrder = o.Order end
 	local b = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = o.Name, TextColor3 = T.text, Font = T.font, TextSize = 13, AutoButtonColor = false, Parent = f })
 	b.MouseButton1Click:Connect(function()
+		Sfx.Play("click")
 		tween(f, .08, { BackgroundColor3 = T.accentDim })
 		task.delay(.08, function() tween(f, .3, { BackgroundColor3 = T.hover }) end)
 		if o.Callback then task.spawn(o.Callback) end
@@ -491,6 +559,16 @@ function M:Toggle(o)
 		if rowStroke then tween(rowStroke, .22, { Color = v and T.strokeOn or T.stroke }) end
 		tween(sw, .22, { BackgroundColor3 = v and T.accent or T.off })
 		tween(knob, .25, { Position = v and UDim2.new(1, -21, .5, 0) or UDim2.new(0, 3, .5, 0), BackgroundColor3 = Color3.new(1, 1, 1) }, Enum.EasingStyle.Back)
+		if not silent then
+			Sfx.Play(v and "on" or "off")
+			-- the knob stretches while it travels, like a real switch
+			knob.Size = UDim2.fromOffset(26, 18)
+			tween(knob, .3, { Size = UDim2.fromOffset(18, 18) })
+			if v and rowStroke then
+				rowStroke.Thickness = 2
+				tween(rowStroke, .45, { Thickness = 1 })
+			end
+		end
 		if not silent and o.Callback then task.spawn(o.Callback, v) end
 	end
 	function obj:Set(v, silent) apply(v, silent) end
@@ -606,7 +684,7 @@ function M:Slider(o)
 	end))
 	table.insert(self.win.conns, UIS.InputEnded:Connect(function(i)
 		if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
-			dragging = false; tween(knob, .15, { Size = UDim2.fromOffset(14, 14) })
+			dragging = false; tween(knob, .15, { Size = UDim2.fromOffset(14, 14) }); Sfx.Play("click", .5)
 		end
 	end))
 	set(o.Default or min, true)

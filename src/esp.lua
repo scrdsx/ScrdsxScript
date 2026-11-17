@@ -147,11 +147,12 @@ local hover, hoverLabel, radar, radarArrow, radarText, radarStroke
 
 local function label(parent, size, bold)
 	local l = mk("TextLabel", {
-		BackgroundColor3 = BG, BackgroundTransparency = 0.3, BorderSizePixel = 0, Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium,
+		BackgroundColor3 = BG, BackgroundTransparency = 0.22, BorderSizePixel = 0, Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium,
 		TextSize = size, TextColor3 = Color3.new(1, 1, 1), RichText = true, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0), Visible = false,
 	}, parent)
-	mk("UICorner", { CornerRadius = UDim.new(0, 4) }, l)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5), PaddingTop = UDim.new(0, 2), PaddingBottom = UDim.new(0, 2) }, l)
+	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, l)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3) }, l)
+	mk("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1, Transparency = 0.65, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, l)
 	return l
 end
 
@@ -182,6 +183,7 @@ local function newEntry(plr)
 	mk("UICorner", { CornerRadius = UDim.new(0, 2) }, e.hp)
 	e.name = label(gui, 12, true); e.name.AnchorPoint = Vector2.new(.5, 1)
 	e.dist = label(gui, 11, false); e.dist.AnchorPoint = Vector2.new(.5, 0); e.dist.TextColor3 = Color3.fromRGB(190, 190, 196)
+	e.nameSt = e.name:FindFirstChildOfClass("UIStroke")
 	e.line = lineFrame(gui)
 	for i = 1, #BONES_R15 do e.bones[i] = lineFrame(gui) end
 	entries[plr] = e
@@ -465,6 +467,7 @@ local function update(dt)
 						end
 						local txt = plr.DisplayName .. tag .. wt
 						if e.nameTxt ~= txt then e.nameTxt = txt; e.name.Text = txt end
+						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = c end
 						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.3 + tr * 0.7
 					else
 						e.name.Visible = false

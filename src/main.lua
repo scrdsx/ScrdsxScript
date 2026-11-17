@@ -1,5 +1,6 @@
 local UIS = game:GetService("UserInputService")
 local UI = __import("ui")
+local Sfx = __import("sfx")
 local Loading = __import("loading")
 local Vehicle = __import("vehicle")
 local Fly = __import("fly")
@@ -209,7 +210,7 @@ task.spawn(function() -- the live counters in the module rows
 end)
 
 -- CROSSHAIR -------------------------------------------------------------------------------------------------------------
-local tCross = win:Tab("Crosshair", { Section = "Combat", Icon = 5 })
+local tCross = win:Tab("Crosshair", { Section = "Combat", Icon = 17 })
 local mCross = tCross:Module({ Name = "Custom crosshair", Default = false, Callback = function(on) Crosshair.SetEnabled(on) end })
 cycle(mCross, "Style", Crosshair.Styles, function() return Crosshair.Style end, function(v) Crosshair.Style = v; Crosshair.Rebuild() end)
 mCross:ColorPicker({ Name = "Colour", Default = Crosshair.Color, Callback = function(c) Crosshair.Color = c; Crosshair.Rebuild() end })
@@ -230,7 +231,7 @@ mCross:Toggle({ Name = "Hide the normal cursor", Default = Crosshair.HideCursor,
 safe("crosshair", Crosshair.Start)
 
 -- SKINS -----------------------------------------------------------------------------------------------------------------
-local tSkin = win:Tab("Skins", { Section = "Combat", Icon = 7 })
+local tSkin = win:Tab("Skins", { Section = "Combat", Icon = 13 })
 local lSkinNote = tSkin:Label({ Name = "Only you see these", Value = "client-side" })
 local mPaint = tSkin:Module({ Name = "My skin (paint my character)", Default = false, Callback = function(on) Skins.Paint.Enabled = on; Skins.Refresh() end })
 mPaint:ColorPicker({ Name = "Colour", Default = Skins.Paint.Color, Callback = function(c) Skins.Paint.Color = c end })
@@ -369,7 +370,7 @@ tWorld:Toggle({ Name = "Anti AFK (never kicked for idling)", Default = Extras.An
 safe("extras", Extras.Start)
 
 -- FPS tab: client-side optimisations (each one remembers the original value, so turning it off restores everything)
-local tFps = win:Tab("FPS", { Section = "Game", Icon = 6 })
+local tFps = win:Tab("FPS", { Section = "Game", Icon = 7 })
 local lFps = tFps:Label({ Name = "FPS now", Value = "-" })
 local lLow = tFps:Label({ Name = "Worst frame (last 2 s)", Value = "-" })
 tFps:Button({ Name = "Preset: invisible tweaks (you will not notice them)", NoSave = true, Callback = function()
@@ -534,6 +535,10 @@ pcall(function()
 		if type(d) == "table" then theme.accent, theme.bg = tostring(d.accent or ""), tostring(d.bg or "") end
 	end
 end)
+tSet:Section("Look and sound")
+tSet:Toggle({ Name = "Interface sounds", Default = true, Callback = function(v) Sfx.Enabled = v end })
+tSet:Slider({ Name = "Sound volume", Min = 0, Max = 100, Step = 5, Default = 55, Suffix = "%", Callback = function(v) Sfx.Volume = v / 100 end })
+tSet:Slider({ Name = "Glass blur behind the window", Min = 0, Max = 30, Step = 1, Default = 14, Callback = function(v) win:SetBlur(v) end })
 tSet:Section("Theme")
 local function toHex(c) return string.format("#%02X%02X%02X", math.floor(c.R * 255 + .5), math.floor(c.G * 255 + .5), math.floor(c.B * 255 + .5)) end
 local accentPick = tSet:ColorPicker({ Name = "Accent colour", Default = UI.Palette().accent, Callback = function(col, final)

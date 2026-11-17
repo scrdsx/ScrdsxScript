@@ -63,7 +63,7 @@ local function eachWorld(fn)
 end
 
 -- EFFECTS: bloom, blur, sun rays, depth of field ------------------------------------------------------------------------
-local function effectOff(d) if EFFECTS[d.ClassName] then setProp(d, "Enabled", false) end end
+local function effectOff(d) if EFFECTS[d.ClassName] and d.Name ~= "ScrdsxGlass" then setProp(d, "Enabled", false) end end
 local function effectOn(d) if EFFECTS[d.ClassName] then restoreInst(d, { "Enabled" }) end end
 function FPS.SetEffects(v)
 	FPS.Effects = v
