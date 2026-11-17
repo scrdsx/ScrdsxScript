@@ -1,4 +1,4 @@
--- Loot probe: finds how the game does pickups now. Run it once, then tell Claude "done". Output: scrdsx_loot_probe.txt in the executor workspace.
+-- Loot probe: finds how the game does pickups now. Run it once, then tell Claude "done". Output: scrdsx_loot_probe2.txt in the executor workspace.
 local RS = game:GetService("ReplicatedStorage")
 local CS = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -7,7 +7,7 @@ local out = {}
 local function log(s) out[#out + 1] = tostring(s) end
 local function save()
 	if type(writefile) ~= "function" then print(table.concat(out, "\n")); return end
-	pcall(function() writefile("scrdsx_loot_probe.txt", table.concat(out, "\n")) end) end
+	pcall(function() writefile("scrdsx_loot_probe2.txt", table.concat(out, "\n")) end) end
 
 local ok, err = pcall(function()
 log("-- executor functions --")
@@ -53,16 +53,19 @@ end
 local seen = {}
 local t0 = os.clock()
 -- only scripts that could be about pickups (by name), and never longer than 40 seconds
+local WANT = { "moneydropinteractable", "itemdropinteractable", "interactioncontroller", "interactionservice", "networking" }
 local function likely(s)
 	local l = s.Name:lower()
-	return l:find("interact") or l:find("collect") or l:find("item") or l:find("money") or l:find("loot") or l:find("pickup") or l:find("inventory")
+	if l == "interactable" then return true end
+	for _, w in ipairs(WANT) do if l:find(w, 1, true) then return true end end
+	return false
 end
 for _, s in ipairs(roots) do
 	if os.clock() - t0 > 40 then log("(stopped after 40 s)"); break end
-	if not seen[s] and found < 6 and likely(s) then
+	if not seen[s] and found < 10 and likely(s) then
 		seen[s] = true
 		local src = decompile and try(decompile, s)
-		if type(src) == "string" and (src:find("Collect Interactable", 1, true) or src:find("Interactable", 1, true) and src:find("FireServer", 1, true)) then
+		if type(src) == "string" and (true) then
 			found = found + 1
 			log("\n===== " .. s:GetFullName() .. " (" .. #src .. " chars) =====")
 			log(#src > 60000 and src:sub(1, 60000) or src)
@@ -76,4 +79,4 @@ log("\nscripts matched: " .. found .. " of " .. #roots)
 end)
 if not ok then log("\nPROBE ERROR: " .. tostring(err)); warn("[loot probe] error: " .. tostring(err)) end
 save()
-print("[loot probe] finished, saved scrdsx_loot_probe.txt (writefile exists: " .. tostring(type(writefile) == "function") .. ")")
+print("[loot probe] finished, saved scrdsx_loot_probe2.txt (writefile exists: " .. tostring(type(writefile) == "function") .. ")")
