@@ -198,6 +198,27 @@ function UI.new(opts)
 	new("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 22), PaddingLeft = UDim.new(0, 26), PaddingRight = UDim.new(0, 30), Parent = content })
 	self.content = content
 
+	-- settings panel: slides in from the right when a module card's gear is pressed; each module's settings live in their own list inside it
+	local PANEL_W = 340
+	local panel = new("Frame", {
+		Name = "Panel", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, PANEL_W + 30, 0, sbH + 10), Size = UDim2.new(0, PANEL_W, 1, -(sbH + 24)),
+		BackgroundColor3 = T.panel, BackgroundTransparency = .2, BorderSizePixel = 0, Visible = false, ZIndex = 5, Parent = root,
+	}, { corner(14), stroke(T.stroke) })
+	panel:FindFirstChildOfClass("UIStroke").Transparency = .6
+	local ptitle = label("", 15, T.text, T.bold); ptitle.Position = UDim2.fromOffset(18, 12); ptitle.Size = UDim2.new(1, -64, 0, 22); ptitle.ZIndex = 6; ptitle.Parent = panel
+	local psub = label("", 11, T.sub); psub.Position = UDim2.fromOffset(18, 34); psub.Size = UDim2.new(1, -64, 0, 14); psub.ZIndex = 6; psub.Parent = panel
+	local pclose = new("TextButton", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 12), Size = UDim2.fromOffset(28, 28), BackgroundColor3 = T.hover, BackgroundTransparency = .4, BorderSizePixel = 0, AutoButtonColor = false, Text = "", ZIndex = 6, Parent = panel }, { corner(14) })
+	local pcx = label("×", 18, T.sub, T.bold, Enum.TextXAlignment.Center); pcx.Size = UDim2.fromScale(1, 1); pcx.ZIndex = 7; pcx.Parent = pclose
+	pclose.MouseButton1Click:Connect(function() Sfx.Play("click"); self:ClosePanel() end)
+	new("Frame", { Position = UDim2.fromOffset(14, 58), Size = UDim2.new(1, -28, 0, 1), BackgroundColor3 = T.stroke, BackgroundTransparency = .6, BorderSizePixel = 0, ZIndex = 6, Parent = panel })
+	local pbody = new("ScrollingFrame", {
+		Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 1, -64), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3,
+		ScrollBarImageColor3 = Color3.fromRGB(90, 84, 130), AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ZIndex = 6, Parent = panel,
+	})
+	new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14), Parent = pbody })
+	new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Parent = pbody })
+	self.panel = { frame = panel, title = ptitle, sub = psub, body = pbody, mod = nil, w = PANEL_W }
+
 	-- toast holder
 	self.toasts = new("Frame", {
 		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -18), Size = UDim2.fromOffset(330, 420), ClipsDescendants = false,
@@ -273,6 +294,7 @@ end
 
 function UI:Select(tab)
 	self.active = tab
+	self:ClosePanel(true)
 	for _, t in ipairs(self.tabs) do
 		local on = t == tab
 		tween(t.btn, .22, { BackgroundTransparency = on and .25 or 1, BackgroundColor3 = T.accentDim })
@@ -288,6 +310,36 @@ function UI:Select(tab)
 	if pad then pad.PaddingTop = UDim.new(0, 18); tween(pad, .4, { PaddingTop = UDim.new(0, 0) }, Enum.EasingStyle.Quint) end
 	tween(tab.page, .32, { GroupTransparency = 0 })
 	self.content.CanvasPosition = Vector2.zero
+end
+
+-- show one module's settings in the side panel (the page narrows to make room)
+function UI:OpenPanel(mod)
+	local P = self.panel
+	if P.mod and P.mod ~= mod then P.mod.sf.Visible = false; if P.mod.card then P.mod.card.setActive(false) end end
+	P.mod = mod
+	P.title.Text = mod.name
+	P.sub.Text = (mod.tab and (mod.tab.name .. "  -  ") or "") .. mod.count() .. (mod.count() == 1 and " setting" or " settings")
+	mod.sf.Visible = true
+	if mod.card then mod.card.setActive(true) end
+	P.body.CanvasPosition = Vector2.zero
+	P.frame.Visible = true
+	tween(P.frame, .32, { Position = UDim2.new(1, -14, 0, 74) }, Enum.EasingStyle.Quint)
+	tween(self.content, .32, { Size = UDim2.new(1, -(SIDE_W + 1 + P.w + 18), 1, -66) }, Enum.EasingStyle.Quint)
+	Sfx.Play("open", .5, 1.4)
+end
+
+function UI:ClosePanel(instant)
+	local P = self.panel
+	if not P or not P.mod then return end
+	local mod = P.mod
+	P.mod = nil
+	if mod.card then mod.card.setActive(false) end
+	tween(self.content, instant and .01 or .28, { Size = UDim2.new(1, -(SIDE_W + 1), 1, -66) }, Enum.EasingStyle.Quint)
+	tween(P.frame, instant and .01 or .28, { Position = UDim2.new(1, P.w + 30, 0, 74) }, Enum.EasingStyle.Quint)
+	task.delay(instant and .02 or .3, function()
+		if P.mod == nil then P.frame.Visible = false end
+		if P.mod ~= mod then mod.sf.Visible = false end
+	end)
 end
 
 function UI:_search(q)
@@ -453,6 +505,7 @@ function UI:ApplyConfig(cfg)
 end
 
 local function row(tab, name, height)
+	tab.grid = nil -- a plain row ends the current card grid
 	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BackgroundTransparency = 0.5, BorderSizePixel = 0, Parent = tab.page }, { corner(10), stroke(T.stroke) })
 	f:FindFirstChildOfClass("UIStroke").Transparency = 0.8
 	f.MouseEnter:Connect(function() tween(f, .18, { BackgroundColor3 = T.hover, BackgroundTransparency = 0.35 }) end)
@@ -474,6 +527,7 @@ function M:Section(o)
 	new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 4, .5, 2), Size = UDim2.fromOffset(4, 12), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = f }, { corner(2) })
 	local l = label(name:upper(), 11, T.sub, T.bold); l.Position = UDim2.fromOffset(16, 2); l.Size = UDim2.new(1, -60, 1, 0); l.Parent = f
 	local chev = label("v", 12, T.sub, T.bold, Enum.TextXAlignment.Right); chev.AnchorPoint = Vector2.new(1, .5); chev.Position = UDim2.new(1, -8, .5, 2); chev.Size = UDim2.fromOffset(40, 16); chev.Parent = f
+	self.grid = nil
 	local sec = { rows = {}, collapsed = o.Collapsed == true }
 	if type(o) ~= "table" then sec.collapsed = false end
 	local function refreshHead()
@@ -572,71 +626,86 @@ function M:Toggle(o)
 	return obj
 end
 
--- A module: a toggle (left-click) whose settings drop down when you right-click it.
+-- A module is a card in a two-column grid. Click the card to switch it on / off; the gear (or right-click) opens its settings in the side panel.
 -- local m = tab:Module({ Name = "Suspension", Default = false, Callback = function(on) end })
--- m:Slider({...}) / m:Toggle({...}) / m:Keybind({...}) / m:Button({...}) / m:Label({...}) add rows to its dropdown.
+-- m:Slider({...}) / m:Toggle({...}) / m:Keybind({...}) / m:Button({...}) / m:Label({...}) add rows to its settings panel.
 function M:Module(o)
 	local win = self.win
-	local cont = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0, Parent = self.page })
-	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = cont })
+	local realTab = self.realTab or self
+	if not self.grid or not self.grid.Parent then
+		self.grid = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0, Parent = self.page })
+		new("UIGridLayout", { CellSize = UDim2.new(.5, -5, 0, 66), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = self.grid })
+	end
+	local card = new("Frame", { BackgroundColor3 = T.elem, BackgroundTransparency = .45, BorderSizePixel = 0, Parent = self.grid }, { corner(12), stroke(T.stroke) })
+	local cstroke = card:FindFirstChildOfClass("UIStroke"); cstroke.Transparency = .75
+	local nameL = label(o.Name, 13, T.text, T.bold); nameL.Position = UDim2.fromOffset(14, 11); nameL.Size = UDim2.new(1, -56, 0, 20); nameL.TextTruncate = Enum.TextTruncate.AtEnd; nameL.Parent = card
+	local statL = label("OFF", 11, T.sub); statL.Position = UDim2.fromOffset(14, 34); statL.Size = UDim2.new(1, -28, 0, 16); statL.Parent = card
+	local glow = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -7), Size = UDim2.fromOffset(0, 3), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = card }, { corner(2) })
+	new("UIGradient", { Color = ColorSequence.new(T.gradA, T.gradB), Parent = glow })
 
-	local obj = M.Toggle({ page = cont, win = win, realTab = self.realTab or self }, o)
-	win.rows[#win.rows].frame = cont -- search shows/hides the whole module, settings included
-	obj.frame.LayoutOrder = 0
-
-	local chev = label("›", 20, T.sub, T.bold, Enum.TextXAlignment.Center)
-	chev.AnchorPoint = Vector2.new(.5, .5); chev.Position = UDim2.new(1, -72, .5, -1); chev.Size = UDim2.fromOffset(16, 20); chev.Visible = false; chev.Parent = obj.frame
-	-- "n settings" hint next to the arrow (only when the module has settings)
-	local hint = label("", 11, T.sub, T.font, Enum.TextXAlignment.Right)
-	hint.AnchorPoint = Vector2.new(1, .5); hint.Position = UDim2.new(1, -84, .5, 0); hint.Size = UDim2.fromOffset(140, 16); hint.TextTruncate = Enum.TextTruncate.None; hint.Visible = false; hint.Parent = obj.frame
-	-- click zones: the switch (right edge) toggles the module, the rest of the row opens / closes its settings
-	obj.hit.Size = UDim2.new(0, 64, 1, 0); obj.hit.Position = UDim2.new(1, -64, 0, 0)
-	local expandBtn = new("TextButton", { Size = UDim2.new(1, -64, 1, 0), BackgroundTransparency = 1, Text = "", Parent = obj.frame })
-	local count = 0
-
-	local sf = new("CanvasGroup", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0,
-		Visible = false, GroupTransparency = 1, LayoutOrder = 1, Parent = cont,
-	})
-	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = sf })
-	new("UIPadding", { PaddingLeft = UDim.new(0, 14), Parent = sf })
-	local sub = { page = sf, win = win, realTab = self.realTab or self, modName = o.Name }
-	setmetatable(sub, { __index = M })
-
-	local open = false
-	function obj:SetOpen(v)
-		open = v
-		if v then
-			sf.Visible = true
-			tween(sf, .2, { GroupTransparency = 0 })
-		else
-			tween(sf, .15, { GroupTransparency = 1 })
-			task.delay(.16, function() if not open then sf.Visible = false end end)
+	local state, count, active = false, 0, false
+	local obj = {}
+	local function paint()
+		local on = state
+		tween(card, .22, { BackgroundColor3 = on and T.accentDim or T.elem, BackgroundTransparency = on and .35 or .45 })
+		tween(cstroke, .22, { Color = (on or active) and T.strokeOn or T.stroke, Transparency = (on or active) and .2 or .75 })
+		tween(glow, .35, { Size = UDim2.new(on and 1 or 0, on and -28 or 0, 0, 3) }, Enum.EasingStyle.Quint)
+		tween(nameL, .2, { TextColor3 = on and T.chip or T.text })
+	end
+	local function status()
+		statL.Text = (state and "ON" or "OFF") .. (count > 0 and ("  -  " .. count .. (count == 1 and " setting" or " settings")) or "")
+		tween(statL, .2, { TextColor3 = state and T.accent or T.sub })
+	end
+	local function apply(v, silent)
+		state = v
+		paint(); status()
+		if not silent then
+			Sfx.Play(v and "on" or "off")
+			cstroke.Thickness = 2; tween(cstroke, .4, { Thickness = 1 })
+			if o.Callback then task.spawn(o.Callback, v) end
 		end
-		tween(chev, .2, { Rotation = v and 90 or 0, TextColor3 = v and T.text or T.sub })
-		-- nudge the automatic sizes so the page re-measures right away
-		task.defer(function()
-			for _, fr in ipairs({ sf, cont, cont.Parent }) do
-				pcall(function() local a = fr.AutomaticSize; fr.AutomaticSize = Enum.AutomaticSize.None; fr.AutomaticSize = a end)
-			end
-		end)
 	end
-	local function flip()
-		if count == 0 then obj:Set(not obj:Get()) else obj:SetOpen(not open) end
-	end
-	expandBtn.MouseButton1Click:Connect(flip)
-	expandBtn.MouseButton2Click:Connect(function() obj:SetOpen(not open) end)
-	obj.hit.MouseButton2Click:Connect(function() obj:SetOpen(not open) end)
+	function obj:Set(v, silent) apply(v, silent) end
+	function obj:Get() return state end
+	obj.frame = card
 
+	-- settings live in the side panel
+	local sf = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, Parent = win.panel.body })
+	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = sf })
+	local sub = { page = sf, win = win, realTab = realTab, modName = o.Name }
+	setmetatable(sub, { __index = M })
+	local mod = { name = o.Name, sf = sf, tab = realTab, count = function() return count end, card = { setActive = function(v) active = v; paint() end } }
+	local function togglePanel()
+		if count == 0 then return end
+		if win.panel.mod == mod then win:ClosePanel() else win:OpenPanel(mod) end
+	end
+	function obj:SetOpen(v) if v then win:OpenPanel(mod) elseif win.panel.mod == mod then win:ClosePanel() end end
+
+	local hit = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = card })
+	hit.MouseButton1Click:Connect(function() apply(not state) end)
+	hit.MouseButton2Click:Connect(togglePanel)
+	hit.MouseEnter:Connect(function() if not state then tween(card, .15, { BackgroundColor3 = T.hover, BackgroundTransparency = .3 }) end; Sfx.Play("hover", .4) end)
+	hit.MouseLeave:Connect(function() if not state then tween(card, .2, { BackgroundColor3 = T.elem, BackgroundTransparency = .45 }) end end)
+	local gear = new("TextButton", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 8), Size = UDim2.fromOffset(28, 28), BackgroundColor3 = T.hover, BackgroundTransparency = .5, BorderSizePixel = 0, AutoButtonColor = false, Text = "", Visible = false, ZIndex = 3, Parent = card }, { corner(14) })
+	local gi = Icons.Make(gear, 9, 16, UDim2.new(.5, -8, .5, -8)); if gi then gi.ImageColor3 = T.sub; gi.ZIndex = 4 end
+	gear.MouseButton1Click:Connect(function() Sfx.Play("click"); togglePanel() end)
+	gear.MouseEnter:Connect(function() tween(gear, .15, { BackgroundTransparency = .1 }); if gi then tween(gi, .15, { ImageColor3 = T.accent }) end end)
+	gear.MouseLeave:Connect(function() tween(gear, .15, { BackgroundTransparency = .5 }); if gi then tween(gi, .15, { ImageColor3 = T.sub }) end end)
+
+	local ent = { frame = card, name = o.Name:lower(), tab = realTab }
+	table.insert(win.rows, ent)
 	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label", "TextBox", "ColorPicker", "Section" }) do
 		obj[k] = function(_, opts)
 			if k ~= "Section" then
 				count = count + 1
-				hint.Text = count .. (count == 1 and " setting" or " settings"); hint.Visible = true; chev.Visible = true
+				gear.Visible = true; status()
+				if opts and opts.Name then ent.name = ent.name .. " " .. tostring(opts.Name):lower() end
 			end
 			return M[k](sub, opts)
 		end
 	end
+	apply(o.Default == true, true)
+	register({ win = win, realTab = realTab }, o, "toggle", obj)
 	return obj
 end
 
