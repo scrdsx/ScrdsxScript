@@ -11,7 +11,7 @@ local Crosshair = {
 	Spin = false, SpinSpeed = 90, Dynamic = false, Rainbow = false, ColorOnTarget = true, FollowMouse = false, HideCursor = false,
 	Info = "off",
 }
-Crosshair.Styles = { "Cross", "Dot", "Ring", "Dot + Ring", "T", "X", "Chevron", "Square" }
+Crosshair.Styles = { "Cross", "Dot", "Ring", "Dot + Ring", "T", "X", "Chevron", "Square", "Star of David", "Israel flag", "Diamond", "Triangle", "Pentagram" }
 
 local gui, holder, bar
 local parts = {}
@@ -34,10 +34,10 @@ local function clear()
 end
 
 -- one bar / dot; ox, oy are the centre offset (before spread), dx, dy the direction it moves with the spread
-local function piece(w, h, ox, oy, dx, dy, rot, round)
+local function piece(w, h, ox, oy, dx, dy, rot, round, color)
 	local f = Instance.new("Frame")
 	f.AnchorPoint = Vector2.new(.5, .5)
-	f.BackgroundColor3 = Crosshair.Color
+	f.BackgroundColor3 = color or Crosshair.Color
 	f.BackgroundTransparency = 1 - Crosshair.Alpha
 	f.BorderSizePixel = 0
 	f.Size = UDim2.fromOffset(w, h)
@@ -50,7 +50,7 @@ local function piece(w, h, ox, oy, dx, dy, rot, round)
 		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		s.Parent = f
 	end
-	local p = { f = f, ox = ox, oy = oy, dx = dx, dy = dy, fill = true }
+	local p = { f = f, ox = ox, oy = oy, dx = dx, dy = dy, fill = true, fixed = color ~= nil }
 	parts[#parts + 1] = p
 	return p
 end
@@ -78,6 +78,24 @@ local function ring(diam)
 		parts[#parts + 1] = { f = o, ox = 0, oy = 0, dx = 0, dy = 0, ringOutline = true, diam = diam + 2 }
 	end
 	return p
+end
+
+-- a straight line between two points (relative to the centre), drawn as a rotated bar; it spreads outwards with the movement spread
+local function seg(x1, y1, x2, y2, thick, color)
+	local mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+	local len = math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+	local m = math.max(math.sqrt(mx * mx + my * my), 1e-3)
+	return piece(len + thick * 0.6, thick, mx, my, mx / m, my / m, math.deg(math.atan2(y2 - y1, x2 - x1)), false, color)
+end
+local function polar(r, deg) local a = math.rad(deg); return r * math.cos(a), r * math.sin(a) end
+-- hexagram = two triangles; pentagram = every second point of five
+local function hexagram(r, thick, color)
+	local v = {}
+	for i = 0, 5 do local x, y = polar(r, -90 + i * 60); v[i] = { x, y } end
+	for i = 0, 5 do
+		local a, b = v[i], v[(i + 2) % 6]
+		seg(a[1], a[2], b[1], b[2], thick, color)
+	end
 end
 
 function Crosshair.Rebuild()
@@ -111,6 +129,30 @@ function Crosshair.Rebuild()
 		local d = s + g
 		piece(d * 2, t, 0, -d, 0, -1); piece(d * 2, t, 0, d, 0, 1)
 		piece(t, d * 2, -d, 0, -1, 0); piece(t, d * 2, d, 0, 1, 0)
+	elseif st == "Star of David" then
+		hexagram(s * 1.2 + g, t)
+	elseif st == "Israel flag" then
+		-- white flag, two blue stripes, blue star (colours stay fixed)
+		local W = s * 2.6 + g
+		local H = W * 0.7273
+		local BLUE = Color3.fromRGB(0, 56, 184)
+		piece(W, H, 0, 0, 0, 0, 0, false, Color3.fromRGB(255, 255, 255))
+		piece(W, H * 0.11, 0, -H * 0.31, 0, 0, 0, false, BLUE)
+		piece(W, H * 0.11, 0, H * 0.31, 0, 0, 0, false, BLUE)
+		hexagram(H * 0.2, 1, BLUE)
+	elseif st == "Diamond" then
+		local r = s * 1.1 + g
+		seg(0, -r, r, 0, t); seg(r, 0, 0, r, t); seg(0, r, -r, 0, t); seg(-r, 0, 0, -r, t)
+	elseif st == "Triangle" then
+		local r = s * 1.2 + g
+		local v = {}
+		for i = 0, 2 do local x, y = polar(r, -90 + i * 120); v[i] = { x, y } end
+		for i = 0, 2 do local a, b = v[i], v[(i + 1) % 3]; seg(a[1], a[2], b[1], b[2], t) end
+	elseif st == "Pentagram" then
+		local r = s * 1.2 + g
+		local v = {}
+		for i = 0, 4 do local x, y = polar(r, -90 + i * 72); v[i] = { x, y } end
+		for i = 0, 4 do local a, b = v[i], v[(i + 2) % 5]; seg(a[1], a[2], b[1], b[2], t) end
 	end
 	if Crosshair.CenterDot and st ~= "Dot" and st ~= "Dot + Ring" then piece(2, 2, 0, 0, 0, 0, 0, true) end
 end
@@ -155,7 +197,7 @@ local function step(dt)
 			if p.stroke then p.stroke.Color = col end
 		else
 			p.f.Position = UDim2.new(.5, p.ox + p.dx * spreadNow, .5, p.oy + p.dy * spreadNow)
-			p.f.BackgroundColor3 = col
+			if not p.fixed then p.f.BackgroundColor3 = col end
 		end
 	end
 end

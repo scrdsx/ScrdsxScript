@@ -53,10 +53,19 @@ env.ScrdsxReload = function() -- re-run this loader (used by "Update now")
 	return loadstring(game:HttpGet(POLL_BASE .. "loader.lua?t=" .. os.time()))()
 end
 
+-- request() yields instead of blocking, so all modules download at the same time; HttpGet (blocking) is the fallback
+local function httpGet(url)
+	if type(request) == "function" then
+		local ok, res = pcall(request, { Url = url, Method = "GET" })
+		if ok and type(res) == "table" and res.StatusCode == 200 and type(res.Body) == "string" and #res.Body > 0 then return res.Body end
+	end
+	return game:HttpGet(url)
+end
+
 local function fetch(name)
 	local path = "src/" .. name .. ".lua"
 	if LOCAL then return readfile(LOCAL .. path) end
-	return game:HttpGet(BASE .. path .. "?t=" .. os.time()) -- bust caches while developing
+	return httpGet(BASE .. path .. "?t=" .. os.time()) -- bust caches while developing
 end
 
 local function req(name)
@@ -72,10 +81,16 @@ local function req(name)
 	return cache[name]
 end
 
+local pending, failed = #MODULES, nil
 for _, name in ipairs(MODULES) do
-	local ok, res = pcall(fetch, name)
-	assert(ok, "failed to load " .. name .. ": " .. tostring(res))
-	sources[name] = res
+	task.spawn(function()
+		local ok, res = pcall(fetch, name)
+		if ok and type(res) == "string" then sources[name] = res else failed = failed or (name .. ": " .. tostring(res)) end
+		pending = pending - 1
+	end)
 end
+local t0 = os.clock()
+while pending > 0 and os.clock() - t0 < 60 do task.wait() end
+assert(not failed and pending == 0, "failed to load " .. tostring(failed or "(timeout)"))
 
 return req("main")

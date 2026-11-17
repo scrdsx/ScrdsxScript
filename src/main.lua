@@ -131,6 +131,9 @@ mEsp:Toggle({ Name = "Box", Default = ESP.Boxes, Callback = function(v) ESP.Boxe
 mEsp:Toggle({ Name = "Corner box style (off = full outline)", Default = ESP.CornerBox, Callback = function(v) ESP.CornerBox = v end })
 mEsp:Toggle({ Name = "Skeleton", Default = ESP.Skeleton, Callback = function(v) ESP.Skeleton = v end })
 mEsp:Toggle({ Name = "Tracers", Default = ESP.Tracers, Callback = function(v) ESP.Tracers = v end })
+cycle(mEsp, "Tracer starts at", { "Bottom", "Centre", "Cursor" }, function() return ESP.TracerFrom end, function(v) ESP.TracerFrom = v end)
+cycle(mEsp, "Tracer ends at", { "Feet", "Body", "Head" }, function() return ESP.TracerTo end, function(v) ESP.TracerTo = v end)
+mEsp:Slider({ Name = "Tracer thickness", Min = 0.5, Max = 4, Step = 0.1, Default = ESP.TracerThickness, Callback = function(v) ESP.TracerThickness = v end })
 mEsp:Section("Info")
 mEsp:Toggle({ Name = "Name + role (police blue, fire red)", Default = ESP.Names, Callback = function(v) ESP.Names = v end })
 mEsp:Toggle({ Name = "Health bar", Default = ESP.Health, Callback = function(v) ESP.Health = v end })
@@ -163,7 +166,8 @@ mSpot:Toggle({ Name = "Only cars of wanted players", Default = false, Callback =
 ESP.OnPolice = function(d) win:Notify(("Police nearby: %d studs"):format(d), 4) end
 safe("esp", ESP.Start)
 
-local mCham = tEsp:Module({ Name = "Chams (glowing outlines through walls)", Default = false, Callback = function(on) Visuals.Chams.Enabled = on end })
+local tCham = win:Tab("Chams", { Section = "Combat", Icon = 10 })
+local mCham = tCham:Module({ Name = "Chams (glowing outlines through walls)", Default = false, Callback = function(on) Visuals.Chams.Enabled = on end })
 local lCham = mCham:Label({ Name = "Players lit", Value = 0 })
 mCham:Toggle({ Name = "Team colours (police blue, fire red, wanted red)", Default = Visuals.Chams.TeamColors, Callback = function(v) Visuals.Chams.TeamColors = v end })
 mCham:ColorPicker({ Name = "Fill colour (when team colours are off)", Default = Visuals.Chams.Fill, Callback = function(c) Visuals.Chams.Fill = c end })
@@ -179,7 +183,7 @@ mCham:Toggle({ Name = "Fire department", Default = true, Callback = function(v) 
 mCham:Toggle({ Name = "Citizens", Default = true, Callback = function(v) Visuals.Chams.Teams.Citizen = v end })
 mCham:Toggle({ Name = "Other jobs / prisoners", Default = true, Callback = function(v) Visuals.Chams.Teams.Other = v end })
 
-local mPoint = tEsp:Module({ Name = "Player pointers (arrows + avatar)", Default = false, Callback = function(on) Visuals.Pointers.Enabled = on end })
+local mPoint = tCham:Module({ Name = "Player pointers (arrows + avatar)", Default = false, Callback = function(on) Visuals.Pointers.Enabled = on end })
 local lPoint = mPoint:Label({ Name = "Pointing at", Value = 0 })
 cycle(mPoint, "Show", { "Offscreen", "Always" }, function() return Visuals.Pointers.Mode end, function(v) Visuals.Pointers.Mode = v end)
 cycle(mPoint, "Picture", Visuals.Kinds, function() return Visuals.Pointers.Kind end, function(v) Visuals.Pointers.Kind = v end)
@@ -196,7 +200,7 @@ mPoint:Toggle({ Name = "Fire department", Default = true, Callback = function(v)
 mPoint:Toggle({ Name = "Citizens", Default = true, Callback = function(v) Visuals.Pointers.Teams.Citizen = v end })
 mPoint:Toggle({ Name = "Other jobs / prisoners", Default = true, Callback = function(v) Visuals.Pointers.Teams.Other = v end })
 
-local mMark = tEsp:Module({ Name = "Avatar markers (picture above heads)", Default = false, Callback = function(on) Visuals.Markers.Enabled = on end })
+local mMark = tCham:Module({ Name = "Avatar markers (picture above heads)", Default = false, Callback = function(on) Visuals.Markers.Enabled = on end })
 local lMark = mMark:Label({ Name = "Markers", Value = 0 })
 cycle(mMark, "Picture", Visuals.Kinds, function() return Visuals.Markers.Kind end, function(v) Visuals.Markers.Kind = v end)
 mMark:Slider({ Name = "Size", Min = 24, Max = 90, Step = 2, Default = Visuals.Markers.Size, Suffix = " px", Callback = function(v) Visuals.Markers.Size = v end })
@@ -568,6 +572,8 @@ pcall(function()
 end)
 tSet:Section("Look and sound")
 tSet:Toggle({ Name = "Interface sounds", Default = true, Callback = function(v) Sfx.Enabled = v end })
+tSet:Toggle({ Name = "Creamy keyboard sounds (every key you press)", Default = false, Callback = function(v) Sfx.Keys = v; if v then Sfx.Preload() end end })
+tSet:Slider({ Name = "Keyboard sound volume", Min = 0, Max = 100, Step = 5, Default = 50, Suffix = "%", Callback = function(v) Sfx.KeyVolume = v / 100 end })
 tSet:Slider({ Name = "Sound volume", Min = 0, Max = 100, Step = 5, Default = 55, Suffix = "%", Callback = function(v) Sfx.Volume = v / 100 end })
 tSet:Slider({ Name = "Glass blur behind the window", Min = 0, Max = 30, Step = 1, Default = 14, Callback = function(v) win:SetBlur(v) end })
 tSet:Section("Theme")
@@ -733,6 +739,9 @@ table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 	if repKey:Get() == i.KeyCode then Repair.Run(false) end
 end))
 
+table.insert(win.conns, UIS.InputBegan:Connect(function(i)
+	if Sfx.Keys and i.UserInputType == Enum.UserInputType.Keyboard then Sfx.Key(i.KeyCode == Enum.KeyCode.Space) end
+end))
 table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or hopKey:IsListening() or not mHop:Get() then return end
 	if hopKey:Get() == i.KeyCode then Hop.Go(false) end

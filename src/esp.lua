@@ -8,7 +8,7 @@ local lp = Players.LocalPlayer
 local V3 = Vector3.new
 
 local ESP = {
-	Enabled = false, Boxes = true, CornerBox = true, Skeleton = true, Names = true, Health = true, Distance = true, Tracers = false, Wanted = true, Hover = true,
+	Enabled = false, Boxes = true, CornerBox = true, Skeleton = true, Names = true, Health = true, Distance = true, Tracers = false, TracerFrom = "Bottom", TracerTo = "Feet", TracerThickness = 1.4, Wanted = true, Hover = true,
 	Fade = true, Radar = true, MaxDist = 900, RadarDist = 350,
 	Stars = true, CarInfo = true, Spots = false, SpotDist = 220, SpotsWantedOnly = false,
 	Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
@@ -532,9 +532,13 @@ local function update(dt)
 						for _, bf in ipairs(e.bones) do bf.Visible = false end
 					end
 
-					-- tracer (feet to the bottom centre of the screen)
+					-- tracer (from the bottom / centre / cursor to the feet, body or head)
 					if ESP.Tracers then
-						seg(e.line, vs.X / 2, vs.Y, cx, y0 + h, 1.4)
+						local ox, oy = vs.X / 2, vs.Y
+						if ESP.TracerFrom == "Centre" then oy = vs.Y / 2 elseif ESP.TracerFrom == "Cursor" then ox, oy = mouse.X, mouse.Y end
+						local ty = y0 + h
+						if ESP.TracerTo == "Head" then ty = y0 elseif ESP.TracerTo == "Body" then ty = y0 + h / 2 end
+						seg(e.line, ox, oy, cx, ty, ESP.TracerThickness * (wanted and 1.5 or 1))
 						e.line.BackgroundColor3 = c; e.line.BackgroundTransparency = 0.2 + tr * 0.8
 					else
 						e.line.Visible = false
