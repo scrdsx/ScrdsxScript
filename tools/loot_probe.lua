@@ -27,6 +27,7 @@ for _, tg in ipairs(CS:GetAllTags()) do
 	end
 end
 
+save()
 log("\n-- remotes in ReplicatedStorage (class, path) --")
 local n = 0
 for _, d in ipairs(RS:GetDescendants()) do
@@ -36,6 +37,7 @@ for _, d in ipairs(RS:GetDescendants()) do
 	end
 end
 log("total remotes: " .. n)
+save()
 
 log("\n-- scripts whose source mentions interaction / collecting --")
 local function try(fn, ...) local ok, r = pcall(fn, ...); return ok and r or nil end
@@ -49,8 +51,15 @@ if #roots == 0 then
 	end
 end
 local seen = {}
+local t0 = os.clock()
+-- only scripts that could be about pickups (by name), and never longer than 40 seconds
+local function likely(s)
+	local l = s.Name:lower()
+	return l:find("interact") or l:find("collect") or l:find("item") or l:find("money") or l:find("loot") or l:find("pickup") or l:find("inventory")
+end
 for _, s in ipairs(roots) do
-	if not seen[s] and found < 6 then
+	if os.clock() - t0 > 40 then log("(stopped after 40 s)"); break end
+	if not seen[s] and found < 6 and likely(s) then
 		seen[s] = true
 		local src = decompile and try(decompile, s)
 		if type(src) == "string" and (src:find("Collect Interactable", 1, true) or src:find("Interactable", 1, true) and src:find("FireServer", 1, true)) then
