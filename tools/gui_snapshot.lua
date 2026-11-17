@@ -98,8 +98,7 @@ local ok, err = pcall(function()
 	save()
 
 	-- 3) notification / popup templates stored in the game (not on screen right now)
-	log("
-== TEMPLATES (ReplicatedStorage / StarterGui / hidden) with notif / toast / popup / alert / message / hint in the name ==")
+	log("\n== TEMPLATES (ReplicatedStorage / StarterGui / hidden) with notif / toast / popup / alert / message / hint in the name ==")
 	local WANTN = { "notif", "toast", "popup", "alert", "message", "hint", "announce", "banner", "prompt", "template" }
 	local function named(inst)
 		local l = inst.Name:lower()
@@ -111,8 +110,7 @@ local ok, err = pcall(function()
 		for i, d in ipairs(root:GetDescendants()) do
 			if tcount < 25 and (d:IsA("GuiObject") or d:IsA("LayerCollector")) and named(d) and not ours(d) and #d:GetDescendants() >= 2 then
 				tcount = tcount + 1
-				log(("
-[template] %s"):format(d:GetFullName()))
+				log(("\n[template] %s"):format(d:GetFullName()))
 				log(describe(d))
 				dump(d, 1, 4, { n = 45 })
 			end
