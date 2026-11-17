@@ -1,3 +1,4 @@
+import math
 # Generates the tab icon sprite sheet (white line icons, 64px cells, drawn at 8x and downsampled for clean edges) and prints it as base64.
 import base64, io, math, sys
 from PIL import Image, ImageDraw
@@ -87,11 +88,19 @@ def flag(d):
 def wifi(d):
     arc(d, (6, 8, 58, 60), 225, 315); arc(d, (16, 18, 48, 50), 225, 315); disc(d, 32, 44, 3.4)
 
-ICONS = [car, person, eye, crosshair, pin, coin, bolt, folder, gear, shield, store, bomb, sparkle, hand, bell, map_, sliders, flag, wifi]
-sheet = Image.new("RGBA", (CELL * len(ICONS), CELL), (0, 0, 0, 0))
+def sun(d):
+    disc(d, 32, 32, 11)
+    for k in range(8):
+        a = math.radians(k * 45); line(d, [(32 + 18 * math.cos(a), 32 + 18 * math.sin(a)), (32 + 26 * math.cos(a), 32 + 26 * math.sin(a))])
+def grid(d):
+    for x in (10, 36):
+        for y in (10, 36): line(d, [(x, y), (x + 18, y), (x + 18, y + 18), (x, y + 18), (x, y)])
+ICONS = [car, person, eye, crosshair, pin, coin, bolt, folder, gear, shield, store, bomb, sparkle, hand, bell, map_, sliders, flag, wifi, sun, grid]
+COLS = 10
+sheet = Image.new("RGBA", (CELL * COLS, CELL * ((len(ICONS) + COLS - 1) // COLS)), (0, 0, 0, 0))
 for i, fn in enumerate(ICONS):
     im, d = new(); fn(d)
-    sheet.paste(im.resize((CELL, CELL), Image.LANCZOS), (i * CELL, 0))
+    sheet.paste(im.resize((CELL, CELL), Image.LANCZOS), ((i % COLS) * CELL, (i // COLS) * CELL))
 buf = io.BytesIO(); sheet.save(buf, "PNG", optimize=True)
 if len(sys.argv) > 1: sheet.save(sys.argv[1])
 open(sys.argv[2] if len(sys.argv) > 2 else "icons_b64.txt", "w").write(base64.b64encode(buf.getvalue()).decode())

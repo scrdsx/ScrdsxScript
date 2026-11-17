@@ -18,6 +18,8 @@ local Loot = __import("loot")
 local FPS = __import("fps")
 local Repair = __import("repair")
 local Hop = __import("hop")
+local Shaders = __import("shaders")
+local Utility = __import("utility")
 local Crosshair = __import("crosshair")
 local Visuals = __import("visuals")
 local Skins = __import("skins")
@@ -467,6 +469,36 @@ mNpc:Button({ Name = "Park straight at the crosshair now", Callback = function()
 end })
 
 -- Configs tab: everything you change (modules on/off, sliders, keybinds) is saved and loaded again next time
+-- SHADERS ---------------------------------------------------------------------------------------------------------------
+local tShade = win:Tab("Shaders", { Section = "Game", Icon = 20 })
+local mShade = tShade:Module({ Name = "Shader look", Default = false, Callback = function(on) Shaders.SetEnabled(on) end })
+cycle(mShade, "Preset", Shaders.Presets, function() return Shaders.Preset end, function(v) Shaders.Preset = v; Shaders.Apply() end)
+mShade:Slider({ Name = "Strength", Min = 0, Max = 1.5, Step = 0.05, Default = Shaders.Intensity, Callback = function(v) Shaders.Intensity = v; Shaders.Apply() end })
+mShade:Slider({ Name = "Exposure", Min = -1, Max = 1, Step = 0.05, Default = Shaders.Exposure, Callback = function(v) Shaders.Exposure = v; Shaders.Apply() end })
+mShade:Toggle({ Name = "Bloom glow", Default = Shaders.Bloom, Callback = function(v) Shaders.Bloom = v; Shaders.Apply() end })
+mShade:Toggle({ Name = "Sun rays", Default = Shaders.Rays, Callback = function(v) Shaders.Rays = v; Shaders.Apply() end })
+mShade:Toggle({ Name = "Depth of field (soft far blur)", Default = Shaders.DoF, Callback = function(v) Shaders.DoF = v; Shaders.Apply() end })
+mShade:Toggle({ Name = "Haze (colours the distance)", Default = Shaders.Haze, Callback = function(v) Shaders.Haze = v; Shaders.Apply() end })
+local mTime = tShade:Module({ Name = "Time of day", Default = false, Callback = function(on) Shaders.PinTime = on; if on then Shaders.Apply() end end })
+mTime:Slider({ Name = "Hour", Min = 0, Max = 24, Step = 0.25, Default = Shaders.Time, Callback = function(v) Shaders.Time = v; if Shaders.PinTime then pcall(function() game:GetService("Lighting").ClockTime = v end) end end })
+mTime:Label({ Name = "Note", Value = "needs Shader look on to hold" })
+
+-- UTILITY ---------------------------------------------------------------------------------------------------------------
+local tUtil = win:Tab("Utility", { Section = "Game", Icon = 21 })
+local mFov = tUtil:Module({ Name = "Field of view", Default = false, Callback = function(on) Utility.Fov = on end })
+mFov:Slider({ Name = "FOV", Min = 40, Max = 120, Step = 1, Default = Utility.FovValue, Callback = function(v) Utility.FovValue = v end })
+local mZoom = tUtil:Module({ Name = "Hold to zoom", Default = true, Callback = function() end })
+local zoomKey = mZoom:Keybind({ Name = "Zoom key", Default = Utility.ZoomKey, Callback = function(k) if k then Utility.ZoomKey = k end end })
+mZoom:Slider({ Name = "Zoom FOV", Min = 8, Max = 60, Step = 1, Default = Utility.ZoomFov, Callback = function(v) Utility.ZoomFov = v end })
+local mBar = tUtil:Module({ Name = "Info bar", Default = false, Callback = function(on) Utility.SetBar(on) end })
+mBar:Toggle({ Name = "FPS", Default = true, Callback = function(v) Utility.BarParts.Fps = v end })
+mBar:Toggle({ Name = "Ping", Default = true, Callback = function(v) Utility.BarParts.Ping = v end })
+mBar:Toggle({ Name = "Players", Default = true, Callback = function(v) Utility.BarParts.Players = v end })
+mBar:Toggle({ Name = "Police online", Default = true, Callback = function(v) Utility.BarParts.Police = v end })
+mBar:Toggle({ Name = "Clock", Default = true, Callback = function(v) Utility.BarParts.Clock = v end })
+local mAfk = tUtil:Module({ Name = "Anti AFK", Default = true, Callback = function(on) Utility.AntiAfk = on end })
+safe("utility", Utility.Start)
+
 local tCfg = win:Tab("Configs", { Section = "Client", Icon = 8 })
 local current = Config.GetAutoload() or "default"
 local lCurrent = tCfg:Label({ Name = "Current config", Value = current })
@@ -584,6 +616,19 @@ end })
 local bgPick = tSet:ColorPicker({ Name = "Background colour", Default = UI.Palette().bg, Callback = function(col, final)
 	theme.bg = toHex(col); applyTheme(final)
 end })
+local THEMES = {
+	{ "Amber", Color3.fromRGB(243, 156, 18), UI.Palette().bg }, { "Ocean", Color3.fromRGB(52, 152, 219), Color3.fromRGB(10, 16, 26) },
+	{ "Violet", Color3.fromRGB(155, 110, 255), Color3.fromRGB(14, 12, 26) }, { "Mint", Color3.fromRGB(46, 204, 150), Color3.fromRGB(10, 20, 18) },
+	{ "Rose", Color3.fromRGB(255, 105, 160), Color3.fromRGB(22, 12, 18) }, { "Crimson", Color3.fromRGB(231, 76, 60), Color3.fromRGB(20, 11, 11) },
+}
+local themeNames, themeName = {}, "Amber"
+for _, t in ipairs(THEMES) do themeNames[#themeNames + 1] = t[1] end
+cycle(tSet, "Theme preset", themeNames, function() return themeName end, function(v)
+	themeName = v
+	for _, t in ipairs(THEMES) do
+		if t[1] == v then accentPick:Set(t[2]); bgPick:Set(t[3]) end
+	end
+end)
 if parseHex(theme.accent) then accentPick:Set(parseHex(theme.accent), true) end
 if parseHex(theme.bg) then bgPick:Set(parseHex(theme.bg), true) end
 if theme.accent ~= "" or theme.bg ~= "" then task.defer(applyTheme, false) end
@@ -664,6 +709,8 @@ local function unload()
 	Loot.Destroy()
 	Repair.Destroy()
 	Hop.Destroy()
+	Shaders.Destroy()
+	Utility.Destroy()
 	FPS.Destroy()
 	Crosshair.Destroy()
 	Visuals.Destroy()

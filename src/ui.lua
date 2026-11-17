@@ -93,6 +93,13 @@ function UI.new(opts)
 		self.blur = b
 	end)
 	self.scale = new("UIScale", { Scale = .9, Parent = root })
+	-- big / high-resolution screens: grow the whole window so the text stays readable (the "UI scale" setting multiplies this)
+	do
+		local cam = workspace.CurrentCamera
+		local vh = cam and cam.ViewportSize.Y or 800
+		self.autoScale = math.clamp(vh / 780, 1, 1.6)
+		self.baseScale = self.autoScale
+	end
 
 	-- layout: a floating glass window. Top row = brand, search, you, close. Second row = tab pills. Pages below, centred.
 	local sbH = 64
@@ -228,7 +235,7 @@ function UI.new(opts)
 
 	-- open animation
 	tween(root, .45, { GroupTransparency = 0 })
-	tween(self.scale, .55, { Scale = 1 }, Enum.EasingStyle.Back)
+	tween(self.scale, .55, { Scale = self.baseScale }, Enum.EasingStyle.Back)
 	Sfx.Preload()
 	task.delay(.1, function() Sfx.Play("open") end)
 	if self.blur then tween(self.blur, .5, { Size = 14 }) end
@@ -444,8 +451,8 @@ end
 function UI:Toggle() self:SetVisible(not self.visible) end
 
 function UI:SetScale(s)
-	self.baseScale = s
-	tween(self.scale, .2, { Scale = s })
+	self.baseScale = (self.autoScale or 1) * s
+	tween(self.scale, .2, { Scale = self.baseScale })
 end
 
 function UI:SetBlur(size)

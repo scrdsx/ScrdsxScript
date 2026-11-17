@@ -145,13 +145,13 @@ local gui, conn, addConn, remConn
 local entries = {}
 local hover, hoverLabel, radar, radarArrow, radarText, radarStroke
 
-local function label(parent, size, bold)
+local function label(parent, size, bold, radius)
 	local l = mk("TextLabel", {
 		BackgroundColor3 = BG, BackgroundTransparency = 0.4, BorderSizePixel = 0, Font = bold and Enum.Font.BuilderSansBold or Enum.Font.BuilderSansMedium,
 		TextSize = size, TextColor3 = Color3.new(1, 1, 1), RichText = true, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0), Visible = false,
 	}, parent)
-	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, l)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3) }, l)
+	mk("UICorner", { CornerRadius = radius and UDim.new(0, radius) or UDim.new(1, 0) }, l)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9), PaddingTop = UDim.new(0, radius and 4 or 3), PaddingBottom = UDim.new(0, radius and 6 or 3) }, l)
 	mk("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1.2, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, l)
 	return l
 end
@@ -181,8 +181,10 @@ local function newEntry(plr)
 	mk("UICorner", { CornerRadius = UDim.new(0, 2) }, e.hpBg)
 	e.hp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(80, 220, 120) }, e.hpBg)
 	mk("UICorner", { CornerRadius = UDim.new(0, 2) }, e.hp)
-	e.name = label(gui, 12, true); e.name.AnchorPoint = Vector2.new(.5, 1)
-	e.dist = label(gui, 11, false); e.dist.AnchorPoint = Vector2.new(.5, 0); e.dist.TextColor3 = Color3.fromRGB(190, 190, 196)
+	e.name = label(gui, 13, true, 8); e.name.AnchorPoint = Vector2.new(.5, 1); e.name.ClipsDescendants = true
+	-- health lives as a thin line along the bottom of the name card
+	e.nameHp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(80, 220, 120), Visible = false }, e.name)
+	e.dist = label(gui, 11, false, 7); e.dist.AnchorPoint = Vector2.new(.5, 0); e.dist.TextColor3 = Color3.fromRGB(190, 190, 196)
 	e.nameSt = e.name:FindFirstChildOfClass("UIStroke")
 	e.line = lineFrame(gui)
 	for i = 1, #BONES_R15 do e.bones[i] = lineFrame(gui) end
@@ -439,15 +441,15 @@ local function update(dt)
 					end
 
 					-- health bar (left of the box)
-					if ESP.Health then
-						e.hpBg.Visible = true
-						e.hpBg.Position = UDim2.fromOffset(x0 - 7, y0); e.hpBg.Size = UDim2.fromOffset(3, h)
-						local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
-						e.hp.Size = UDim2.fromScale(1, frac)
-						e.hp.BackgroundColor3 = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), frac)
-						e.hp.BackgroundTransparency = tr
+					e.hpBg.Visible = false
+					if ESP.Health and ESP.Names then
+					local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+					e.nameHp.Visible = true
+					e.nameHp.Size = UDim2.new(frac, 0, 0, 3)
+					e.nameHp.BackgroundColor3 = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), frac)
+					e.nameHp.BackgroundTransparency = tr
 					else
-						e.hpBg.Visible = false
+					e.nameHp.Visible = false
 					end
 
 					-- name + role + wanted
@@ -469,7 +471,7 @@ local function update(dt)
 						local txt = plr.DisplayName .. tag .. wt
 						if e.nameTxt ~= txt then e.nameTxt = txt; e.name.Text = txt end
 						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = c end
-						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.4 + tr * 0.6
+						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.22 + tr * 0.78
 					else
 						e.name.Visible = false
 					end
