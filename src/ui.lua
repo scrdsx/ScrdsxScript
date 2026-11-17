@@ -8,23 +8,26 @@ local Icons = __import("icons")
 local Sfx = __import("sfx")
 local Lighting = game:GetService("Lighting")
 
+-- palette and fonts taken from Emergency Hamburg's own interface (tools/gui_snapshot.lua): near-black translucent panels, flat orange as the main
+-- accent, green / red / blue for states, pill shapes, Builder Sans.
+local function pickFont(n, fb) local ok, f = pcall(function() return Enum.Font[n] end); return (ok and f) or fb end
 local T = {
-	bg = Color3.fromRGB(12, 11, 20),
-	panel = Color3.fromRGB(19, 17, 31),
-	elem = Color3.fromRGB(28, 26, 44),
-	hover = Color3.fromRGB(41, 38, 64),
-	stroke = Color3.fromRGB(56, 51, 84),
-	text = Color3.fromRGB(244, 244, 250),
-	sub = Color3.fromRGB(140, 140, 158),
-	accent = Color3.fromRGB(150, 104, 255),
-	accentDim = Color3.fromRGB(48, 34, 92),
-	off = Color3.fromRGB(58, 54, 84),
-	chip = Color3.fromRGB(190, 166, 255),
-	gradA = Color3.fromRGB(110, 66, 226),
-	gradB = Color3.fromRGB(176, 136, 255),
-	strokeOn = Color3.fromRGB(104, 74, 190),
-	font = Enum.Font.GothamMedium,
-	bold = Enum.Font.GothamBold,
+	bg = Color3.fromRGB(12, 16, 21),
+	panel = Color3.fromRGB(14, 20, 26),
+	elem = Color3.fromRGB(8, 11, 15),
+	hover = Color3.fromRGB(34, 40, 48),
+	stroke = Color3.fromRGB(70, 78, 90),
+	text = Color3.fromRGB(255, 255, 255),
+	sub = Color3.fromRGB(160, 168, 178),
+	accent = Color3.fromRGB(243, 156, 18),
+	accentDim = Color3.fromRGB(78, 52, 12),
+	off = Color3.fromRGB(62, 68, 78),
+	chip = Color3.fromRGB(252, 196, 90),
+	gradA = Color3.fromRGB(230, 126, 34),
+	gradB = Color3.fromRGB(246, 190, 70),
+	strokeOn = Color3.fromRGB(170, 112, 22),
+	font = pickFont("BuilderSansMedium", Enum.Font.BuilderSansMedium),
+	bold = pickFont("BuilderSansBold", Enum.Font.BuilderSansBold),
 }
 
 local function tween(o, t, p, style, dir)
@@ -78,9 +81,9 @@ function UI.new(opts)
 
 	local root = new("CanvasGroup", {
 		Name = "Root", Size = UDim2.fromOffset(1000, 620), AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BackgroundTransparency = 0.32, BorderSizePixel = 0, GroupTransparency = 1,
-	}, { corner(24), stroke(T.stroke) })
-	new("UIGradient", { Rotation = 35, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(205, 200, 235)), Parent = root })
+		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BackgroundTransparency = 0.3, BorderSizePixel = 0, GroupTransparency = 1,
+	}, { corner(18), stroke(T.stroke) })
+	root:FindFirstChildOfClass("UIStroke").Transparency = 0.7
 	root.Parent = gui
 	self.root = root
 	-- frosted-glass blur behind the window (removed again on unload; the FPS module leaves it alone)
@@ -313,9 +316,9 @@ end
 
 -- glass toast: slides in from the right, coloured by kind (info / success / warn), with a countdown line. kind is optional; it is guessed from the words.
 local KINDS = {
-	info = { color = Color3.fromRGB(150, 104, 255), glyph = "i", sound = "notify" },
-	success = { color = Color3.fromRGB(86, 214, 140), glyph = "✓", sound = "success" },
-	warn = { color = Color3.fromRGB(255, 176, 72), glyph = "!", sound = "warn" },
+	info = { color = Color3.fromRGB(243, 156, 18), glyph = "i", sound = "notify" },
+	success = { color = Color3.fromRGB(39, 174, 96), glyph = "✓", sound = "success" },
+	warn = { color = Color3.fromRGB(231, 76, 60), glyph = "!", sound = "warn" },
 }
 local function guessKind(text)
 	local l = text:lower()
@@ -334,11 +337,10 @@ function UI:Notify(text, seconds, kind)
 	Sfx.Play(K.sound, .8)
 	local slot = new("Frame", { Size = UDim2.fromOffset(320, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = self.toasts })
 	local card = new("CanvasGroup", {
-		Position = UDim2.fromOffset(340, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.bg, BackgroundTransparency = 0.12,
+		Position = UDim2.fromOffset(340, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.elem, BackgroundTransparency = 0.25,
 		BorderSizePixel = 0, GroupTransparency = 1, Parent = slot,
-	}, { corner(13) })
-	local st = stroke(K.color); st.Transparency = 0.55; st.Parent = card
-	new("UIGradient", { Rotation = 20, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 186, 225)), Parent = card })
+	}, { corner(12) })
+	local st = stroke(K.color); st.Transparency = 0.7; st.Parent = card
 	local body = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = card },
 		{ new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 11), PaddingBottom = UDim.new(0, 14) }) })
 	local badge = new("Frame", { Size = UDim2.fromOffset(26, 26), BackgroundColor3 = K.color, BackgroundTransparency = 0.8, BorderSizePixel = 0, Parent = body }, { corner(13) })
@@ -441,10 +443,10 @@ function UI:ApplyConfig(cfg)
 end
 
 local function row(tab, name, height)
-	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BackgroundTransparency = 0.42, BorderSizePixel = 0, Parent = tab.page }, { corner(14), stroke(T.stroke) })
-	f:FindFirstChildOfClass("UIStroke").Transparency = 0.55
-	f.MouseEnter:Connect(function() tween(f, .18, { BackgroundColor3 = T.hover, BackgroundTransparency = 0.22 }) end)
-	f.MouseLeave:Connect(function() tween(f, .22, { BackgroundColor3 = T.elem, BackgroundTransparency = 0.42 }) end)
+	local f = new("Frame", { Size = UDim2.new(1, 0, 0, height or 40), BackgroundColor3 = T.elem, BackgroundTransparency = 0.5, BorderSizePixel = 0, Parent = tab.page }, { corner(10), stroke(T.stroke) })
+	f:FindFirstChildOfClass("UIStroke").Transparency = 0.8
+	f.MouseEnter:Connect(function() tween(f, .18, { BackgroundColor3 = T.hover, BackgroundTransparency = 0.35 }) end)
+	f.MouseLeave:Connect(function() tween(f, .22, { BackgroundColor3 = T.elem, BackgroundTransparency = 0.5 }) end)
 	table.insert(tab.win.rows, { frame = f, name = name:lower(), tab = tab.realTab or tab })
 	local cs = tab.curSection
 	if cs then

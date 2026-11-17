@@ -7,17 +7,17 @@ local ESP = __import("esp")
 
 local Visuals = {
 	Chams = {
-		Enabled = false, Fill = Color3.fromRGB(139, 92, 246), Outline = Color3.fromRGB(255, 255, 255), FillAlpha = 0.55, OutlineAlpha = 0.0,
+		Enabled = false, Fill = Color3.fromRGB(243, 156, 18), Outline = Color3.fromRGB(255, 255, 255), FillAlpha = 0.55, OutlineAlpha = 0.0,
 		AlwaysOnTop = true, TeamColors = true, Pulse = true, MaxDist = 1500, Self = false, Count = 0,
 		Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
 	},
 	Pointers = {
 		Enabled = false, Mode = "Offscreen", Radius = 0.40, Scale = 1, Avatar = true, Distance = true, Name = false, MaxDist = 2500, Count = 0,
-		Kind = "Headshot", Color = Color3.fromRGB(139, 92, 246), TeamColors = true,
+		Kind = "Headshot", Color = Color3.fromRGB(243, 156, 18), TeamColors = true,
 		Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
 	},
 	Markers = {
-		Enabled = false, Kind = "Headshot", Size = 46, Name = true, Distance = true, MaxDist = 600, Count = 0, TeamColors = true, Color = Color3.fromRGB(139, 92, 246),
+		Enabled = false, Kind = "Headshot", Size = 46, Name = true, Distance = true, MaxDist = 600, Count = 0, TeamColors = true, Color = Color3.fromRGB(243, 156, 18),
 		Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
 	},
 	Info = "off",
@@ -146,7 +146,7 @@ local function makePointer()
 	-- text pill under the picture
 	local chip = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 1, 4), Size = UDim2.fromOffset(40, 16), BackgroundColor3 = BG, BackgroundTransparency = 0.15, BorderSizePixel = 0 }, badge)
 	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, chip)
-	local lbl = mk("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", TextSize = 11, Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1, 1, 1) }, chip)
+	local lbl = mk("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", TextSize = 11, Font = Enum.Font.BuilderSansBold, TextColor3 = Color3.new(1, 1, 1) }, chip)
 	-- arrow head built from thin rows (rotates cleanly, no image needed)
 	local arrow = mk("Frame", { AnchorPoint = Vector2.new(.5, .5), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1 }, root)
 	local rows = {}
@@ -163,9 +163,9 @@ local function makeMarker()
 	local img = mk("ImageLabel", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), Size = UDim2.new(1, -6, 1, -6), BackgroundTransparency = 1, Image = "" }, root)
 	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, img)
 	local name = mk("TextLabel", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 1, 3), Size = UDim2.fromOffset(140, 14), BackgroundTransparency = 1, Text = "",
-		TextSize = 12, Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.4 }, root)
+		TextSize = 12, Font = Enum.Font.BuilderSansBold, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.4 }, root)
 	local dist = mk("TextLabel", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 1, 16), Size = UDim2.fromOffset(100, 12), BackgroundTransparency = 1, Text = "",
-		TextSize = 10, Font = Enum.Font.GothamMedium, TextColor3 = Color3.fromRGB(210, 210, 222), TextStrokeTransparency = 0.5 }, root)
+		TextSize = 10, Font = Enum.Font.BuilderSansMedium, TextColor3 = Color3.fromRGB(210, 210, 222), TextStrokeTransparency = 0.5 }, root)
 	return { root = root, stroke = st, img = img, name = name, dist = dist }
 end
 

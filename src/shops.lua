@@ -161,7 +161,7 @@ local function newTag()
 		return mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = font, TextSize = size,
 			TextColor3 = Color3.new(1, 1, 1), RichText = true, LayoutOrder = order, Text = "" }, f)
 	end
-	return { f = f, st = st, title = lb(1, 13, Enum.Font.GothamBold), status = lb(2, 12, Enum.Font.GothamBold), risk = lb(3, 11, Enum.Font.GothamMedium) }
+	return { f = f, st = st, title = lb(1, 13, Enum.Font.BuilderSansBold), status = lb(2, 12, Enum.Font.BuilderSansBold), risk = lb(3, 11, Enum.Font.BuilderSansMedium) }
 end
 
 local function freeTag()

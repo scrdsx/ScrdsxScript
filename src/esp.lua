@@ -147,7 +147,7 @@ local hover, hoverLabel, radar, radarArrow, radarText, radarStroke
 
 local function label(parent, size, bold)
 	local l = mk("TextLabel", {
-		BackgroundColor3 = BG, BackgroundTransparency = 0.22, BorderSizePixel = 0, Font = bold and Enum.Font.GothamBold or Enum.Font.GothamMedium,
+		BackgroundColor3 = BG, BackgroundTransparency = 0.22, BorderSizePixel = 0, Font = bold and Enum.Font.BuilderSansBold or Enum.Font.BuilderSansMedium,
 		TextSize = size, TextColor3 = Color3.new(1, 1, 1), RichText = true, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0), Visible = false,
 	}, parent)
 	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, l)
@@ -213,13 +213,13 @@ local function buildGui()
 	mk("UICorner", { CornerRadius = UDim.new(0, 8) }, hover)
 	mk("UIStroke", { Color = STROKE, Thickness = 1 }, hover)
 	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, hover)
-	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = Enum.Font.GothamMedium, TextSize = 12,
+	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = Enum.Font.BuilderSansMedium, TextSize = 12,
 		TextColor3 = Color3.fromRGB(215, 215, 220), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, RichText = true, ZIndex = 6 }, hover)
 	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(176, 32), BackgroundColor3 = BG, BackgroundTransparency = 0.1, BorderSizePixel = 0, Visible = false }, gui)
 	mk("UICorner", { CornerRadius = UDim.new(0, 16) }, radar)
 	radarStroke = mk("UIStroke", { Color = COL.Police, Thickness = 1.5 }, radar)
-	radarArrow = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 4), Size = UDim2.fromOffset(24, 24), Text = "▲", TextSize = 18, Font = Enum.Font.GothamBold, TextColor3 = COL.Police }, radar)
-	radarText = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(38, 0), Size = UDim2.new(1, -46, 1, 0), Text = "", TextSize = 13, Font = Enum.Font.GothamBold,
+	radarArrow = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 4), Size = UDim2.fromOffset(24, 24), Text = "▲", TextSize = 18, Font = Enum.Font.BuilderSansBold, TextColor3 = COL.Police }, radar)
+	radarText = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(38, 0), Size = UDim2.new(1, -46, 1, 0), Text = "", TextSize = 13, Font = Enum.Font.BuilderSansBold,
 		TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, RichText = true }, radar)
 end
 
@@ -574,7 +574,7 @@ local function newSpot()
 	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
 	mk("UIStroke", { Thickness = 1.5, Color = Color3.new(1, 1, 1) }, dot)
 	local lb = mk("TextLabel", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(1, 5, .5, 0), Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY,
-		BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.4, Text = "" }, dot)
+		BackgroundTransparency = 1, Font = Enum.Font.BuilderSansBold, TextSize = 11, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.4, Text = "" }, dot)
 	return { dot = dot, lb = lb, kind = "" }
 end
 

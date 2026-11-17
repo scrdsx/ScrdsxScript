@@ -58,7 +58,7 @@ function Loading.run(title, subtitle, extraSteps)
 	for i = 1, #title do
 		local ch = title:sub(i, i)
 		local l = Instance.new("TextLabel")
-		l.BackgroundTransparency = 1; l.Text = ch; l.Font = Enum.Font.GothamBold; l.TextSize = 32
+		l.BackgroundTransparency = 1; l.Text = ch; l.Font = Enum.Font.BuilderSansBold; l.TextSize = 32
 		l.TextColor3 = Color3.fromRGB(240, 240, 240); l.TextTransparency = 1; l.LayoutOrder = i
 		l.Size = UDim2.fromOffset(ch == " " and 12 or 0, 40); l.AutomaticSize = ch == " " and Enum.AutomaticSize.None or Enum.AutomaticSize.X
 		l.Parent = row
@@ -72,7 +72,7 @@ function Loading.run(title, subtitle, extraSteps)
 
 	local sub = Instance.new("TextLabel")
 	sub.AnchorPoint = Vector2.new(.5, .5); sub.Position = UDim2.new(.5, 0, .5, 14); sub.Size = UDim2.fromOffset(300, 16)
-	sub.BackgroundTransparency = 1; sub.Text = subtitle or ""; sub.Font = Enum.Font.GothamMedium; sub.TextSize = 12
+	sub.BackgroundTransparency = 1; sub.Text = subtitle or ""; sub.Font = Enum.Font.BuilderSansMedium; sub.TextSize = 12
 	sub.TextColor3 = Color3.fromRGB(110, 110, 110); sub.TextTransparency = 1; sub.Parent = bg
 	task.delay(1.1, function() tween(sub, .6, { TextTransparency = 0 }) end)
 
@@ -91,7 +91,7 @@ function Loading.run(title, subtitle, extraSteps)
 
 	local status = Instance.new("TextLabel")
 	status.AnchorPoint = Vector2.new(.5, .5); status.Position = UDim2.new(.5, 0, .5, 84); status.Size = UDim2.fromOffset(300, 14)
-	status.BackgroundTransparency = 1; status.Text = ""; status.Font = Enum.Font.Gotham; status.TextSize = 11
+	status.BackgroundTransparency = 1; status.Text = ""; status.Font = Enum.Font.BuilderSans; status.TextSize = 11
 	status.TextColor3 = Color3.fromRGB(85, 85, 85); status.Parent = bg
 
 	task.wait(1.3) -- let the intro play

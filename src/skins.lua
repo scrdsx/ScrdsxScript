@@ -6,7 +6,7 @@ local lp = Players.LocalPlayer
 local ESP = __import("esp")
 
 local Skins = {
-	Paint = { Enabled = false, Color = Color3.fromRGB(139, 92, 246), Material = "Neon", Transparency = 0, Rainbow = false, Accessories = true },
+	Paint = { Enabled = false, Color = Color3.fromRGB(243, 156, 18), Material = "Neon", Transparency = 0, Rainbow = false, Accessories = true },
 	Others = { Enabled = false, Color = Color3.fromRGB(255, 255, 255), Material = "ForceField", Transparency = 0, TeamColors = true, Rainbow = false },
 	KeepLook = true, Info = "ready",
 }

@@ -53,7 +53,7 @@ function Logo.Make(parent, size, pos)
 		local cr = Instance.new("UICorner"); cr.CornerRadius = UDim.new(0.26, 0); cr.Parent = el
 		local t = Instance.new("TextLabel")
 		t.BackgroundTransparency = 1; t.Size = UDim2.fromScale(1, 1); t.Text = "S"; t.TextColor3 = Color3.new(1, 1, 1)
-		t.Font = Enum.Font.GothamBold; t.TextSize = math.floor(size * 0.6); t.Parent = el
+		t.Font = Enum.Font.BuilderSansBold; t.TextSize = math.floor(size * 0.6); t.Parent = el
 	end
 	el.Size = UDim2.fromOffset(size, size)
 	if pos then el.Position = pos end
