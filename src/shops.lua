@@ -157,18 +157,39 @@ local function riskOf(t, pos, police, alarm)
 	return level, col, n, nearest
 end
 
+local OFF_SEG = Color3.fromRGB(58, 64, 74)
 local function newTag()
-	local f = mk("CanvasGroup", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = BG,
-		BackgroundTransparency = 0.4, BorderSizePixel = 0, Visible = false, GroupTransparency = 1 }, gui)
-	mk("UICorner", { CornerRadius = UDim.new(0, 12) }, f)
-	local st = mk("UIStroke", { Thickness = 1.2, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, f)
-	mk("UIListLayout", { Padding = UDim.new(0, 1), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }, f)
-	local function lb(order, size, font)
-		return mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = font, TextSize = size,
-			TextColor3 = Color3.new(1, 1, 1), RichText = true, LayoutOrder = order, Text = "" }, f)
+	local f = mk("CanvasGroup", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(196, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = BG,
+		BackgroundTransparency = 0.18, BorderSizePixel = 0, Visible = false, GroupTransparency = 1 }, gui)
+	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, f)
+	local st = mk("UIStroke", { Thickness = 1, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
+	mk("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, f)
+	-- coloured strip along the top shows the state at a glance
+	local strip = mk("Frame", { Size = UDim2.new(1, 0, 0, 4), BorderSizePixel = 0, LayoutOrder = 0 }, f)
+	local body = mk("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 1 }, f)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11), PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 9) }, body)
+	mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, body)
+
+	local head = mk("Frame", { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = 1 }, body)
+	local title = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(.68, 0, 1, 0), Font = Enum.Font.BuilderSansBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Color3.new(1, 1, 1), TextTruncate = Enum.TextTruncate.AtEnd, Text = "" }, head)
+	local dist = mk("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(.32, 0, 1, 0), Font = Enum.Font.BuilderSansMedium,
+		TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = Color3.fromRGB(160, 168, 178), Text = "" }, head)
+
+	local chip = mk("Frame", { Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 0.8, BorderSizePixel = 0, LayoutOrder = 2 }, body)
+	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, chip)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11) }, chip)
+	local chipTxt = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, Font = Enum.Font.BuilderSansBold, TextSize = 13, Text = "" }, chip)
+
+	local riskRow = mk("Frame", { Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 3 }, body)
+	local segs = {}
+	for i = 1, 3 do
+		segs[i] = mk("Frame", { Position = UDim2.fromOffset((i - 1) * 15, 4), Size = UDim2.fromOffset(12, 6), BackgroundColor3 = OFF_SEG, BorderSizePixel = 0 }, riskRow)
+		mk("UICorner", { CornerRadius = UDim.new(1, 0) }, segs[i])
 	end
-	return { f = f, st = st, title = lb(1, 13, Enum.Font.BuilderSansBold), status = lb(2, 12, Enum.Font.BuilderSansBold), risk = lb(3, 11, Enum.Font.BuilderSansMedium) }
+	local risk = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 0), Size = UDim2.new(1, -52, 1, 0), Font = Enum.Font.BuilderSansMedium, TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(160, 168, 178), RichText = true, Text = "" }, riskRow)
+	return { f = f, st = st, strip = strip, title = title, dist = dist, chip = chip, chipTxt = chipTxt, segs = segs, risk = risk, riskRow = riskRow }
 end
 
 local function freeTag()
@@ -220,16 +241,24 @@ local function step(dt)
 				t.sx = t.sx + (sx - t.sx) * kp; t.sy = t.sy + (sy - t.sy) * kp
 				t.a = t.a + (0 - t.a) * k
 				local d = math.floor((t.pos - origin).Magnitude)
-				if e.tt ~= t.name .. d then e.tt = t.name .. d; e.title.Text = ("%s  <font color=\"#a0a8b2\">%d st</font>"):format(t.name, d) end
-				local s = ("<font color=\"%s\">●</font> <font color=\"%s\">%s</font>"):format(hex(t.col), hex(t.col), t.status)
-				if e.ss ~= s then e.ss = s; e.status.Text = s; e.st.Color = t.col end
+				if e.tt ~= t.name .. d then e.tt = t.name .. d; e.title.Text = t.name; e.dist.Text = d .. " st" end
+				local sk = t.status .. hex(t.col)
+				if e.ss ~= sk then
+					e.ss = sk
+					e.chipTxt.Text = t.status; e.chipTxt.TextColor3 = t.col
+					e.chip.BackgroundColor3 = t.col; e.strip.BackgroundColor3 = t.col; e.st.Color = t.col
+				end
 				if Shops.Risk then
-					local r = ("Risk <font color=\"%s\"><b>%s</b></font>  <font color=\"#a0a8b2\">%d police%s</font>"):format(hex(t.rc), t.rl, t.pn,
-						t.pn > 0 and (" · nearest " .. math.floor(t.pd) .. " st") or "")
-					if e.rs ~= r then e.rs = r; e.risk.Text = r end
-					e.risk.Visible = true
+					e.riskRow.Visible = true
+					local n = t.rl == "HIGH" and 3 or (t.rl == "MEDIUM" and 2 or 1)
+					local rk = t.rl .. hex(t.rc) .. t.pn .. math.floor(t.pd or 0)
+					if e.rs ~= rk then
+						e.rs = rk
+						for i = 1, 3 do e.segs[i].BackgroundColor3 = i <= n and t.rc or OFF_SEG end
+						e.risk.Text = ("<font color=\"%s\"><b>%s</b></font>  %d police%s"):format(hex(t.rc), t.rl, t.pn, t.pn > 0 and (" · " .. math.floor(t.pd) .. " st") or "")
+					end
 				else
-					e.risk.Visible = false
+					e.riskRow.Visible = false
 				end
 			else
 				t.a = t.a + (1 - t.a) * k

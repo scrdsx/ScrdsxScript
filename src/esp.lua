@@ -183,7 +183,9 @@ local function newEntry(plr)
 	mk("UICorner", { CornerRadius = UDim.new(0, 2) }, e.hp)
 	e.name = label(gui, 13, true, 8); e.name.AnchorPoint = Vector2.new(.5, 1); e.name.ClipsDescendants = true
 	-- health lives as a thin line along the bottom of the name card
-	e.nameHp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(80, 220, 120), Visible = false }, e.name)
+	e.nameBar = mk("Frame", { Size = UDim2.new(0, 3, 1, 0), BorderSizePixel = 0, BackgroundColor3 = COL.Citizen }, e.name)
+e.name.LineHeight = 1.1
+e.nameHp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(80, 220, 120), Visible = false }, e.name)
 	e.dist = label(gui, 11, false, 7); e.dist.AnchorPoint = Vector2.new(.5, 0); e.dist.TextColor3 = Color3.fromRGB(190, 190, 196)
 	e.nameSt = e.name:FindFirstChildOfClass("UIStroke")
 	e.line = lineFrame(gui)
@@ -452,44 +454,48 @@ local function update(dt)
 					e.nameHp.Visible = false
 					end
 
-					-- name + role + wanted
+					-- name plate: line 1 = name + role, line 2 = distance / health / wanted timer / car. Team colour bar on the left, health line along the bottom.
+					local wt = ""
+					if wanted and ESP.Wanted then
+						local since = ESP.Stars and tonumber(hrp:GetAttribute("StartTime"))
+						if e.stars then wt = ("<font color=\"#e74c3c\"><b>%s</b></font>"):format(starText(e.stars))
+						elseif since then
+							local s = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
+							wt = ("<font color=\"#e74c3c\"><b>WANTED %d:%02d</b></font>"):format(math.floor(s / 60), s % 60)
+						else wt = "<font color=\"#e74c3c\"><b>WANTED</b></font>" end
+					end
 					if ESP.Names then
 						e.name.Visible = true
-						-- keep the tag fully on screen (it used to stick out at the screen edge)
-						local nsz = e.name.AbsoluteSize
-						e.name.Position = UDim2.fromOffset(math.clamp(cx, nsz.X / 2 + 4, math.max(vs.X - nsz.X / 2 - 4, nsz.X / 2 + 4)), math.max(y0 - 4, nsz.Y + 4))
-						local tag = TAG[role] and ("  <font color=\"%s\">%s</font>"):format(hex(col), TAG[role]) or ""
-						local wt = ""
-						if wanted and ESP.Wanted then
-							local since = ESP.Stars and tonumber(hrp:GetAttribute("StartTime"))
-							if e.stars then wt = ("  <font color=\"#e74c3c\">%s</font>"):format(starText(e.stars))
-							elseif since then
-								local s = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
-								wt = ("  <font color=\"#e74c3c\">WANTED %d:%02d</font>"):format(math.floor(s / 60), s % 60)
-							else wt = "  <font color=\"#e74c3c\">WANTED</font>" end
+						local info = {}
+						if ESP.Distance then info[#info + 1] = ("<b>%d</b> st"):format(math.floor(d)) end
+						if ESP.Health then info[#info + 1] = ("<b>%d</b> hp"):format(math.floor(hum.Health + .5)) end
+						if wt ~= "" then info[#info + 1] = wt end
+						if ESP.CarInfo and e.carFrac and (e.carReal or e.carFrac < 0.995) then
+							local f = e.carFrac
+							local cc = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), f)
+							info[#info + 1] = ("<font color=\"%s\"><b>CAR %d%%</b></font>"):format(hex(cc), math.floor(f * 100 + .5))
 						end
-						local txt = plr.DisplayName .. tag .. wt
+						if ESP.CarInfo and e.car and tostring(e.car:GetAttribute("flatTires") or "") ~= "" then info[#info + 1] = "<font color=\"#e74c3c\"><b>FLAT</b></font>" end
+						local tag = TAG[role] and ("  <font color=\"%s\" size=\"11\">%s</font>"):format(hex(col), TAG[role]) or ""
+						local txt = plr.DisplayName .. tag
+						if #info > 0 then txt = txt .. "<br/><font size=\"11\" color=\"#9aa3ad\">" .. table.concat(info, "  <font color=\"#4a525c\">|</font>  ") .. "</font>" end
 						if e.nameTxt ~= txt then e.nameTxt = txt; e.name.Text = txt end
-						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = c end
-						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.22 + tr * 0.78
+						local nsz = e.name.AbsoluteSize
+						e.name.Position = UDim2.fromOffset(math.clamp(cx, nsz.X / 2 + 4, math.max(vs.X - nsz.X / 2 - 4, nsz.X / 2 + 4)), math.max(y0 - 6, nsz.Y + 4))
+						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = c; e.nameBar.BackgroundColor3 = c end
+						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.18 + tr * 0.82
+						e.nameBar.BackgroundTransparency = tr
 					else
 						e.name.Visible = false
 					end
-					if ESP.Distance then
+					-- the separate distance pill is only used when the name plate is off
+					if ESP.Distance and not ESP.Names then
 						e.dist.Visible = true
 						local dsz = e.dist.AbsoluteSize
 						e.dist.Position = UDim2.fromOffset(math.clamp(cx, dsz.X / 2 + 4, math.max(vs.X - dsz.X / 2 - 4, dsz.X / 2 + 4)), math.min(y0 + h + 3, vs.Y - dsz.Y - 4))
 						local dtxt = math.floor(d) .. " st"
-						if ESP.CarInfo and e.carFrac and (e.carReal or e.carFrac < 0.995) then
-							local f = e.carFrac
-							local cc = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), f)
-							dtxt = dtxt .. ("  <font color=\"%s\">CAR %d%%</font>"):format(hex(cc), math.floor(f * 100 + .5))
-						end
-						if ESP.CarInfo and e.car and tostring(e.car:GetAttribute("flatTires") or "") ~= "" then
-							dtxt = dtxt .. "  <font color=\"#e74c3c\">FLAT</font>"
-						end
 						if e.distTxt ~= dtxt then e.distTxt = dtxt; e.dist.Text = dtxt end
-						e.dist.TextTransparency = tr; e.dist.BackgroundTransparency = 0.4 + tr * 0.6
+						e.dist.TextTransparency = tr; e.dist.BackgroundTransparency = 0.3 + tr * 0.7
 					else
 						e.dist.Visible = false
 					end
