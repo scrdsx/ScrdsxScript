@@ -30,54 +30,80 @@ local function policeCount()
 	return n
 end
 
--- lowest player count first; keep servers that are not full and have at least MinPlayers; skip ones already tried
-local function findServer(bad)
-	local best, cursor = {}, nil
-	for _ = 1, 6 do
-		local data, lastErr
-		local errs = {}
-		for _, host in ipairs({ "games.roblox.com", "games.roproxy.com" }) do
-			local url = ("https://%s/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s"):format(host, game.PlaceId, cursor and ("&cursor=" .. cursor) or "")
-			local body
-			if type(request) == "function" then
-				local okr, res = pcall(request, { Url = url, Method = "GET" })
-				if okr and type(res) == "table" then
-					body = res.Body
-					if res.StatusCode and res.StatusCode ~= 200 then lastErr = host .. " status " .. tostring(res.StatusCode); errs[#errs+1] = lastErr end
-				else lastErr = host .. " " .. tostring(res) end
-			end
-			if not body then
-				local ok, b = pcall(function() return game:HttpGet(url) end)
-				if ok then body = b else lastErr = host .. " " .. tostring(b) end
-			end
-			if type(body) == "string" then
-				local okj, d = pcall(function() return HttpService:JSONDecode(body) end)
-				if okj and type(d) == "table" and type(d.data) == "table" then data = d; break end
-				lastErr = host:sub(1,5) .. ": " .. body:sub(1, 60):gsub("%s+", " "); errs[#errs+1] = lastErr
-			end
+local CACHE = "scrdsx_hop_cache.json"
+
+-- one page of the server list; Roblox answers 429 when asked too often, so wait and retry instead of giving up
+local function fetchPage(cursor)
+	local errs = {}
+	for attempt = 1, 5 do
+		local url = ("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s"):format(game.PlaceId, cursor and ("&cursor=" .. cursor) or "")
+		local body, status
+		if type(request) == "function" then
+			local okr, res = pcall(request, { Url = url, Method = "GET" })
+			if okr and type(res) == "table" then body, status = res.Body, res.StatusCode end
 		end
+		if not body then
+			local ok, b = pcall(function() return game:HttpGet(url) end)
+			if ok then body, status = b, 200 else status = tostring(b):find("429", 1, true) and 429 or 0 end
+		end
+		if status == 429 then
+			local wait = 4 + attempt * 4
+			note(("Roblox is rate limiting the list, retrying in %ds (%d/5)"):format(wait, attempt), wait, "warn")
+			task.wait(wait)
+		elseif type(body) == "string" then
+			local okj, d = pcall(function() return HttpService:JSONDecode(body) end)
+			if okj and type(d) == "table" and type(d.data) == "table" then return d end
+			errs[#errs + 1] = "status " .. tostring(status) .. ": " .. body:sub(1, 50):gsub("%s+", " ")
+			break
+		else
+			errs[#errs + 1] = "no answer"
+			break
+		end
+	end
+	return nil, table.concat(errs, " | ")
+end
+
+-- lowest player count first; keep servers that are not full and have at least MinPlayers; skip ones already tried.
+-- The list is cached for a few minutes so hopping again (and auto-hop) does not ask Roblox again and get rate limited.
+local function pick(list, bad)
+	local ok = {}
+	for _, s in ipairs(list) do
+		if s.id ~= game.JobId and not bad[s.id] and s.playing >= Hop.MinPlayers and s.playing < s.max - 1 then ok[#ok + 1] = s end
+	end
+	if #ok == 0 then return nil end
+	table.sort(ok, function(a, b) return a.playing < b.playing end)
+	local pool = {}
+	for _, s in ipairs(ok) do if s.playing == ok[1].playing then pool[#pool + 1] = s end end
+	return pool[math.random(#pool)]
+end
+
+local function findServer(bad)
+	if type(readfile) == "function" then
+		local okc, c = pcall(function() return HttpService:JSONDecode(readfile(CACHE)) end)
+		if okc and type(c) == "table" and c.place == game.PlaceId and os.time() - (tonumber(c.t) or 0) < 240 and type(c.list) == "table" then
+			local s = pick(c.list, bad)
+			if s then return s end
+		end
+	end
+	local all, cursor = {}, nil
+	for _ = 1, 3 do
+		local data, err = fetchPage(cursor)
 		if not data then
-			if type(writefile) == "function" then pcall(writefile, "scrdsx_hop_log.txt", table.concat(errs, " | ")) end
-			return nil, "server list failed: " .. table.concat(errs, " | "):sub(1, 160)
+			if #all == 0 then return nil, "server list failed: " .. tostring(err) end
+			break
 		end
 		for _, s in ipairs(data.data) do
 			local playing, max = tonumber(s.playing) or 0, tonumber(s.maxPlayers) or 0
-			if s.id ~= game.JobId and not bad[s.id] and playing >= Hop.MinPlayers and playing < max - 1 then
-				best[#best + 1] = { id = s.id, playing = playing, max = max }
-			end
+			if playing >= 3 then all[#all + 1] = { id = s.id, playing = playing, max = max } end
 		end
-		-- ascending order: once we have candidates at the lowest qualifying count there is no reason to read on
-		if #best >= 3 then break end
 		cursor = data.nextPageCursor
-		if not cursor then break end
-		task.wait(0.4)
+		if not cursor or #all >= 40 then break end
+		task.wait(1)
 	end
-	if #best == 0 then return nil, "no server with " .. Hop.MinPlayers .. "+ players found" end
-	table.sort(best, function(a, b) return a.playing < b.playing end)
-	local low = best[1].playing
-	local pool = {}
-	for _, s in ipairs(best) do if s.playing == low then pool[#pool + 1] = s end end
-	return pool[math.random(#pool)]
+	if type(writefile) == "function" then pcall(function() writefile(CACHE, HttpService:JSONEncode({ place = game.PlaceId, t = os.time(), list = all })) end) end
+	local s = pick(all, bad)
+	if not s then return nil, "no server with " .. Hop.MinPlayers .. "+ players found" end
+	return s
 end
 
 local function queueReload()
