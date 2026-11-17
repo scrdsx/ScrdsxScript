@@ -194,7 +194,8 @@ local function step(dt)
 		end
 	end
 
-	local k = 1 - math.exp(-dt * 14) -- smoothing for position and fade, independent of the frame rate
+	local k = 1 - math.exp(-dt * 14) -- fade speed, independent of the frame rate
+	local kp = 1 - math.exp(-dt * 60) -- position follows almost instantly (just enough to take the jitter out)
 	for _, t in ipairs(targets) do
 		local show, sx, sy = false, 0, 0
 		if Shops.Enabled and t.pos and t.status and (t.pos - origin).Magnitude <= Shops.MaxDist and (not Shops.OnlyReady or t.ready) then
@@ -209,7 +210,7 @@ local function step(dt)
 		end
 		if e then
 			if show then
-				t.sx = t.sx + (sx - t.sx) * k; t.sy = t.sy + (sy - t.sy) * k
+				t.sx = t.sx + (sx - t.sx) * kp; t.sy = t.sy + (sy - t.sy) * kp
 				t.a = t.a + (0 - t.a) * k
 				local d = math.floor((t.pos - origin).Magnitude)
 				if e.tt ~= t.name .. d then e.tt = t.name .. d; e.title.Text = ("%s  <font color=\"#a0a8b2\">%d st</font>"):format(t.name, d) end
