@@ -249,7 +249,7 @@ local function nearestPolice(origin)
 end
 
 -- every police player / police car position (activeOnly: only cars with their lights on)
-function ESP.PolicePositions(activeOnly)
+function ESP.PolicePositions(activeOnly, playersOnly)
 	local out = {}
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= lp and plr.Team and plr.Team.Name == "Police" then
@@ -257,6 +257,7 @@ function ESP.PolicePositions(activeOnly)
 			if h then out[#out + 1] = h.Position end
 		end
 	end
+	if playersOnly then return out end
 	local vf = workspace:FindFirstChild("Vehicles")
 	for _, m in ipairs(vf and vf:GetChildren() or {}) do
 		if m.Name ~= lp.Name and tostring(m:GetAttribute("Config") or ""):lower():find("police") and (not activeOnly or m:GetAttribute("EmergencyLights") == true) then

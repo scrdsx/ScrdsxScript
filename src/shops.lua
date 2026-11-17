@@ -124,7 +124,14 @@ local function statusOf(t)
 		end
 		if active then return "IN PROGRESS", RED, false end
 		if i:GetAttribute("TimedOut") == true then return "COOLDOWN", AMBER, false end
-		return "READY", GREEN, true
+		-- the bank has two indicator lights: LightGreen on = can be robbed, LightRed on = locked (cooldown / not available right now)
+		local g = i:FindFirstChild("LightGreen")
+		local gl = g and g:FindFirstChildWhichIsA("Light")
+		local r = i:FindFirstChild("LightRed")
+		local rl = r and r:FindFirstChildWhichIsA("Light")
+		if gl and gl.Enabled then return "READY", GREEN, true end
+		if rl and rl.Enabled then return "NOT READY", AMBER, false end
+		return "UNKNOWN", GREY, false
 	elseif t.kind == "jewel" then
 		if i:GetAttribute("RobberyDisabled") == true then return "CLOSED", GREY, false end
 		return alarmOn(i) and "ALARM" or "READY", alarmOn(i) and RED or GREEN, not alarmOn(i)
@@ -183,7 +190,7 @@ local function step(dt)
 	-- state is recomputed twice a second, drawing happens every frame
 	if Shops.Enabled and now - lastState > 0.5 then
 		lastState = now
-		local police = Shops.PoliceFn and Shops.PoliceFn(false) or {}
+		local police = Shops.PoliceFn and Shops.PoliceFn(false, true) or {}
 		for _, t in ipairs(targets) do
 			t.pos = posOf(t) or t.pos
 			if t.pos then
