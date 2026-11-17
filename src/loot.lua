@@ -6,8 +6,8 @@ local RS = game:GetService("ReplicatedStorage")
 local CS = game:GetService("CollectionService")
 local lp = Players.LocalPlayer
 
-local INTERACT = "e3256932-2913-480f-93e8-9cda8c896b14" -- (target, actionId, "start" | "stop" | "cancel")
-local ACT = { money = "2vd", item = "7Rm", drop = "P11" }
+local INTERACT = "a9075e99-aafd-4023-bd04-5b252518972d" -- (target, actionId, "start" | "stop" | "cancel"); ids read from the game code 2026-11-17
+local ACT = { money = "mbm", item = "zl4", drop = "43P", itemdrop = "o0e" }
 local REACH = 9.5
 
 local Loot = { Auto = false, Busy = false, Cancel = false, Info = "ready", Count = 0, Notify = nil, Changed = nil }
@@ -103,22 +103,26 @@ end
 
 local function candidates(h)
 	local list, near = {}, nil
-	for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
-		for _, d in ipairs(CS:GetTagged(tg)) do
-			if d:IsA("BasePart") and d:GetAttribute("Enabled") == true and d:GetAttribute("Collectable") ~= false then
-				local dd = (d.Position - h.Position).Magnitude
-				if not near or dd < near then near = dd end
-				if dd <= REACH then list[#list + 1] = { part = d, id = CS:HasTag(d, "Money Collect Interactable") and ACT.money or ACT.item } end
-			end
-		end
-	end
-	local drops = workspace:FindFirstChild("Drops") -- money on the floor: MeshParts named after me
-	for _, d in ipairs(drops and drops:GetChildren() or {}) do
-		if d.Name == lp.Name and d:IsA("BasePart") then
+	local function add(d, id)
+		if d:IsA("BasePart") then
 			local dd = (d.Position - h.Position).Magnitude
 			if not near or dd < near then near = dd end
-			if dd <= REACH then list[#list + 1] = { part = d, id = ACT.drop } end
+			if dd <= REACH then list[#list + 1] = { part = d, id = id } end
 		end
+	end
+	for _, d in ipairs(CS:GetTagged("Money Collect Interactable")) do
+		if d:GetAttribute("Enabled") == true then add(d, ACT.money) end
+	end
+	for _, d in ipairs(CS:GetTagged("Item Collect Interactable")) do
+		if d:GetAttribute("Enabled") == true and d:GetAttribute("Collectable") ~= false then add(d, ACT.item) end
+	end
+	-- dropped money / items: citizens can only take their own (the part is named after the player), police can confiscate any
+	local police = lp.Team and lp.Team.Name == "Police"
+	for _, d in ipairs(CS:GetTagged("Money Drop Interactable")) do
+		if police or d.Name == lp.Name then add(d, ACT.drop) end
+	end
+	for _, d in ipairs(CS:GetTagged("Item Drop Interactable")) do
+		if police or d.Name == lp.Name then add(d, ACT.itemdrop) end
 	end
 	return list, near
 end
@@ -155,7 +159,7 @@ function Loot.Run(quiet)
 	end
 	if #list == 0 then
 		local tagged, enabled = 0, 0
-		for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable" }) do
+		for _, tg in ipairs({ "Money Collect Interactable", "Item Collect Interactable", "Money Drop Interactable", "Item Drop Interactable" }) do
 			for _, d in ipairs(CS:GetTagged(tg)) do
 				tagged = tagged + 1
 				if d:GetAttribute("Enabled") == true then enabled = enabled + 1 end
@@ -183,7 +187,7 @@ function Loot.Run(quiet)
 				hold(l)
 				task.wait(0.25)
 				for _, it in ipairs(l) do
-					if not it.part.Parent or (it.id ~= ACT.drop and it.part:GetAttribute("Enabled") ~= true) then got = got + 1 end
+					if not it.part.Parent or ((it.id == ACT.money or it.id == ACT.item) and it.part:GetAttribute("Enabled") ~= true) then got = got + 1 end
 				end
 			end
 		end)
