@@ -16,12 +16,12 @@ local ESP = {
 }
 
 local COL = {
-	Police = Color3.fromRGB(64, 132, 255), FireDepartment = Color3.fromRGB(255, 82, 82),
+	Police = Color3.fromRGB(52, 152, 219), FireDepartment = Color3.fromRGB(231, 76, 60),
 	Prisoner = Color3.fromRGB(150, 150, 160), Citizen = Color3.fromRGB(235, 235, 240),
 }
-local RED = Color3.fromRGB(255, 82, 82)
+local RED = Color3.fromRGB(231, 76, 60)
 local TAG = { Police = "POLICE", FireDepartment = "FIRE", Prisoner = "PRISONER" }
-local BG, STROKE = Color3.fromRGB(12, 12, 14), Color3.fromRGB(40, 40, 46)
+local BG, STROKE = Color3.fromRGB(8, 11, 15), Color3.fromRGB(70, 78, 90)
 
 local BONES_R15 = {
 	{ "Head", "UpperTorso" }, { "UpperTorso", "LowerTorso" },
@@ -147,12 +147,12 @@ local hover, hoverLabel, radar, radarArrow, radarText, radarStroke
 
 local function label(parent, size, bold)
 	local l = mk("TextLabel", {
-		BackgroundColor3 = BG, BackgroundTransparency = 0.22, BorderSizePixel = 0, Font = bold and Enum.Font.BuilderSansBold or Enum.Font.BuilderSansMedium,
+		BackgroundColor3 = BG, BackgroundTransparency = 0.4, BorderSizePixel = 0, Font = bold and Enum.Font.BuilderSansBold or Enum.Font.BuilderSansMedium,
 		TextSize = size, TextColor3 = Color3.new(1, 1, 1), RichText = true, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0), Visible = false,
 	}, parent)
-	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, l)
+	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, l)
 	mk("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3) }, l)
-	mk("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1, Transparency = 0.65, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, l)
+	mk("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1.2, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, l)
 	return l
 end
 
@@ -208,14 +208,14 @@ end
 
 local function buildGui()
 	gui = mk("ScreenGui", { Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 4, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, guiParent())
-	hover = mk("Frame", { BackgroundColor3 = BG, BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Visible = false, ZIndex = 5 }, gui)
+	hover = mk("Frame", { BackgroundColor3 = BG, BackgroundTransparency = 0.25, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Visible = false, ZIndex = 5 }, gui)
 	mk("UISizeConstraint", { MinSize = Vector2.new(190, 0) }, hover)
-	mk("UICorner", { CornerRadius = UDim.new(0, 8) }, hover)
+	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, hover)
 	mk("UIStroke", { Color = STROKE, Thickness = 1 }, hover)
 	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, hover)
 	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = Enum.Font.BuilderSansMedium, TextSize = 12,
 		TextColor3 = Color3.fromRGB(215, 215, 220), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, RichText = true, ZIndex = 6 }, hover)
-	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(176, 32), BackgroundColor3 = BG, BackgroundTransparency = 0.1, BorderSizePixel = 0, Visible = false }, gui)
+	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(176, 32), BackgroundColor3 = BG, BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false }, gui)
 	mk("UICorner", { CornerRadius = UDim.new(0, 16) }, radar)
 	radarStroke = mk("UIStroke", { Color = COL.Police, Thickness = 1.5 }, radar)
 	radarArrow = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 4), Size = UDim2.fromOffset(24, 24), Text = "▲", TextSize = 18, Font = Enum.Font.BuilderSansBold, TextColor3 = COL.Police }, radar)
@@ -296,7 +296,7 @@ end
 
 local function hoverInfo(e, hum, role, col, d, wanted)
 	local plr = e.plr
-	local lines = { ("<b><font color=\"%s\">%s</font></b>  <font color=\"#8a8a92\">@%s</font>"):format(hex(col), plr.DisplayName, plr.Name) }
+	local lines = { ("<b><font color=\"%s\">%s</font></b>  <font color=\"#a0a8b2\">@%s</font>"):format(hex(col), plr.DisplayName, plr.Name) }
 	lines[#lines + 1] = ("Team  <b>%s</b>"):format(role)
 	lines[#lines + 1] = ("Health  <b>%d / %d</b>"):format(math.floor(hum.Health + .5), math.floor(hum.MaxHealth + .5))
 	lines[#lines + 1] = ("Distance  <b>%d st</b>"):format(math.floor(d))
@@ -310,7 +310,7 @@ local function hoverInfo(e, hum, role, col, d, wanted)
 		end
 		if car then
 			local ft = tostring(car:GetAttribute("flatTires") or "")
-			lines[#lines + 1] = ft ~= "" and ("Flat tyres  <b><font color=\"#ff5252\">%s</font></b>"):format(ft) or "Flat tyres  <b>none</b>"
+			lines[#lines + 1] = ft ~= "" and ("Flat tyres  <b><font color=\"#e74c3c\">%s</font></b>"):format(ft) or "Flat tyres  <b>none</b>"
 			local fuel = tonumber(car:GetAttribute("currentFuel"))
 			if fuel then lines[#lines + 1] = ("Fuel  <b>%d</b>"):format(math.floor(fuel)) end
 			lines[#lines + 1] = ("Armor level  <b>%s</b>"):format(tostring(car:GetAttribute("armorLevel") or "?"))
@@ -323,7 +323,7 @@ local function hoverInfo(e, hum, role, col, d, wanted)
 			local sec = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
 			s = s .. ("  %d:%02d"):format(math.floor(sec / 60), sec % 60)
 		end
-		lines[#lines + 1] = "<b><font color=\"#ff5252\">WANTED" .. s .. "</font></b>"
+		lines[#lines + 1] = "<b><font color=\"#e74c3c\">WANTED" .. s .. "</font></b>"
 		if e.bounty then lines[#lines + 1] = ("Bounty  <b>%d</b>"):format(math.floor(e.bounty)) end
 	end
 	return table.concat(lines, "\n")
@@ -443,7 +443,7 @@ local function update(dt)
 						e.hpBg.Position = UDim2.fromOffset(x0 - 7, y0); e.hpBg.Size = UDim2.fromOffset(3, h)
 						local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
 						e.hp.Size = UDim2.fromScale(1, frac)
-						e.hp.BackgroundColor3 = Color3.fromRGB(235, 70, 70):Lerp(Color3.fromRGB(80, 220, 120), frac)
+						e.hp.BackgroundColor3 = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), frac)
 						e.hp.BackgroundTransparency = tr
 					else
 						e.hpBg.Visible = false
@@ -459,16 +459,16 @@ local function update(dt)
 						local wt = ""
 						if wanted and ESP.Wanted then
 							local since = ESP.Stars and tonumber(hrp:GetAttribute("StartTime"))
-							if e.stars then wt = ("  <font color=\"#ff5252\">%s</font>"):format(starText(e.stars))
+							if e.stars then wt = ("  <font color=\"#e74c3c\">%s</font>"):format(starText(e.stars))
 							elseif since then
 								local s = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
-								wt = ("  <font color=\"#ff5252\">WANTED %d:%02d</font>"):format(math.floor(s / 60), s % 60)
-							else wt = "  <font color=\"#ff5252\">WANTED</font>" end
+								wt = ("  <font color=\"#e74c3c\">WANTED %d:%02d</font>"):format(math.floor(s / 60), s % 60)
+							else wt = "  <font color=\"#e74c3c\">WANTED</font>" end
 						end
 						local txt = plr.DisplayName .. tag .. wt
 						if e.nameTxt ~= txt then e.nameTxt = txt; e.name.Text = txt end
 						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = c end
-						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.3 + tr * 0.7
+						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.4 + tr * 0.6
 					else
 						e.name.Visible = false
 					end
@@ -479,14 +479,14 @@ local function update(dt)
 						local dtxt = math.floor(d) .. " st"
 						if ESP.CarInfo and e.carFrac and (e.carReal or e.carFrac < 0.995) then
 							local f = e.carFrac
-							local cc = Color3.fromRGB(235, 70, 70):Lerp(Color3.fromRGB(80, 220, 120), f)
+							local cc = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), f)
 							dtxt = dtxt .. ("  <font color=\"%s\">CAR %d%%</font>"):format(hex(cc), math.floor(f * 100 + .5))
 						end
 						if ESP.CarInfo and e.car and tostring(e.car:GetAttribute("flatTires") or "") ~= "" then
-							dtxt = dtxt .. "  <font color=\"#ff5252\">FLAT</font>"
+							dtxt = dtxt .. "  <font color=\"#e74c3c\">FLAT</font>"
 						end
 						if e.distTxt ~= dtxt then e.distTxt = dtxt; e.dist.Text = dtxt end
-						e.dist.TextTransparency = tr; e.dist.BackgroundTransparency = 0.3 + tr * 0.7
+						e.dist.TextTransparency = tr; e.dist.BackgroundTransparency = 0.4 + tr * 0.6
 					else
 						e.dist.Visible = false
 					end
@@ -563,9 +563,9 @@ end
 -- WEAK SPOTS: where to hit a car to stop it. Tyres (found by the wheel parts' names, else the four corners), the engine at the front, the fuel tank at the rear.
 -- Which end is the front comes from the direction the car is travelling; a parked car uses the model's facing (a guess, so the engine mark can be on the wrong end).
 local SPOT = {
-	TIRE = { Color3.fromRGB(255, 82, 82), "TIRE" },
-	ENGINE = { Color3.fromRGB(255, 160, 50), "ENGINE" },
-	TANK = { Color3.fromRGB(255, 225, 70), "TANK" },
+	TIRE = { Color3.fromRGB(231, 76, 60), "TIRE" },
+	ENGINE = { Color3.fromRGB(243, 156, 18), "ENGINE" },
+	TANK = { Color3.fromRGB(241, 196, 15), "TANK" },
 }
 local spotPool, spotCars, spotInfo, lastSpotScan = {}, {}, setmetatable({}, { __mode = "k" }), 0
 

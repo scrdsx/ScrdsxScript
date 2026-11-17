@@ -12,8 +12,8 @@ local Shops = {
 	Enabled = false, MaxDist = 600, Risk = true, OnlyReady = false, Info = "off", PoliceFn = nil,
 }
 
-local GREEN, AMBER, RED, GREY, BLUE = Color3.fromRGB(86, 214, 140), Color3.fromRGB(255, 176, 72), Color3.fromRGB(255, 82, 82), Color3.fromRGB(150, 150, 168), Color3.fromRGB(110, 150, 255)
-local BG = Color3.fromRGB(14, 13, 22)
+local GREEN, AMBER, RED, GREY, BLUE = Color3.fromRGB(39, 174, 96), Color3.fromRGB(243, 156, 18), Color3.fromRGB(231, 76, 60), Color3.fromRGB(150, 158, 168), Color3.fromRGB(52, 152, 219)
+local BG = Color3.fromRGB(8, 11, 15)
 
 local function guiParent()
 	local ok, h = pcall(function() return gethui and gethui() end)
@@ -152,7 +152,7 @@ end
 
 local function newTag()
 	local f = mk("CanvasGroup", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = BG,
-		BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false, GroupTransparency = 1 }, gui)
+		BackgroundTransparency = 0.4, BorderSizePixel = 0, Visible = false, GroupTransparency = 1 }, gui)
 	mk("UICorner", { CornerRadius = UDim.new(0, 12) }, f)
 	local st = mk("UIStroke", { Thickness = 1.2, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
 	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, f)
@@ -212,11 +212,11 @@ local function step(dt)
 				t.sx = t.sx + (sx - t.sx) * k; t.sy = t.sy + (sy - t.sy) * k
 				t.a = t.a + (0 - t.a) * k
 				local d = math.floor((t.pos - origin).Magnitude)
-				if e.tt ~= t.name .. d then e.tt = t.name .. d; e.title.Text = ("%s  <font color=\"#8c8ca0\">%d st</font>"):format(t.name, d) end
+				if e.tt ~= t.name .. d then e.tt = t.name .. d; e.title.Text = ("%s  <font color=\"#a0a8b2\">%d st</font>"):format(t.name, d) end
 				local s = ("<font color=\"%s\">●</font> <font color=\"%s\">%s</font>"):format(hex(t.col), hex(t.col), t.status)
 				if e.ss ~= s then e.ss = s; e.status.Text = s; e.st.Color = t.col end
 				if Shops.Risk then
-					local r = ("Risk <font color=\"%s\"><b>%s</b></font>  <font color=\"#8c8ca0\">%d police%s</font>"):format(hex(t.rc), t.rl, t.pn,
+					local r = ("Risk <font color=\"%s\"><b>%s</b></font>  <font color=\"#a0a8b2\">%d police%s</font>"):format(hex(t.rc), t.rl, t.pn,
 						t.pn > 0 and (" · nearest " .. math.floor(t.pd) .. " st") or "")
 					if e.rs ~= r then e.rs = r; e.risk.Text = r end
 					e.risk.Visible = true

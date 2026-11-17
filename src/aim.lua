@@ -9,7 +9,7 @@ local lp = Players.LocalPlayer
 local Aim = {
 	Enabled = false, Hold = true, Part = "Head", FOV = 180, Smooth = 0.3, MaxDist = 400, WallCheck = true, Prediction = 0.06,
 	Sticky = true, WantedOnly = false, ShowFOV = true, MouseLock = false, Priority = "Crosshair", ShowLine = false,
-	FovColor = Color3.fromRGB(235, 235, 240), FovThick = 1.2, FovFilled = false, LineColor = Color3.fromRGB(255, 82, 82),
+	FovColor = Color3.fromRGB(235, 235, 240), FovThick = 1.2, FovFilled = false, LineColor = Color3.fromRGB(231, 76, 60),
 	AssistEnabled = false, AssistFOV = 140, AssistStrength = 0.16, AssistButton = "Right",
 	Trigger = false, TriggerDelay = 0.09, TriggerRange = 300, TriggerKey = nil, TriggerHold = false,
 	Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
@@ -149,7 +149,7 @@ local function step(dt)
 		circle.BackgroundTransparency = Aim.FovFilled and 0.9 or 1
 		circle.BackgroundColor3 = Aim.FovColor
 		circleStroke.Thickness = Aim.FovThick
-		circleStroke.Color = Aim.Active and Color3.fromRGB(255, 82, 82) or Aim.FovColor
+		circleStroke.Color = Aim.Active and Color3.fromRGB(243, 156, 18) or Aim.FovColor
 		circleStroke.Transparency = Aim.Active and 0.1 or 0.5
 	end
 	-- mouse lock: while aiming the cursor sits in the screen centre (like shift lock); let go again afterwards
