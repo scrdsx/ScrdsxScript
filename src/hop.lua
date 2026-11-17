@@ -57,8 +57,7 @@ local function findServer(bad)
 			end
 		end
 		if not data then
-			if type(writefile) == "function" then pcall(writefile, "scrdsx_hop_log.txt", table.concat(errs, "
-")) end
+			if type(writefile) == "function" then pcall(writefile, "scrdsx_hop_log.txt", table.concat(errs, " | ")) end
 			return nil, "server list failed: " .. table.concat(errs, " | "):sub(1, 160)
 		end
 		for _, s in ipairs(data.data) do
