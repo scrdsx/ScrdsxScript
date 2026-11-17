@@ -6,8 +6,8 @@ local lp = Players.LocalPlayer
 local out = {}
 local function log(s) out[#out + 1] = tostring(s) end
 local function save()
-	if type(writefile) ~= "function" then print(table.concat(out, "
-")); return end pcall(function() writefile("scrdsx_loot_probe.txt", table.concat(out, "\n")) end) end
+	if type(writefile) ~= "function" then print(table.concat(out, "\n")); return end
+	pcall(function() writefile("scrdsx_loot_probe.txt", table.concat(out, "\n")) end) end
 
 local ok, err = pcall(function()
 log("-- executor functions --")
@@ -65,7 +65,6 @@ log("\nscripts matched: " .. found .. " of " .. #roots)
 
 
 end)
-if not ok then log("
-PROBE ERROR: " .. tostring(err)); warn("[loot probe] error: " .. tostring(err)) end
+if not ok then log("\nPROBE ERROR: " .. tostring(err)); warn("[loot probe] error: " .. tostring(err)) end
 save()
 print("[loot probe] finished, saved scrdsx_loot_probe.txt (writefile exists: " .. tostring(type(writefile) == "function") .. ")")
