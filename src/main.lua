@@ -340,6 +340,10 @@ local lLoot = mLoot:Label({ Name = "Status", Value = Loot.Info })
 local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items in reach)", Default = Enum.KeyCode.Y })
 mLoot:Label({ Name = "How it works", Value = "everything in reach, all at once" })
 mLoot:Toggle({ Name = "Auto loot (pick up whatever is in reach)", Default = false, Callback = function(v) Loot.Auto = v end })
+local useName = "bomb"
+mLoot:TextBox({ Name = "Use-all item name (part of the name)", Placeholder = "bomb", Default = "bomb", NoSave = false, Callback = function(t) useName = t or "" end })
+local useKey = mLoot:Keybind({ Name = "Use-all key (every matching item at once)", Default = Enum.KeyCode.U })
+mLoot:Button({ Name = "Use all now", NoSave = true, Callback = function() Loot.UseAll(useName) end })
 Loot.Notify = function(m) win:Notify(m, 2.5) end
 Loot.Changed = function() lLoot:Set(Loot.Info) end
 safe("loot", Loot.Start)
@@ -688,6 +692,7 @@ end))
 -- quick loot key: first press collects everything in reach, pressing it again while collecting stops it
 table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 	if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or lootKey:IsListening() or not mLoot:Get() then return end
+	if useKey:Get() == i.KeyCode and not useKey:IsListening() then Loot.UseAll(useName); return end
 	if lootKey:Get() ~= i.KeyCode then return end
 	if Loot.Busy then Loot.Stop(); win:Notify("Quick loot stopped"); return end
 	Loot.Run(false)

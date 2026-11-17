@@ -306,9 +306,21 @@ local function hoverInfo(e, hum, role, col, d, wanted)
 		if e.carFrac then
 			lines[#lines + 1] = ("%s  <b>%d%%</b>"):format(e.carReal and "Car health" or "Car body (estimate)", math.floor(e.carFrac * 100 + .5))
 		end
+		if car then
+			local ft = tostring(car:GetAttribute("flatTires") or "")
+			lines[#lines + 1] = ft ~= "" and ("Flat tyres  <b><font color=\"#ff5252\">%s</font></b>"):format(ft) or "Flat tyres  <b>none</b>"
+			local fuel = tonumber(car:GetAttribute("currentFuel"))
+			if fuel then lines[#lines + 1] = ("Fuel  <b>%d</b>"):format(math.floor(fuel)) end
+			lines[#lines + 1] = ("Armor level  <b>%s</b>"):format(tostring(car:GetAttribute("armorLevel") or "?"))
+		end
 	end
 	if wanted then
 		local s = e.stars and ("  " .. starText(e.stars)) or ""
+		local since = tonumber(e.plr.Character and e.plr.Character:FindFirstChild("HumanoidRootPart") and e.plr.Character.HumanoidRootPart:GetAttribute("StartTime"))
+		if since then
+			local sec = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
+			s = s .. ("  %d:%02d"):format(math.floor(sec / 60), sec % 60)
+		end
 		lines[#lines + 1] = "<b><font color=\"#ff5252\">WANTED" .. s .. "</font></b>"
 		if e.bounty then lines[#lines + 1] = ("Bounty  <b>%d</b>"):format(math.floor(e.bounty)) end
 	end
@@ -444,7 +456,12 @@ local function update(dt)
 						local tag = TAG[role] and ("  <font color=\"%s\">%s</font>"):format(hex(col), TAG[role]) or ""
 						local wt = ""
 						if wanted and ESP.Wanted then
-							wt = (ESP.Stars and e.stars) and ("  <font color=\"#ff5252\">%s</font>"):format(starText(e.stars)) or "  <font color=\"#ff5252\">WANTED</font>"
+							local since = ESP.Stars and tonumber(hrp:GetAttribute("StartTime"))
+							if e.stars then wt = ("  <font color=\"#ff5252\">%s</font>"):format(starText(e.stars))
+							elseif since then
+								local s = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
+								wt = ("  <font color=\"#ff5252\">WANTED %d:%02d</font>"):format(math.floor(s / 60), s % 60)
+							else wt = "  <font color=\"#ff5252\">WANTED</font>" end
 						end
 						local txt = plr.DisplayName .. tag .. wt
 						if e.nameTxt ~= txt then e.nameTxt = txt; e.name.Text = txt end
@@ -461,6 +478,9 @@ local function update(dt)
 							local f = e.carFrac
 							local cc = Color3.fromRGB(235, 70, 70):Lerp(Color3.fromRGB(80, 220, 120), f)
 							dtxt = dtxt .. ("  <font color=\"%s\">CAR %d%%</font>"):format(hex(cc), math.floor(f * 100 + .5))
+						end
+						if ESP.CarInfo and e.car and tostring(e.car:GetAttribute("flatTires") or "") ~= "" then
+							dtxt = dtxt .. "  <font color=\"#ff5252\">FLAT</font>"
 						end
 						if e.distTxt ~= dtxt then e.distTxt = dtxt; e.dist.Text = dtxt end
 						e.dist.TextTransparency = tr; e.dist.BackgroundTransparency = 0.3 + tr * 0.7
