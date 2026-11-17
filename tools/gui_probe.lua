@@ -1,6 +1,6 @@
 -- GUI probe: records how the game's own interface looks (colours, fonts, corners, strokes, sizes) and how its notifications look, so the script can match it.
--- Run it, then for 45 seconds DO THINGS in the game that make notifications / popups appear (pick up money, open the phone / map, get a message,
--- buy something, change team, press keys). Output: scrdsx_gui_probe.txt in the executor workspace. Wait for the "finished" line.
+-- Snapshot only: nothing to do in the game. (Optional: set getgenv().GuiProbeRecord = 45 before running to also record live popups for that many seconds.)
+-- Output: scrdsx_gui_probe.txt in the executor workspace. Wait for the "finished" line.
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
@@ -97,9 +97,35 @@ local ok, err = pcall(function()
 	end
 	save()
 
+	-- 3) notification / popup templates stored in the game (not on screen right now)
+	log("
+== TEMPLATES (ReplicatedStorage / StarterGui / hidden) with notif / toast / popup / alert / message / hint in the name ==")
+	local WANTN = { "notif", "toast", "popup", "alert", "message", "hint", "announce", "banner", "prompt", "template" }
+	local function named(inst)
+		local l = inst.Name:lower()
+		for _, w in ipairs(WANTN) do if l:find(w, 1, true) then return true end end
+		return false
+	end
+	local tcount = 0
+	for _, root in ipairs({ game:GetService("ReplicatedStorage"), game:GetService("StarterGui"), pg }) do
+		for i, d in ipairs(root:GetDescendants()) do
+			if tcount < 25 and (d:IsA("GuiObject") or d:IsA("LayerCollector")) and named(d) and not ours(d) and #d:GetDescendants() >= 2 then
+				tcount = tcount + 1
+				log(("
+[template] %s"):format(d:GetFullName()))
+				log(describe(d))
+				dump(d, 1, 4, { n = 45 })
+			end
+			if i % 500 == 0 then task.wait() end
+		end
+	end
+	save()
+
+	local RECORD = tonumber((getgenv and getgenv().GuiProbeRecord) or 0) or 0
+	if RECORD > 0 then
 	-- 3) record what appears while the player does things (notifications, popups, toasts)
 	log("\n== NEW ELEMENTS DURING 45 s (notifications / popups) ==")
-	print("[gui probe] recording for 45 s: make notifications and popups appear now (collect money, open the phone, change team, buy things)")
+	print("[gui probe] recording for " .. RECORD .. " s: make notifications appear now")
 	local t0, seen, rec = os.clock(), 0, 0
 	local conn
 	conn = pg.DescendantAdded:Connect(function(d)
@@ -120,11 +146,12 @@ local ok, err = pcall(function()
 			end)
 		end
 	end)
-	task.wait(45)
+	task.wait(RECORD)
 	conn:Disconnect()
 	log("\nrecorded " .. rec .. " new elements")
 	save()
 
+	end
 	-- 4) the scripts behind notifications / hud
 	log("\n== INTERFACE SCRIPTS (names with notif / toast / popup / message / hud / alert) ==")
 	local roots = {}
