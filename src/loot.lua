@@ -35,6 +35,64 @@ end
 -- FireServer; the first time you pick something up by hand (hold E on money / an item), the real remote and action ids are learned from that call.
 local hooked
 local seenSig = {}
+local renamed = false     -- the hard-coded remote did not exist: the game changed it, so the ids may have changed too
+
+-- AUTO-DISCOVERY: the game's own pickup code calls ClientEvents["<guid>"](instance, id, "start" / "stop" / "cancel"). Scan the running Lua functions for the
+-- guid that sits together with those three words; that is the pickup remote, whatever the game renamed it to.
+local lastDiscover = -99
+local function discover()
+	if os.clock() - lastDiscover < 20 then return false end
+	lastDiscover = os.clock()
+	if type(getgc) ~= "function" or not (debug and type(debug.getconstants) == "function") then log("auto-discovery unavailable (needs getgc + debug.getconstants)"); return false end
+	local ok, res = pcall(function()
+		local seen = {}
+		local gc = getgc(false)
+		for i = 1, #gc do
+			local f = gc[i]
+			if type(f) == "function" then
+				local okc, cs = pcall(debug.getconstants, f)
+				if okc and type(cs) == "table" then
+					local guids, w = {}, {}
+					for _, c in pairs(cs) do
+						if type(c) == "string" then
+							if #c == 36 and c:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") then guids[#guids + 1] = c
+							elseif c == "start" or c == "stop" or c == "cancel" then w[c] = true end
+						end
+					end
+					for _, g in ipairs(guids) do
+						local t = seen[g]; if not t then t = {}; seen[g] = t end
+						for k in pairs(w) do t[k] = true end
+					end
+				end
+			end
+			if i % 4000 == 0 then task.wait() end
+		end
+		for g, t in pairs(seen) do
+			if t.start and t.stop and t.cancel then
+				for _, d in ipairs(RS:GetDescendants()) do
+					if d.Name == g and d:IsA("RemoteEvent") then return g end
+				end
+			end
+		end
+	end)
+	if ok and res then
+		if res ~= INTERACT then log("DISCOVERED the pickup remote: " .. res); INTERACT = res; cache = nil end
+		return true
+	end
+	log("auto-discovery found nothing" .. (ok and "" or (": " .. tostring(res))))
+	return false
+end
+
+-- hold E for a few seconds so the game's own pickup fires once; the learner below reads the remote + action id from that call
+local function assistHold()
+	local ok = pcall(function()
+		local vim = game:GetService("VirtualInputManager")
+		vim:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+		task.wait(3)
+		vim:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+	end)
+	return ok
+end
 local function describe(v)
 	if typeof(v) == "Instance" then
 		local tags = {}
@@ -150,6 +208,21 @@ function Loot.Run(quiet)
 	if not h then return false end
 	local list, near = candidates(h)
 	if not interact() then
+		renamed = true
+		if discover() and interact() then
+			log("continuing with the discovered remote")
+		end
+	end
+	if renamed and not Loot.Learned and #list > 0 and hooked and not Loot.Assisting then
+		-- the ids may be stale after a game update: let the game fire one real pickup so they are learned
+		Loot.Assisting = true
+		notify("Quick loot: learning the game's new pickup ids (holding E for 3 s, stay next to the loot)")
+		assistHold()
+		Loot.Assisting = false
+		list, near = candidates(h)
+		log(Loot.Learned and "ids learned from the assisted pickup" or "assist did not produce a pickup call")
+	end
+	if not interact() then
 		if not quiet then
 			log("pickup remote unknown: waiting for a manual pickup to learn it")
 			notify(hooked and "Quick loot: the game changed its pickup remote. Pick up ONE item by hand (hold E) and I learn the new one automatically."
@@ -249,7 +322,11 @@ function Loot.Start()
 	if running then return end
 	running = true
 	installHook()
-	if not interact() then log("no remote named " .. INTERACT .. " exists any more; waiting to learn the new one") end
+	if not interact() then
+		renamed = true
+		log("no remote named " .. INTERACT .. " exists any more; trying auto-discovery")
+		task.spawn(function() if discover() then interact() end end)
+	end
 	task.spawn(function()
 		while running do
 			task.wait(0.6)
