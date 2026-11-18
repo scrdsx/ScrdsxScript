@@ -6,8 +6,8 @@ local RS = game:GetService("ReplicatedStorage")
 local CS = game:GetService("CollectionService")
 local lp = Players.LocalPlayer
 
-local INTERACT = "a9075e99-aafd-4023-bd04-5b252518972d" -- (target, actionId, "start" | "stop" | "cancel"); ids read from the game code 2026-11-17
-local ACT = { money = "mbm", item = "zl4", drop = "43P", itemdrop = "o0e" }
+local INTERACT = "b086536b-ee12-4a6c-94c2-0e8040e360ff" -- (target, actionId, "start" | "stop" | "cancel"); read from the game code 2026-11-18 (auto-discovery finds it again after the next rename)
+local ACT = { money = "mbm", item = "zl4", drop = "xY3", itemdrop = "Azn" } -- drop ids read 2026-11-18; money / item still the old ones until learned
 local REACH = 9.5
 
 local Loot = { Auto = false, Busy = false, Cancel = false, Info = "ready", Count = 0, Notify = nil, Changed = nil }
