@@ -1,7 +1,6 @@
--- Clean black loading screen: letter-by-letter title, thin progress line, real readiness checks.
+-- Loading screen: short and quiet. Flat dark backdrop, logo pops in, title, one thin progress bar driven by real readiness checks (about 1.5 s when the game is ready).
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
-local RS = game:GetService("ReplicatedStorage")
 local Logo = __import("logo")
 
 local Loading = {}
@@ -30,6 +29,8 @@ local function waitFor(cond, timeout)
 	return true
 end
 
+local BG, TEXT, SUB, TRACK = Color3.fromRGB(16, 16, 18), Color3.fromRGB(240, 240, 245), Color3.fromRGB(135, 135, 146), Color3.fromRGB(40, 40, 46)
+
 function Loading.run(title, subtitle, extraSteps)
 	local gui = Instance.new("ScreenGui")
 	gui.Name = tostring(math.random(1e6, 9e6)); gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
@@ -37,90 +38,68 @@ function Loading.run(title, subtitle, extraSteps)
 	gui.Parent = guiParent()
 
 	local bg = Instance.new("Frame")
-	bg.Size = UDim2.fromScale(1, 1); bg.BackgroundColor3 = Color3.fromRGB(5, 5, 5); bg.BackgroundTransparency = 1
-	bg.BorderSizePixel = 0; bg.Parent = gui
-	tween(bg, .5, { BackgroundTransparency = 0 })
+	bg.Size = UDim2.fromScale(1, 1); bg.BackgroundColor3 = BG; bg.BackgroundTransparency = 1; bg.BorderSizePixel = 0; bg.Parent = gui
+	tween(bg, .25, { BackgroundTransparency = 0 })
 
-	-- logo above the title
-	local logo = Logo.Make(bg, 60, UDim2.new(.5, -30, .5, -126))
-	if logo:IsA("ImageLabel") then logo.ImageTransparency = 1; tween(logo, .7, { ImageTransparency = 0 })
-	else logo.BackgroundTransparency = 1; tween(logo, .7, { BackgroundTransparency = 0 }) end
+	-- everything sits in one centred column so it scales as a block
+	local col = Instance.new("Frame")
+	col.AnchorPoint = Vector2.new(.5, .5); col.Position = UDim2.fromScale(.5, .5); col.Size = UDim2.fromOffset(300, 190); col.BackgroundTransparency = 1; col.Parent = bg
+	local sc = Instance.new("UIScale"); sc.Scale = .9; sc.Parent = col
+	tween(sc, .5, { Scale = 1 }, Enum.EasingStyle.Back)
 
-	-- title: one label per letter so they can stagger in
-	local row = Instance.new("Frame")
-	row.AnchorPoint = Vector2.new(.5, .5); row.Position = UDim2.new(.5, 0, .5, -22); row.Size = UDim2.fromOffset(0, 40)
-	row.AutomaticSize = Enum.AutomaticSize.X; row.BackgroundTransparency = 1; row.Parent = bg
-	local lay = Instance.new("UIListLayout")
-	lay.FillDirection = Enum.FillDirection.Horizontal; lay.Padding = UDim.new(0, 3)
-	lay.HorizontalAlignment = Enum.HorizontalAlignment.Center; lay.Parent = row
+	local logo = Logo.Make(col, 56, UDim2.new(.5, -28, 0, 0))
+	if logo:IsA("ImageLabel") then logo.ImageTransparency = 1; tween(logo, .35, { ImageTransparency = 0 })
+	else logo.BackgroundTransparency = 1; tween(logo, .35, { BackgroundTransparency = 0 }) end
 
-	local letters = {}
-	for i = 1, #title do
-		local ch = title:sub(i, i)
-		local l = Instance.new("TextLabel")
-		l.BackgroundTransparency = 1; l.Text = ch; l.Font = Enum.Font.BuilderSansBold; l.TextSize = 32
-		l.TextColor3 = Color3.fromRGB(240, 240, 240); l.TextTransparency = 1; l.LayoutOrder = i
-		l.Size = UDim2.fromOffset(ch == " " and 12 or 0, 40); l.AutomaticSize = ch == " " and Enum.AutomaticSize.None or Enum.AutomaticSize.X
-		l.Parent = row
-		letters[i] = l
-	end
-	for i, l in ipairs(letters) do
-		task.delay(.35 + i * .045, function()
-			tween(l, .5, { TextTransparency = 0 })
-		end)
-	end
+	local ttl = Instance.new("TextLabel")
+	ttl.BackgroundTransparency = 1; ttl.AnchorPoint = Vector2.new(.5, 0); ttl.Position = UDim2.new(.5, 0, 0, 74); ttl.Size = UDim2.fromOffset(300, 34)
+	ttl.Text = title; ttl.Font = Enum.Font.BuilderSansBold; ttl.TextSize = 28; ttl.TextColor3 = TEXT; ttl.TextTransparency = 1; ttl.Parent = col
+	tween(ttl, .4, { TextTransparency = 0 })
 
 	local sub = Instance.new("TextLabel")
-	sub.AnchorPoint = Vector2.new(.5, .5); sub.Position = UDim2.new(.5, 0, .5, 14); sub.Size = UDim2.fromOffset(300, 16)
-	sub.BackgroundTransparency = 1; sub.Text = subtitle or ""; sub.Font = Enum.Font.BuilderSansMedium; sub.TextSize = 12
-	sub.TextColor3 = Color3.fromRGB(110, 110, 110); sub.TextTransparency = 1; sub.Parent = bg
-	task.delay(1.1, function() tween(sub, .6, { TextTransparency = 0 }) end)
+	sub.BackgroundTransparency = 1; sub.AnchorPoint = Vector2.new(.5, 0); sub.Position = UDim2.new(.5, 0, 0, 108); sub.Size = UDim2.fromOffset(300, 16)
+	sub.Text = subtitle or ""; sub.Font = Enum.Font.BuilderSansMedium; sub.TextSize = 12; sub.TextColor3 = SUB; sub.TextTransparency = 1; sub.Parent = col
+	tween(sub, .5, { TextTransparency = 0 })
 
-	-- progress line
 	local track = Instance.new("Frame")
-	track.AnchorPoint = Vector2.new(.5, .5); track.Position = UDim2.new(.5, 0, .5, 62); track.Size = UDim2.fromOffset(0, 2)
-	track.BackgroundColor3 = Color3.fromRGB(28, 28, 28); track.BorderSizePixel = 0; track.Parent = bg
+	track.AnchorPoint = Vector2.new(.5, 0); track.Position = UDim2.new(.5, 0, 0, 142); track.Size = UDim2.fromOffset(220, 3)
+	track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Parent = col
+	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 	local fill = Instance.new("Frame")
-	fill.Size = UDim2.fromScale(0, 1); fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255); fill.BorderSizePixel = 0; fill.Parent = track
-	do
-		local cr = Instance.new("UICorner"); cr.CornerRadius = UDim.new(1, 0); cr.Parent = track
-		local cr2 = Instance.new("UICorner"); cr2.CornerRadius = UDim.new(1, 0); cr2.Parent = fill
-		local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(Color3.fromRGB(64, 132, 255), Color3.fromRGB(150, 195, 255)); g.Parent = fill
-	end
-	task.delay(.9, function() tween(track, .6, { Size = UDim2.fromOffset(240, 2) }) end)
+	fill.Size = UDim2.fromScale(0, 1); fill.BackgroundColor3 = TEXT; fill.BorderSizePixel = 0; fill.Parent = track
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
 	local status = Instance.new("TextLabel")
-	status.AnchorPoint = Vector2.new(.5, .5); status.Position = UDim2.new(.5, 0, .5, 84); status.Size = UDim2.fromOffset(300, 14)
-	status.BackgroundTransparency = 1; status.Text = ""; status.Font = Enum.Font.BuilderSans; status.TextSize = 11
-	status.TextColor3 = Color3.fromRGB(85, 85, 85); status.Parent = bg
+	status.BackgroundTransparency = 1; status.AnchorPoint = Vector2.new(.5, 0); status.Position = UDim2.new(.5, 0, 0, 156); status.Size = UDim2.fromOffset(300, 14)
+	status.Text = ""; status.Font = Enum.Font.BuilderSansMedium; status.TextSize = 11; status.TextColor3 = SUB; status.Parent = col
 
-	task.wait(1.3) -- let the intro play
+	task.wait(.35) -- just enough for the pop-in
 
 	local lp = Players.LocalPlayer
 	local steps = {
-		{ "Waiting for game", function() return game:IsLoaded() end, 15 },
+		{ "Waiting for the game", function() return game:IsLoaded() end, 15 },
 		{ "Finding your character", function() return lp.Character ~= nil end, 10 },
 		{ "Loading interface", function() return lp:FindFirstChild("PlayerGui") ~= nil end, 10 },
 	}
 	for _, s in ipairs(extraSteps or {}) do table.insert(steps, s) end -- game-specific readiness checks: { "Label", cond, timeout }
 	for i, s in ipairs(steps) do
-		status.Text = ("%s...  %d%%"):format(s[1], math.floor((i - 1) / (#steps + 1) * 100))
+		status.Text = s[1]
 		waitFor(s[2], s[3])
-		tween(fill, .35, { Size = UDim2.fromScale(i / (#steps + 1), 1) })
-		task.wait(.25)
+		tween(fill, .18, { Size = UDim2.fromScale(i / (#steps + 1), 1) })
+		task.wait(.06)
 	end
-	status.Text = "Ready  100%"
-	tween(fill, .4, { Size = UDim2.fromScale(1, 1) })
-	task.wait(.6)
+	status.Text = "Ready"
+	tween(fill, .2, { Size = UDim2.fromScale(1, 1) })
+	task.wait(.3)
 
-	-- fade out everything
-	for _, l in ipairs(letters) do tween(l, .4, { TextTransparency = 1 }) end
-	if logo:IsA("ImageLabel") then tween(logo, .4, { ImageTransparency = 1 }) else tween(logo, .4, { BackgroundTransparency = 1 }) end
-	tween(sub, .4, { TextTransparency = 1 }); tween(status, .4, { TextTransparency = 1 })
-	tween(fill, .4, { BackgroundTransparency = 1 }); tween(track, .4, { BackgroundTransparency = 1 })
-	task.wait(.35)
-	tween(bg, .5, { BackgroundTransparency = 1 })
-	task.delay(.55, function() gui:Destroy() end)
+	-- one clean fade out
+	tween(sc, .35, { Scale = 1.04 })
+	for _, o in ipairs({ ttl, sub, status }) do tween(o, .3, { TextTransparency = 1 }) end
+	if logo:IsA("ImageLabel") then tween(logo, .3, { ImageTransparency = 1 }) else tween(logo, .3, { BackgroundTransparency = 1 }) end
+	tween(fill, .3, { BackgroundTransparency = 1 }); tween(track, .3, { BackgroundTransparency = 1 })
+	task.wait(.2)
+	tween(bg, .3, { BackgroundTransparency = 1 })
+	task.delay(.35, function() gui:Destroy() end)
 end
 
 return Loading
