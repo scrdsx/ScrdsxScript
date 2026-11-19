@@ -12,20 +12,20 @@ local Sfx = __import("sfx")
 
 local function pickFont(n, fb) local ok, f = pcall(function() return Enum.Font[n] end); return (ok and f) or fb end
 local T = {
-	bg = Color3.fromRGB(11, 13, 19),
-	panel = Color3.fromRGB(16, 19, 27),
-	elem = Color3.fromRGB(22, 26, 36),
-	hover = Color3.fromRGB(32, 37, 50),
-	stroke = Color3.fromRGB(44, 50, 66),
-	text = Color3.fromRGB(238, 241, 248),
-	sub = Color3.fromRGB(138, 148, 168),
-	accent = Color3.fromRGB(243, 156, 18),
-	accentDim = Color3.fromRGB(72, 50, 14),
-	off = Color3.fromRGB(54, 60, 76),
-	chip = Color3.fromRGB(252, 196, 90),
-	gradA = Color3.fromRGB(230, 126, 34),
-	gradB = Color3.fromRGB(246, 190, 70),
-	strokeOn = Color3.fromRGB(170, 112, 22),
+	bg = Color3.fromRGB(10, 10, 21),
+	panel = Color3.fromRGB(17, 16, 33),
+	elem = Color3.fromRGB(25, 24, 46),
+	hover = Color3.fromRGB(38, 36, 68),
+	stroke = Color3.fromRGB(56, 54, 96),
+	text = Color3.fromRGB(242, 242, 252),
+	sub = Color3.fromRGB(152, 152, 194),
+	accent = Color3.fromRGB(139, 92, 246),
+	accentDim = Color3.fromRGB(46, 34, 94),
+	off = Color3.fromRGB(62, 60, 100),
+	chip = Color3.fromRGB(200, 185, 255),
+	gradA = Color3.fromRGB(124, 58, 237),
+	gradB = Color3.fromRGB(56, 189, 248),
+	strokeOn = Color3.fromRGB(112, 84, 210),
 	font = pickFont("GothamMedium", Enum.Font.SourceSans),
 	bold = pickFont("GothamBold", Enum.Font.SourceSansBold),
 	semi = pickFont("GothamSemibold", Enum.Font.SourceSansBold),
@@ -70,6 +70,12 @@ local function bind(win, inst, prop, f)
 	return inst
 end
 
+local function gradBind(win, parent, rotation)
+	local g = new("UIGradient", { Rotation = rotation or 0, Parent = parent })
+	bind(win, g, "Color", function() return ColorSequence.new(T.gradA, T.gradB) end)
+	return g
+end
+
 local function mkStroke(win, key, transparency, thickness)
 	local s = new("UIStroke", { Thickness = thickness or 1, Transparency = transparency or 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
 	bind(win, s, "Color", key or "stroke")
@@ -98,13 +104,10 @@ function UI.new(opts)
 	self.gui = gui
 
 	local holder = new("Frame", { Name = "Root", Size = UDim2.fromOffset(1060, 660), AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), BackgroundTransparency = 1, BorderSizePixel = 0, Parent = gui })
-	new("ImageLabel", {
-		Name = "Shadow", AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(.5, 0, .5, 12), Size = UDim2.new(1, 90, 1, 90), BackgroundTransparency = 1,
-		Image = "rbxassetid://1316045217", ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = .4, ScaleType = Enum.ScaleType.Slice, SliceCenter = Rect.new(10, 10, 118, 118), ZIndex = 0, Parent = holder,
-	})
 	local root = new("Frame", { Name = "Window", Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 1, Parent = holder }, { corner(RADIUS) })
 	bind(self, root, "BackgroundColor3", "bg"); root.BackgroundTransparency = 0.04
-	local rstroke = mkStroke(self, "stroke", 0.35); rstroke.Parent = root
+	local rstroke = new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1.5, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = root })
+	gradBind(self, rstroke, 45)
 	new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(176, 180, 192)), Rotation = 125, Parent = root })
 	self.root = holder
 	self.window = root
@@ -150,11 +153,15 @@ function UI.new(opts)
 	bind(self, av, "BackgroundColor3", "hover")
 	task.spawn(function() pcall(function() av.Image = Players:GetUserThumbnailAsync(lp.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100) end) end)
 	local pn = text(self, lp.DisplayName, 13, "text", T.semi); pn.Position = UDim2.fromOffset(48, 7); pn.Size = UDim2.new(1, -54, 0, 18); pn.TextWrapped = false; pn.TextTruncate = Enum.TextTruncate.AtEnd; pn.Parent = me
-	local ph = text(self, "Right Shift hides this", 10, "sub"); ph.Position = UDim2.fromOffset(48, 25); ph.Size = UDim2.new(1, -54, 0, 14); ph.TextWrapped = false; ph.Parent = me
+	local ph = text(self, "Right Shift: hide", 10, "sub"); ph.Position = UDim2.fromOffset(48, 25); ph.Size = UDim2.new(1, -54, 0, 14); ph.TextWrapped = false; ph.Parent = me
 
 	-- TOP BAR ---------------------------------------------------------------------------------------------------------
 	local top = new("Frame", { Position = UDim2.fromOffset(RAIL_W, 0), Size = UDim2.new(1, -RAIL_W, 0, TOP_H), BackgroundTransparency = 1, Parent = root })
-	self.pageTitle = text(self, "", 24, "text", T.bold); self.pageTitle.Position = UDim2.fromOffset(18, 17); self.pageTitle.Size = UDim2.new(.5, 0, 0, 30); self.pageTitle.TextWrapped = false; self.pageTitle.Parent = top
+	self.pageTitle = text(self, "", 26, "text", T.bold); self.pageTitle.TextColor3 = Color3.new(1, 1, 1); self.pageTitle.Position = UDim2.fromOffset(18, 17); self.pageTitle.Size = UDim2.new(.5, 0, 0, 30); self.pageTitle.TextWrapped = false; self.pageTitle.Parent = top
+	do
+		local tg = new("UIGradient", { Rotation = 0, Parent = self.pageTitle })
+		bind(self, tg, "Color", function() return ColorSequence.new(Color3.new(1, 1, 1), T.chip) end)
+	end
 	self.pageSub = text(self, "", 12, "sub"); self.pageSub.Position = UDim2.fromOffset(19, 49); self.pageSub.Size = UDim2.new(.6, 0, 0, 16); self.pageSub.TextWrapped = false; self.pageSub.Parent = top
 
 	local close = new("TextButton", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -18, 0, 20), Size = UDim2.fromOffset(38, 38), BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = top }, { corner(19) })
@@ -168,7 +175,7 @@ function UI.new(opts)
 	bind(self, sb, "BackgroundColor3", "elem"); sb.BackgroundTransparency = .2
 	local sbStroke = mkStroke(self, "stroke", .5); sbStroke.Parent = sb
 	local box = new("TextBox", {
-		BackgroundTransparency = 1, Size = UDim2.new(1, -56, 1, 0), Position = UDim2.fromOffset(18, 0), Text = "", PlaceholderText = "Search modules and settings", ClearTextOnFocus = false,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -56, 1, 0), Position = UDim2.fromOffset(18, 0), Text = "", PlaceholderText = "Search", ClearTextOnFocus = false,
 		Font = T.font, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = sb,
 	})
 	bind(self, box, "TextColor3", "text"); bind(self, box, "PlaceholderColor3", "sub")
@@ -280,7 +287,7 @@ function UI:Tab(name, opts)
 	local baseX = ico and 46 or 18
 	local txt = text(self, name, 13.5, "sub"); txt.Position = UDim2.fromOffset(baseX, 0); txt.Size = UDim2.new(1, -baseX - 8, 1, 0); txt.TextWrapped = false; txt.Parent = btn
 	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 0, .5, 0), Size = UDim2.fromOffset(3, 0), BorderSizePixel = 0, Parent = btn }, { corner(2) })
-	bind(self, bar, "BackgroundColor3", "accent")
+	bar.BackgroundColor3 = Color3.new(1, 1, 1); gradBind(self, bar, 90)
 
 	local page = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = idx, Visible = false, Parent = self.content })
 	new("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = page })
@@ -320,7 +327,7 @@ function UI:Select(tab)
 		if not on then t.page.Visible = false end
 	end
 	self.pageTitle.Text = tab.name
-	self.pageSub.Text = tab.modCount > 0 and (tab.modCount .. (tab.modCount == 1 and " module" or " modules") .. "  -  click a card to switch it on, the gear opens its settings") or ""
+	self.pageSub.Text = tab.modCount > 0 and (tab.modCount .. (tab.modCount == 1 and " module" or " modules")) or ""
 	tab.page.Visible = true
 	local pad_ = tab.page:FindFirstChild("SlidePad")
 	if pad_ then pad_.PaddingTop = UDim.new(0, 16); tween(pad_, .4, { PaddingTop = UDim.new(0, 0) }, Enum.EasingStyle.Quint) end
@@ -627,14 +634,16 @@ function M:Toggle(o)
 	local sw, knob, knobX, kd = makeSwitch(f, Vector2.new(1, .5), UDim2.new(1, -14, .5, 0), 40, 22)
 	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 0, .5, 0), Size = UDim2.fromOffset(3, 0), BorderSizePixel = 0, Parent = f }, { corner(2) })
 	bind(win, bar, "BackgroundColor3", "accent")
-	local function swColor() return state and T.accent or T.off end
+	local function swColor() return state and Color3.new(1, 1, 1) or T.off end
 	bind(win, sw, "BackgroundColor3", swColor)
+	local sgrad = gradBind(win, sw, 0); sgrad.Enabled = false
 	bind(win, rowStroke, "Color", function() return state and T.strokeOn or T.stroke end)
 	local obj = {}
 	local function apply(v, silent)
 		state = v
 		tween(bar, .25, { Size = UDim2.fromOffset(3, v and 22 or 0) }, Enum.EasingStyle.Back)
 		tween(rowStroke, .22, { Color = v and T.strokeOn or T.stroke, Transparency = v and .35 or .75 })
+		sgrad.Enabled = v
 		tween(sw, .22, { BackgroundColor3 = swColor() })
 		tween(knob, .25, { Position = UDim2.new(0, v and knobX or 3, .5, 0) }, Enum.EasingStyle.Back)
 		if not silent then
@@ -679,21 +688,27 @@ function M:Module(o)
 	end
 	local nameL = text(win, o.Name, 14, "text", T.semi); nameL.Position = UDim2.fromOffset(62, 13); nameL.Size = UDim2.new(1, -62 - 46, 0, 40); nameL.TextYAlignment = Enum.TextYAlignment.Top; nameL.Parent = card
 	local statL = text(win, "OFF", 12, "sub"); statL.Position = UDim2.fromOffset(16, 78); statL.Size = UDim2.new(1, -90, 0, 18); statL.TextWrapped = false; statL.Parent = card
-	local glow = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(0, 0, 0, 3), BorderSizePixel = 0, Parent = card })
-	bind(win, glow, "BackgroundColor3", "accent")
+	local glow = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(0, 0, 0, 4), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = card })
+	gradBind(win, glow, 0)
+	-- soft colour wash across the whole card while it is on
+	local wash = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1, Parent = card })
+	gradBind(win, wash, 35)
 	local sw, knob, knobX, kd = makeSwitch(card, Vector2.new(1, 1), UDim2.new(1, -14, 1, -14), 42, 24)
 
 	local state, count, active = false, 0, false
 	local obj = {}
-	local function swColor() return state and T.accent or T.off end
+	local function swColor() return state and Color3.new(1, 1, 1) or T.off end
 	bind(win, sw, "BackgroundColor3", swColor)
+	local sgrad = gradBind(win, sw, 0); sgrad.Enabled = false
 	bind(win, cstroke, "Color", function() return (state or active) and T.strokeOn or T.stroke end)
 	bind(win, card, "BackgroundColor3", function() return state and T.accentDim or T.elem end)
 	local function paint()
 		local on = state
 		tween(card, .22, { BackgroundColor3 = on and T.accentDim or T.elem, BackgroundTransparency = on and .35 or .2 })
 		tween(cstroke, .22, { Color = (on or active) and T.strokeOn or T.stroke, Transparency = (on or active) and .2 or .7 })
-		tween(glow, .35, { Size = UDim2.new(on and 1 or 0, 0, 0, 3) }, Enum.EasingStyle.Quint)
+		tween(glow, .35, { Size = UDim2.new(on and 1 or 0, 0, 0, 4) }, Enum.EasingStyle.Quint)
+		tween(wash, .3, { BackgroundTransparency = on and .82 or 1 })
+		sgrad.Enabled = on
 		tween(sw, .22, { BackgroundColor3 = swColor() })
 		tween(knob, .25, { Position = UDim2.new(0, on and knobX or 3, .5, 0) }, Enum.EasingStyle.Back)
 	end
@@ -769,10 +784,8 @@ function M:Slider(o)
 	local zone = new("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 2, Parent = f })
 	local track = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.new(1, 0, 0, 6), BorderSizePixel = 0, Parent = zone }, { corner(3) })
 	bind(win, track, "BackgroundColor3", "off")
-	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BorderSizePixel = 0, Parent = track }, { corner(3) })
-	bind(win, fill, "BackgroundColor3", "accent")
-	local grad = new("UIGradient", { Parent = fill })
-	bind(win, grad, "Color", function() return ColorSequence.new(T.gradA, T.gradB) end)
+	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = track }, { corner(3) })
+	gradBind(win, fill, 0)
 	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 2, Parent = track }, { corner(8) })
 	local ks = mkStroke(win, "accent", 0, 2); ks.Parent = knob
 	local min, max, step = o.Min, o.Max, o.Step or 1

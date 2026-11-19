@@ -626,11 +626,11 @@ local bgPick = tSet:ColorPicker({ Name = "Background colour", Default = UI.Palet
 	theme.bg = toHex(col); applyTheme(final)
 end })
 local THEMES = {
-	{ "Amber", Color3.fromRGB(243, 156, 18), UI.Palette().bg }, { "Ocean", Color3.fromRGB(52, 152, 219), Color3.fromRGB(10, 16, 26) },
+	{ "Aurora", UI.Palette().accent, UI.Palette().bg }, { "Amber", Color3.fromRGB(243, 156, 18), Color3.fromRGB(14, 13, 12) }, { "Ocean", Color3.fromRGB(52, 152, 219), Color3.fromRGB(10, 16, 26) },
 	{ "Violet", Color3.fromRGB(155, 110, 255), Color3.fromRGB(14, 12, 26) }, { "Mint", Color3.fromRGB(46, 204, 150), Color3.fromRGB(10, 20, 18) },
 	{ "Rose", Color3.fromRGB(255, 105, 160), Color3.fromRGB(22, 12, 18) }, { "Crimson", Color3.fromRGB(231, 76, 60), Color3.fromRGB(20, 11, 11) },
 }
-local themeNames, themeName = {}, "Amber"
+local themeNames, themeName = {}, "Aurora"
 for _, t in ipairs(THEMES) do themeNames[#themeNames + 1] = t[1] end
 cycle(tSet, "Theme preset", themeNames, function() return themeName end, function(v)
 	themeName = v
