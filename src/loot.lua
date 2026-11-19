@@ -270,6 +270,11 @@ function Loot.Run(quiet)
 		Loot.Count = Loot.Count + got
 		say(("last: picked up %d"):format(got))
 		if got > 0 or not quiet then notify(("Quick loot: picked up %d"):format(got)) end
+		if got == 0 and not Loot.Learned and hooked and not quiet then
+			-- the server ignored the call: the pickup ids are probably stale. One real pickup by hand lets the learner read the right ones.
+			notify("Quick loot: the game did not accept the pickup. Hold E on ONE pile by hand and I learn the new ids automatically.")
+			log("0 picked up and nothing learned yet: waiting for one manual pickup")
+		end
 	end)
 	return true
 end
