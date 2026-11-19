@@ -83,6 +83,46 @@ local function discover()
 	return false
 end
 
+-- AUTO-DISCOVERY OF THE ACTION IDS: the game builds one component object per pickup part, and each answers :getIdentifier() with the id it sends to the server.
+-- Find those objects in memory (a table with .instance = the tagged part) and ask them, so no manual pickup is needed.
+local ID_TAGS = {
+	{ "Money Collect Interactable", "money" }, { "Item Collect Interactable", "item" },
+	{ "Money Drop Interactable", "drop" }, { "Item Drop Interactable", "itemdrop" },
+}
+local lastIds = -99
+local function discoverIds()
+	if os.clock() - lastIds < 15 then return false end
+	lastIds = os.clock()
+	if type(getgc) ~= "function" then return false end
+	local found = {}
+	local ok, err = pcall(function()
+		local gc = getgc(true)
+		for i = 1, #gc do
+			local t = gc[i]
+			if type(t) == "table" then
+				local okI, inst = pcall(rawget, t, "instance")
+				if okI and typeof(inst) == "Instance" then
+					for _, tg in ipairs(ID_TAGS) do
+						if not found[tg[2]] and CS:HasTag(inst, tg[1]) then
+							local okId, id = pcall(function() return t:getIdentifier() end)
+							if okId and type(id) == "string" and #id > 0 and #id <= 8 then found[tg[2]] = id end
+						end
+					end
+				end
+			end
+			if i % 5000 == 0 then task.wait() end
+		end
+	end)
+	if not ok then log("id discovery error: " .. tostring(err)); return false end
+	local n = 0
+	for k, id in pairs(found) do
+		n = n + 1
+		if ACT[k] ~= id then log(("DISCOVERED action id for %s: %s (was %s)"):format(k, id, tostring(ACT[k]))); ACT[k] = id end
+	end
+	if n > 0 then Loot.Learned = true; changed() else log("id discovery found no pickup objects (are you near a loaded pile?)") end
+	return n > 0
+end
+
 -- hold E for a few seconds so the game's own pickup fires once; the learner below reads the remote + action id from that call
 local function assistHold()
 	local ok = pcall(function()
@@ -206,6 +246,7 @@ function Loot.Run(quiet)
 	if Loot.Busy then return false end
 	local h = root()
 	if not h then return false end
+	if not Loot.Learned then pcall(discoverIds) end
 	local list, near = candidates(h)
 	if not interact() then
 		renamed = true
@@ -270,6 +311,13 @@ function Loot.Run(quiet)
 		Loot.Count = Loot.Count + got
 		say(("last: picked up %d"):format(got))
 		if got > 0 or not quiet then notify(("Quick loot: picked up %d"):format(got)) end
+		if got == 0 and not quiet then
+			-- nothing accepted: re-read the ids from the game's own objects (works without picking anything up by hand)
+			lastIds = -99
+			task.spawn(function()
+				if discoverIds() then notify("Quick loot: refreshed the pickup ids from the game, press the key again") end
+			end)
+		end
 		if got == 0 and not Loot.Learned and hooked and not quiet then
 			-- the server ignored the call: the pickup ids are probably stale. One real pickup by hand lets the learner read the right ones.
 			notify("Quick loot: the game did not accept the pickup. Hold E on ONE pile by hand and I learn the new ids automatically.")
@@ -332,6 +380,7 @@ function Loot.Start()
 		log("no remote named " .. INTERACT .. " exists any more; trying auto-discovery")
 		task.spawn(function() if discover() then interact() end end)
 	end
+	task.spawn(function() task.wait(2); pcall(discoverIds) end)
 	task.spawn(function()
 		while running do
 			task.wait(0.6)
