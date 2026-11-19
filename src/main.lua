@@ -616,7 +616,7 @@ tSet:Toggle({ Name = "Interface sounds", Default = true, Callback = function(v) 
 tSet:Toggle({ Name = "Creamy keyboard sounds (every key you press)", Default = false, Callback = function(v) Sfx.Keys = v; if v then Sfx.Preload() end end })
 tSet:Slider({ Name = "Keyboard sound volume", Min = 0, Max = 100, Step = 5, Default = 50, Suffix = "%", Callback = function(v) Sfx.KeyVolume = v / 100 end })
 tSet:Slider({ Name = "Sound volume", Min = 0, Max = 100, Step = 5, Default = 55, Suffix = "%", Callback = function(v) Sfx.Volume = v / 100 end })
-tSet:Slider({ Name = "Glass blur behind the window", Min = 0, Max = 30, Step = 1, Default = 14, Callback = function(v) win:SetBlur(v) end })
+tSet:Slider({ Name = "Blur behind the window", Min = 0, Max = 30, Step = 1, Default = 0, Callback = function(v) win:SetBlur(v) end })
 tSet:Section("Theme")
 local function toHex(c) return string.format("#%02X%02X%02X", math.floor(c.R * 255 + .5), math.floor(c.G * 255 + .5), math.floor(c.B * 255 + .5)) end
 local accentPick = tSet:ColorPicker({ Name = "Accent colour", Default = UI.Palette().accent, Callback = function(col, final)
@@ -626,11 +626,11 @@ local bgPick = tSet:ColorPicker({ Name = "Background colour", Default = UI.Palet
 	theme.bg = toHex(col); applyTheme(final)
 end })
 local THEMES = {
-	{ "Aurora", UI.Palette().accent, UI.Palette().bg }, { "Amber", Color3.fromRGB(243, 156, 18), Color3.fromRGB(14, 13, 12) }, { "Ocean", Color3.fromRGB(52, 152, 219), Color3.fromRGB(10, 16, 26) },
+	{ "Mono", UI.Palette().accent, UI.Palette().bg }, { "Aurora", Color3.fromRGB(139, 92, 246), Color3.fromRGB(11, 10, 22) }, { "Amber", Color3.fromRGB(243, 156, 18), Color3.fromRGB(14, 13, 12) }, { "Ocean", Color3.fromRGB(52, 152, 219), Color3.fromRGB(10, 16, 26) },
 	{ "Violet", Color3.fromRGB(155, 110, 255), Color3.fromRGB(14, 12, 26) }, { "Mint", Color3.fromRGB(46, 204, 150), Color3.fromRGB(10, 20, 18) },
 	{ "Rose", Color3.fromRGB(255, 105, 160), Color3.fromRGB(22, 12, 18) }, { "Crimson", Color3.fromRGB(231, 76, 60), Color3.fromRGB(20, 11, 11) },
 }
-local themeNames, themeName = {}, "Aurora"
+local themeNames, themeName = {}, "Mono"
 for _, t in ipairs(THEMES) do themeNames[#themeNames + 1] = t[1] end
 cycle(tSet, "Theme preset", themeNames, function() return themeName end, function(v)
 	themeName = v
