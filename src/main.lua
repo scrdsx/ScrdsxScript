@@ -583,7 +583,9 @@ end
 
 -- Settings tab
 local tSet = win:Tab("Settings", { Section = "Client", Icon = 9 })
+tSet:Section("Window")
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
+tSet:Slider({ Name = "Blur behind the window", Min = 0, Max = 30, Step = 1, Default = 0, Callback = function(v) win:SetBlur(v) end })
 -- theme: accent + background as hex, applied to the window, remembered between sessions
 local THEME_FILE = "ScrdsxScript/theme.json"
 local theme = { accent = "", bg = "" }
@@ -611,12 +613,11 @@ pcall(function()
 		if type(d) == "table" then theme.accent, theme.bg = tostring(d.accent or ""), tostring(d.bg or "") end
 	end
 end)
-tSet:Section("Look and sound")
+tSet:Section("Sound")
 tSet:Toggle({ Name = "Interface sounds", Default = true, Callback = function(v) Sfx.Enabled = v end })
 tSet:Toggle({ Name = "Creamy keyboard sounds (every key you press)", Default = false, Callback = function(v) Sfx.Keys = v; if v then Sfx.Preload() end end })
 tSet:Slider({ Name = "Keyboard sound volume", Min = 0, Max = 100, Step = 5, Default = 50, Suffix = "%", Callback = function(v) Sfx.KeyVolume = v / 100 end })
 tSet:Slider({ Name = "Sound volume", Min = 0, Max = 100, Step = 5, Default = 55, Suffix = "%", Callback = function(v) Sfx.Volume = v / 100 end })
-tSet:Slider({ Name = "Blur behind the window", Min = 0, Max = 30, Step = 1, Default = 0, Callback = function(v) win:SetBlur(v) end })
 tSet:Section("Theme")
 local function toHex(c) return string.format("#%02X%02X%02X", math.floor(c.R * 255 + .5), math.floor(c.G * 255 + .5), math.floor(c.B * 255 + .5)) end
 local accentPick = tSet:ColorPicker({ Name = "Accent colour", Default = UI.Palette().accent, Callback = function(col, final)
@@ -641,7 +642,7 @@ end)
 if parseHex(theme.accent) then accentPick:Set(parseHex(theme.accent), true) end
 if parseHex(theme.bg) then bgPick:Set(parseHex(theme.bg), true) end
 if theme.accent ~= "" or theme.bg ~= "" then task.defer(applyTheme, false) end
-tSet:Section("Theme presets")
+tSet:Section("Quick accent colours")
 for _, pr in ipairs({
 	{ "Blue", Color3.fromRGB(64, 132, 255) }, { "Violet", Color3.fromRGB(146, 104, 255) }, { "Green", Color3.fromRGB(46, 196, 120) },
 	{ "Red", Color3.fromRGB(236, 82, 82) }, { "Orange", Color3.fromRGB(245, 160, 60) }, { "Silver", Color3.fromRGB(205, 205, 214) },
@@ -652,7 +653,7 @@ for _, pr in ipairs({
 		applyTheme(true)
 	end })
 end
-tSet:Section("Help")
+tSet:Section("Tools")
 tSet:Button({ Name = "Check my keybinds for clashes", Callback = function()
 	local GAME = { M = "Map", Tab = "Phone", L = "Headlights", H = "Horn", P = "Parking brake", G = "Hazard lights", Q = "Indicate left", E = "Indicate right", N = "Engine" }
 	local byKey, msgs = {}, {}
@@ -730,6 +731,7 @@ local function unload()
 	win:Destroy()
 	if getgenv then getgenv().__ScrdsxScript = nil end
 end
+tSet:Section("About")
 tSet:Label({ Name = "Version", Value = tostring(env.ScrdsxVersion or "?") .. " (" .. tostring(env.ScrdsxCommit or "?") .. ")" })
 tSet:Button({ Name = "Update now (reload latest)", Callback = function()
 	if not env.ScrdsxReload then win:Notify("Reload not available"); return end
