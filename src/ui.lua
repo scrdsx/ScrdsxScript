@@ -79,20 +79,28 @@ function UI.new(opts)
 	gui.Parent = guiParent()
 	self.gui = gui
 
-	local root = new("CanvasGroup", {
-		Name = "Root", Size = UDim2.fromOffset(1000, 620), AnchorPoint = Vector2.new(.5, .5),
-		Position = UDim2.fromScale(.5, .5), BackgroundColor3 = T.bg, BackgroundTransparency = 0.3, BorderSizePixel = 0, GroupTransparency = 1,
+	-- plain Frames only: a CanvasGroup draws everything inside it to a texture first, which is what made the text look soft / low quality
+	local holder = new("Frame", {
+		Name = "Root", Size = UDim2.fromOffset(1000, 620), AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), BackgroundTransparency = 1, BorderSizePixel = 0, Parent = gui,
+	})
+	new("ImageLabel", { -- soft drop shadow
+		Name = "Shadow", AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(.5, 0, .5, 10), Size = UDim2.new(1, 80, 1, 80), BackgroundTransparency = 1,
+		Image = "rbxassetid://1316045217", ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = .45, ScaleType = Enum.ScaleType.Slice, SliceCenter = Rect.new(10, 10, 118, 118), ZIndex = 0, Parent = holder,
+	})
+	local root = new("Frame", {
+		Name = "Window", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.bg, BackgroundTransparency = 0.08, BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 1, Parent = holder,
 	}, { corner(18), stroke(T.stroke) })
-	root:FindFirstChildOfClass("UIStroke").Transparency = 0.7
-	root.Parent = gui
-	self.root = root
+	root:FindFirstChildOfClass("UIStroke").Transparency = 0.55
+	-- a gentle light-to-dark sweep over the background colour (it multiplies the colour, so themes still work)
+	new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(165, 168, 178)), Rotation = 125, Parent = root })
+	self.root = holder
 	-- frosted-glass blur behind the window (removed again on unload; the FPS module leaves it alone)
 	pcall(function()
 		local b = Instance.new("BlurEffect")
 		b.Name = "ScrdsxGlass"; b.Size = 0; b.Parent = Lighting
 		self.blur = b
 	end)
-	self.scale = new("UIScale", { Scale = .9, Parent = root })
+	self.scale = new("UIScale", { Scale = .9, Parent = holder })
 	-- big / high-resolution screens: grow the whole window so the text stays readable (the "UI scale" setting multiplies this)
 	do
 		local cam = workspace.CurrentCamera
@@ -178,7 +186,7 @@ function UI.new(opts)
 					local p, a, z = i.Position, skip.AbsolutePosition, skip.AbsoluteSize
 					if p.X >= a.X and p.X <= a.X + z.X and p.Y >= a.Y and p.Y <= a.Y + z.Y then return end
 				end
-				dragging, start, origin = true, i.Position, root.Position
+				dragging, start, origin = true, i.Position, holder.Position
 			end
 		end
 		head.InputBegan:Connect(function(i) begin(i, sb) end)
@@ -187,7 +195,7 @@ function UI.new(opts)
 		table.insert(self.conns, UIS.InputChanged:Connect(function(i)
 			if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
 				local d = i.Position - start
-				root.Position = UDim2.new(origin.X.Scale, origin.X.Offset + d.X, origin.Y.Scale, origin.Y.Offset + d.Y)
+				holder.Position = UDim2.new(origin.X.Scale, origin.X.Offset + d.X, origin.Y.Scale, origin.Y.Offset + d.Y)
 			end
 		end))
 		table.insert(self.conns, UIS.InputEnded:Connect(function(i)
@@ -234,7 +242,6 @@ function UI.new(opts)
 	new("UIListLayout", { Padding = UDim.new(0, 6), VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = self.toasts })
 
 	-- open animation
-	tween(root, .45, { GroupTransparency = 0 })
 	tween(self.scale, .55, { Scale = self.baseScale }, Enum.EasingStyle.Back)
 	Sfx.Preload()
 	task.delay(.1, function() Sfx.Play("open") end)
@@ -268,9 +275,9 @@ function UI:Tab(name, opts)
 	-- accent bar on the left edge of the active tab
 	local bar = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, -6, .5, 0), Size = UDim2.fromOffset(3, 0), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = btn }, { corner(2) })
 
-	local page = new("CanvasGroup", {
+	local page = new("Frame", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
-		LayoutOrder = idx, Visible = false, GroupTransparency = 1, Parent = self.content,
+		LayoutOrder = idx, Visible = false, Parent = self.content,
 	})
 	new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = page })
 	new("UIPadding", { Name = "SlidePad", Parent = page })
@@ -308,14 +315,12 @@ function UI:Select(tab)
 		tween(t.txt, .22, { TextColor3 = on and T.text or T.sub })
 		tween(t.dot, .22, t.dotImg and { ImageColor3 = on and T.accent or T.sub } or { BackgroundColor3 = on and T.accent or T.sub })
 		tween(t.bar, .3, { Size = UDim2.fromOffset(3, on and 18 or 0) }, Enum.EasingStyle.Back)
-		if not on then t.page.Visible = false; t.page.GroupTransparency = 1 end
+		if not on then t.page.Visible = false end
 	end
 	self.pageTitle.Text = tab.name
 	tab.page.Visible = true
-	tab.page.GroupTransparency = 1
 	local pad = tab.page:FindFirstChild("SlidePad")
 	if pad then pad.PaddingTop = UDim.new(0, 18); tween(pad, .4, { PaddingTop = UDim.new(0, 0) }, Enum.EasingStyle.Quint) end
-	tween(tab.page, .32, { GroupTransparency = 0 })
 	self.content.CanvasPosition = Vector2.zero
 end
 
@@ -355,7 +360,6 @@ function UI:_search(q)
 		for _, t in ipairs(self.tabs) do
 			t.header.Visible = false
 			t.page.Visible = t == self.active
-			t.page.GroupTransparency = t == self.active and 0 or 1
 		end
 		for _, r in ipairs(self.rows) do r.frame.Visible = true end
 		for _, sec in ipairs(self.sections) do
@@ -374,8 +378,6 @@ function UI:_search(q)
 		t.header.Visible = has
 		if has and not t.page.Visible then
 			t.page.Visible = true
-			t.page.GroupTransparency = 1
-			tween(t.page, .25, { GroupTransparency = 0 })
 		elseif not has then
 			t.page.Visible = false
 		end
@@ -405,13 +407,14 @@ function UI:Notify(text, seconds, kind)
 	seconds = seconds or 3
 	Sfx.Play(K.sound, .8)
 	local slot = new("Frame", { Size = UDim2.fromOffset(320, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = self.toasts })
-	local card = new("CanvasGroup", {
-		Position = UDim2.fromOffset(340, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.elem, BackgroundTransparency = 0.25,
-		BorderSizePixel = 0, GroupTransparency = 1, Parent = slot,
+	local card = new("Frame", {
+		Position = UDim2.fromOffset(340, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.panel, BackgroundTransparency = 0.1,
+		BorderSizePixel = 0, ClipsDescendants = true, Parent = slot,
 	}, { corner(12) })
-	local st = stroke(K.color); st.Transparency = 0.7; st.Parent = card
+	local st = stroke(K.color); st.Transparency = 0.6; st.Parent = card
+	new("Frame", { Size = UDim2.new(0, 4, 1, 0), BackgroundColor3 = K.color, BorderSizePixel = 0, Parent = card }) -- coloured edge
 	local body = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = card },
-		{ new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 11), PaddingBottom = UDim.new(0, 14) }) })
+		{ new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 11), PaddingBottom = UDim.new(0, 14) }) })
 	local badge = new("Frame", { Size = UDim2.fromOffset(26, 26), BackgroundColor3 = K.color, BackgroundTransparency = 0.8, BorderSizePixel = 0, Parent = body }, { corner(13) })
 	local g = label(K.glyph, 15, K.color, T.bold, Enum.TextXAlignment.Center); g.Size = UDim2.fromScale(1, 1); g.Parent = badge
 	local l = label(text, 13, T.text); l.Position = UDim2.fromOffset(38, 0); l.Size = UDim2.new(1, -38, 0, 0); l.AutomaticSize = Enum.AutomaticSize.Y
@@ -421,12 +424,11 @@ function UI:Notify(text, seconds, kind)
 	-- countdown line
 	local track = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = K.color, BackgroundTransparency = 0.85, BorderSizePixel = 0, Parent = card })
 	local bar = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = K.color, BorderSizePixel = 0, Parent = track })
-	tween(card, .22, { GroupTransparency = 0 })
 	tween(card, .5, { Position = UDim2.fromOffset(0, 0) }, Enum.EasingStyle.Back)
 	tween(bar, seconds, { Size = UDim2.fromScale(0, 1) }, Enum.EasingStyle.Linear)
 	task.delay(seconds, function()
 		if not slot.Parent then return end
-		tween(card, .35, { Position = UDim2.fromOffset(340, 0), GroupTransparency = 1 }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tween(card, .35, { Position = UDim2.fromOffset(340, 0) }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		task.wait(.38)
 		pcall(function() slot:Destroy() end)
 	end)
@@ -439,12 +441,12 @@ function UI:SetVisible(v)
 		self.root.Visible = true
 		Sfx.Play("open")
 		if self.blur then tween(self.blur, .35, { Size = self.blurSize or 14 }) end
-		tween(self.root, .3, { GroupTransparency = 0 }); tween(self.scale, .35, { Scale = self.baseScale }, Enum.EasingStyle.Back)
+		tween(self.scale, .35, { Scale = self.baseScale }, Enum.EasingStyle.Back)
 	else
 		pcall(function() self.searchBox:ReleaseFocus() end) -- a focused (hidden) search box would swallow the game's keys
 		Sfx.Play("close")
 		if self.blur then tween(self.blur, .25, { Size = 0 }) end
-		tween(self.root, .2, { GroupTransparency = 1 }); tween(self.scale, .2, { Scale = self.baseScale * .93 })
+		tween(self.scale, .2, { Scale = self.baseScale * .93 })
 		task.delay(.22, function() if not self.visible then self.root.Visible = false end end)
 	end
 end
@@ -650,13 +652,18 @@ function M:Module(o)
 	local glow = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 14, 1, -7), Size = UDim2.fromOffset(0, 3), BackgroundColor3 = T.accent, BorderSizePixel = 0, Parent = card }, { corner(2) })
 	new("UIGradient", { Color = ColorSequence.new(T.gradA, T.gradB), Parent = glow })
 
+	-- little switch bottom right, so the on / off state reads at a glance
+	local sw = new("Frame", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -11), Size = UDim2.fromOffset(34, 18), BackgroundColor3 = T.off, BorderSizePixel = 0, Parent = card }, { corner(9) })
+	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = sw }, { corner(6) })
 	local state, count, active = false, 0, false
 	local obj = {}
 	local function paint()
 		local on = state
 		tween(card, .22, { BackgroundColor3 = on and T.accentDim or T.elem, BackgroundTransparency = on and .35 or .45 })
 		tween(cstroke, .22, { Color = (on or active) and T.strokeOn or T.stroke, Transparency = (on or active) and .2 or .75 })
-		tween(glow, .35, { Size = UDim2.new(on and 1 or 0, on and -28 or 0, 0, 3) }, Enum.EasingStyle.Quint)
+		tween(glow, .35, { Size = UDim2.new(on and 1 or 0, on and -70 or 0, 0, 3) }, Enum.EasingStyle.Quint)
+		tween(sw, .22, { BackgroundColor3 = on and T.accent or T.off })
+		tween(knob, .25, { Position = on and UDim2.new(1, -15, .5, 0) or UDim2.new(0, 3, .5, 0) }, Enum.EasingStyle.Back)
 		tween(nameL, .2, { TextColor3 = on and T.chip or T.text })
 	end
 	local function status()
