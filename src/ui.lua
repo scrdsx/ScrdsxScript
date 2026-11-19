@@ -452,12 +452,23 @@ local function register(self, o, kind, obj)
 	win.flags[id] = { kind = kind, obj = obj }
 end
 
+local function colorHex(c) return string.format("#%02X%02X%02X", math.floor(c.R * 255 + .5), math.floor(c.G * 255 + .5), math.floor(c.B * 255 + .5)) end
+local function hexColor(t)
+	t = tostring(t or ""):gsub("[#%s]", "")
+	if #t ~= 6 or not t:match("^%x+$") then return nil end
+	return Color3.fromRGB(tonumber(t:sub(1, 2), 16), tonumber(t:sub(3, 4), 16), tonumber(t:sub(5, 6), 16))
+end
+
+-- every saved setting: toggles, sliders, keybinds, colours, text boxes and choices (the "cycle" buttons)
 function UI:GetConfig()
 	local out = {}
 	for id, f in pairs(self.flags) do
-		local v = f.obj:Get()
-		if f.kind == "key" then v = v and v.Name or "" end
-		out[id] = v
+		local ok, v = pcall(function() return f.obj:Get() end)
+		if ok and v ~= nil then
+			if f.kind == "key" then v = v and v.Name or ""
+			elseif f.kind == "color" then v = colorHex(v) end
+			out[id] = v
+		end
 	end
 	return out
 end
@@ -471,6 +482,9 @@ function UI:ApplyConfig(cfg)
 				pcall(function()
 					if f.kind == "key" then
 						f.obj:Set(v ~= "" and Enum.KeyCode[v] or nil)
+					elseif f.kind == "color" then
+						local c = hexColor(v)
+						if c and colorHex(f.obj:Get()) ~= colorHex(c) then f.obj:Set(c) end
 					elseif f.obj:Get() ~= v then
 						f.obj:Set(v)
 					end
@@ -581,7 +595,43 @@ function M:TextBox(o)
 		Font = T.font, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, Parent = bg })
 	bind(win, box, "TextColor3", "text"); bind(win, box, "PlaceholderColor3", "sub")
 	box.FocusLost:Connect(function() if o.Callback then task.spawn(o.Callback, box.Text) end end)
-	return { Get = function() return box.Text end, Set = function(_, t) box.Text = t end, frame = f }
+	local obj = { frame = f }
+	function obj:Get() return box.Text end
+	function obj:Set(t, silent) box.Text = tostring(t); if not silent and o.Callback then task.spawn(o.Callback, box.Text) end end
+	register(self, o, "text", obj)
+	return obj
+end
+
+-- Choice: a row with a pill that cycles through the options (click = next, right-click = previous). Saved with the config.
+function M:Choice(o)
+	local win = self.win
+	local f = row(self, o.Name, 48)
+	rowLabel(win, f, o.Name, 170)
+	local opts_ = o.Options
+	local idx = 1
+	for i, v in ipairs(opts_) do if v == o.Default then idx = i end end
+	local btn = new("TextButton", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -12, .5, 0), Size = UDim2.fromOffset(150, 30), BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = f }, { corner(15) })
+	bind(win, btn, "BackgroundColor3", "elem")
+	local txt = text(win, "", 12, "text", T.semi, Enum.TextXAlignment.Center); txt.Size = UDim2.new(1, -16, 1, 0); txt.Position = UDim2.fromOffset(8, 0); txt.TextWrapped = false; txt.TextTruncate = Enum.TextTruncate.AtEnd; txt.Parent = btn
+	local obj = { frame = f }
+	local function show() txt.Text = tostring(opts_[idx]) end
+	local function pickIdx(i, silent)
+		idx = i
+		show()
+		if not silent then
+			Sfx.Play("click", .5)
+			if o.Callback then task.spawn(o.Callback, opts_[idx]) end
+		end
+	end
+	function obj:Get() return opts_[idx] end
+	function obj:Set(v, silent) for i, x in ipairs(opts_) do if x == v then pickIdx(i, silent); return end end end
+	btn.MouseButton1Click:Connect(function() pickIdx(idx % #opts_ + 1) end)
+	btn.MouseButton2Click:Connect(function() pickIdx((idx - 2) % #opts_ + 1) end)
+	btn.MouseEnter:Connect(function() tween(btn, .12, { BackgroundColor3 = T.hover }) end)
+	btn.MouseLeave:Connect(function() tween(btn, .15, { BackgroundColor3 = T.elem }) end)
+	show()
+	register(self, o, "choice", obj)
+	return obj
 end
 
 -- switch: off = grey track + grey knob, on = bright track + dark knob (like the executor's own toggles)
@@ -699,7 +749,7 @@ function M:Module(o)
 
 	local ent = { frame = card, name = o.Name:lower(), tab = realTab }
 	table.insert(win.rows, ent)
-	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label", "TextBox", "ColorPicker", "Section" }) do
+	for _, k in ipairs({ "Toggle", "Slider", "Keybind", "Button", "Label", "TextBox", "ColorPicker", "Choice", "Section" }) do
 		obj[k] = function(_, opts)
 			if k ~= "Section" then
 				count = count + 1
@@ -926,6 +976,7 @@ function M:ColorPicker(o)
 	end
 	hit.MouseButton1Click:Connect(function() if pop and pop.Visible then obj:Close() else open() end end)
 	obj.frame = f
+	register(self, o, "color", obj)
 	return obj
 end
 

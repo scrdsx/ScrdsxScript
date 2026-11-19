@@ -51,15 +51,7 @@ local win = UI.new({ Title = TITLE, Subtitle = SUBTITLE })
 
 -- helper: a button that cycles through a list (the UI has no dropdown)
 local function cycle(parent, title, list, get, set)
-	local idx = 1
-	for i, v in ipairs(list) do if v == get() then idx = i end end
-	local b
-	b = parent:Button({ Name = title .. ": " .. tostring(list[idx]), NoSave = true, Callback = function()
-		idx = idx % #list + 1
-		set(list[idx])
-		b:SetText(title .. ": " .. tostring(list[idx]))
-	end })
-	return b
+	return parent:Choice({ Name = title, Options = list, Default = get(), Callback = set })
 end
 
 -- COMBAT ---------------------------------------------------------------------------------------------------------------
@@ -552,7 +544,7 @@ function refreshList()
 end
 
 if Config.Available then
-	tCfg:TextBox({ Name = "New config name", Placeholder = "e.g. cars", Callback = function(t) newName = t end })
+	tCfg:TextBox({ Name = "New config name", NoSave = true, Placeholder = "e.g. cars", Callback = function(t) newName = t end })
 	tCfg:Button({ Name = "Create config from current settings", Callback = function()
 		local name = Config.Clean(newName)
 		if name == "" then win:Notify("Type a config name first"); return end
@@ -620,10 +612,10 @@ tSet:Slider({ Name = "Keyboard sound volume", Min = 0, Max = 100, Step = 5, Defa
 tSet:Slider({ Name = "Sound volume", Min = 0, Max = 100, Step = 5, Default = 55, Suffix = "%", Callback = function(v) Sfx.Volume = v / 100 end })
 tSet:Section("Theme")
 local function toHex(c) return string.format("#%02X%02X%02X", math.floor(c.R * 255 + .5), math.floor(c.G * 255 + .5), math.floor(c.B * 255 + .5)) end
-local accentPick = tSet:ColorPicker({ Name = "Accent colour", Default = UI.Palette().accent, Callback = function(col, final)
+local accentPick = tSet:ColorPicker({ Name = "Accent colour", NoSave = true, Default = UI.Palette().accent, Callback = function(col, final)
 	theme.accent = toHex(col); applyTheme(final)
 end })
-local bgPick = tSet:ColorPicker({ Name = "Background colour", Default = UI.Palette().bg, Callback = function(col, final)
+local bgPick = tSet:ColorPicker({ Name = "Background colour", NoSave = true, Default = UI.Palette().bg, Callback = function(col, final)
 	theme.bg = toHex(col); applyTheme(final)
 end })
 local THEMES = {
@@ -633,12 +625,12 @@ local THEMES = {
 }
 local themeNames, themeName = {}, "Mono"
 for _, t in ipairs(THEMES) do themeNames[#themeNames + 1] = t[1] end
-cycle(tSet, "Theme preset", themeNames, function() return themeName end, function(v)
+tSet:Choice({ Name = "Theme preset", NoSave = true, Options = themeNames, Default = themeName, Callback = function(v)
 	themeName = v
 	for _, t in ipairs(THEMES) do
 		if t[1] == v then accentPick:Set(t[2]); bgPick:Set(t[3]) end
 	end
-end)
+end })
 if parseHex(theme.accent) then accentPick:Set(parseHex(theme.accent), true) end
 if parseHex(theme.bg) then bgPick:Set(parseHex(theme.bg), true) end
 if theme.accent ~= "" or theme.bg ~= "" then task.defer(applyTheme, false) end
