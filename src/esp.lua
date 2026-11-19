@@ -183,6 +183,7 @@ local function newEntry(plr)
 	mk("UICorner", { CornerRadius = UDim.new(0, 2) }, e.hp)
 	e.name = label(gui, 13, true, 8); e.name.AnchorPoint = Vector2.new(.5, 1); e.name.ClipsDescendants = true
 	-- health lives as a thin line along the bottom of the name card
+	e.nameScale = mk("UIScale", { Scale = 1 }, e.name)
 	e.nameBar = mk("Frame", { Size = UDim2.new(0, 3, 1, 0), BorderSizePixel = 0, BackgroundColor3 = COL.Citizen }, e.name)
 e.name.LineHeight = 1.1
 e.nameHp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(80, 220, 120), Visible = false }, e.name)
@@ -339,6 +340,26 @@ local function hideAll()
 	if hover then hover.Visible = false end
 end
 
+-- players nearest first (re-sorted a few times a second): near plates get the space, far ones are the ones that give way
+local ordList, ordT = {}, -99
+local function ordered(now)
+	if now - ordT > 0.3 then
+		ordT = now
+		ordList = {}
+		for plr, e in pairs(entries) do ordList[#ordList + 1] = { plr, e } end
+		table.sort(ordList, function(a, b) return (a[2].lastD or 1e9) < (b[2].lastD or 1e9) end)
+	end
+	local i = 0
+	return function()
+		while true do
+			i = i + 1
+			local p = ordList[i]
+			if not p then return nil end
+			if entries[p[1]] == p[2] then return p[1], p[2] end
+		end
+	end
+end
+
 local function update(dt)
 	if not gui then return end
 	local cam = workspace.CurrentCamera
@@ -354,7 +375,8 @@ local function update(dt)
 	local vs = cam.ViewportSize
 	local mouse = UIS:GetMouseLocation()
 	local hoverBest, hoverD, hoverText
-	for plr, e in pairs(entries) do
+	local placed = {}
+	for plr, e in ordered(now) do
 		local ch = plr.Character
 		local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
 		local hum = ch and ch:FindFirstChildOfClass("Humanoid")
@@ -362,6 +384,7 @@ local function update(dt)
 		if hrp and hum and hum.Health > 0 then
 			local role, col, group = roleOf(plr)
 			local d = (hrp.Position - origin).Magnitude
+			e.lastD = d
 			if ESP.Teams[group] and d <= ESP.MaxDist then
 				local top = cam:WorldToViewportPoint(hrp.Position + V3(0, 3, 0))
 				local bot = cam:WorldToViewportPoint(hrp.Position - V3(0, 3.2, 0))
@@ -483,7 +506,22 @@ local function update(dt)
 						local nowc = os.clock()
 					if not e.nsz or nowc - (e.nszT or 0) > 0.2 then e.nsz = e.name.AbsoluteSize; e.nszT = nowc end -- reading AbsoluteSize forces a layout pass, so not every frame
 					local nsz = e.nsz
-						e.name.Position = UDim2.fromOffset(math.clamp(cx, nsz.X / 2 + 4, math.max(vs.X - nsz.X / 2 - 4, nsz.X / 2 + 4)), math.max(y0 - 6, nsz.Y + 4))
+						-- farther players get smaller plates; a plate that would land on top of a nearer one is left out (the box and tracer stay)
+						local sc = math.clamp(1.05 - d / 800, 0.68, 1)
+						if math.abs(e.nameScale.Scale - sc) > 0.02 then e.nameScale.Scale = sc end
+						local px = math.clamp(cx, nsz.X / 2 + 4, math.max(vs.X - nsz.X / 2 - 4, nsz.X / 2 + 4))
+						local py = math.max(y0 - 6, nsz.Y + 4)
+						local hw, hh = nsz.X / 2 + 3, nsz.Y + 3
+						local clash = false
+						for _, r in ipairs(placed) do
+							if math.abs(px - r[1]) < hw + r[3] and py > r[2] - r[4] and py - hh < r[2] then clash = true; break end
+						end
+						if clash then
+							e.name.Visible = false
+						else
+							placed[#placed + 1] = { px, py, hw, hh }
+							e.name.Position = UDim2.fromOffset(px, py)
+						end
 						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = STROKE; e.nameBar.BackgroundColor3 = c end
 						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.18 + tr * 0.82
 						e.nameBar.BackgroundTransparency = tr
