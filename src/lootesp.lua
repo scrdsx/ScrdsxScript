@@ -38,7 +38,7 @@ end
 local function newPill()
 	local f = Instance.new("Frame")
 	f.AnchorPoint = Vector2.new(.5, 1); f.Size = UDim2.fromOffset(0, 22); f.AutomaticSize = Enum.AutomaticSize.X
-	f.BackgroundColor3 = Color3.fromRGB(14, 20, 26); f.BackgroundTransparency = .2; f.BorderSizePixel = 0; f.Visible = false; f.Parent = gui
+	f.BackgroundColor3 = Color3.fromRGB(21, 21, 24); f.BackgroundTransparency = .12; f.BorderSizePixel = 0; f.Visible = false; f.Parent = gui
 	Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
 	local st = Instance.new("UIStroke"); st.Thickness = 1; st.Transparency = .45; st.Parent = f
 	local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0, 8); pad.PaddingRight = UDim.new(0, 10); pad.Parent = f
@@ -119,7 +119,7 @@ local function step()
 				local col = COL[it.kind]
 				local txt = it.text .. "  " .. math.floor(it.d) .. " st"
 				if p.txt ~= txt then p.txt = txt; p.t.Text = txt end
-				if p.col ~= col then p.col = col; p.dot.BackgroundColor3 = col; p.st.Color = col end
+				if p.col ~= col then p.col = col; p.dot.BackgroundColor3 = col; p.st.Color = Color3.fromRGB(52, 52, 58) end
 				p.f.Position = UDim2.fromOffset(sp.X, sp.Y)
 				p.f.Visible = true
 			end

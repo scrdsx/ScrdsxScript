@@ -95,9 +95,9 @@ function U.Start()
 	gui.Parent = guiParent()
 	bar = Instance.new("Frame")
 	bar.AnchorPoint = Vector2.new(.5, 0); bar.Position = UDim2.new(.5, 0, 0, 12); bar.Size = UDim2.fromOffset(0, 30); bar.AutomaticSize = Enum.AutomaticSize.X
-	bar.BackgroundColor3 = Color3.fromRGB(14, 20, 26); bar.BackgroundTransparency = .25; bar.BorderSizePixel = 0; bar.Visible = false; bar.Parent = gui
+	bar.BackgroundColor3 = Color3.fromRGB(21, 21, 24); bar.BackgroundTransparency = .1; bar.BorderSizePixel = 0; bar.Visible = false; bar.Parent = gui
 	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(243, 156, 18); st.Transparency = .55; st.Thickness = 1; st.Parent = bar
+	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(52, 52, 58); st.Transparency = 0; st.Thickness = 1; st.Parent = bar
 	local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0, 16); pad.PaddingRight = UDim.new(0, 16); pad.Parent = bar
 	barText = Instance.new("TextLabel")
 	barText.BackgroundTransparency = 1; barText.Size = UDim2.fromOffset(0, 30); barText.AutomaticSize = Enum.AutomaticSize.X

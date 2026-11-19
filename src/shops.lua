@@ -13,7 +13,7 @@ local Shops = {
 }
 
 local GREEN, AMBER, RED, GREY, BLUE = Color3.fromRGB(39, 174, 96), Color3.fromRGB(243, 156, 18), Color3.fromRGB(231, 76, 60), Color3.fromRGB(150, 158, 168), Color3.fromRGB(52, 152, 219)
-local BG = Color3.fromRGB(8, 11, 15)
+local BG = Color3.fromRGB(21, 21, 24)
 
 local function guiParent()
 	local ok, h = pcall(function() return gethui and gethui() end)
@@ -246,7 +246,7 @@ local function step(dt)
 				if e.ss ~= sk then
 					e.ss = sk
 					e.chipTxt.Text = t.status; e.chipTxt.TextColor3 = t.col
-					e.chip.BackgroundColor3 = t.col; e.strip.BackgroundColor3 = t.col; e.st.Color = t.col
+					e.chip.BackgroundColor3 = t.col; e.strip.BackgroundColor3 = t.col; e.st.Color = Color3.fromRGB(52, 52, 58)
 				end
 				if Shops.Risk then
 					e.riskRow.Visible = true

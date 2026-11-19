@@ -29,7 +29,7 @@ local conn, chamConn
 local pool = { pointers = {}, markers = {} }
 local avatars = {}
 local WANTED = Color3.fromRGB(255, 70, 70)
-local BG = Color3.fromRGB(8, 11, 15)
+local BG = Color3.fromRGB(21, 21, 24)
 
 local function guiParent()
 	local ok, h = pcall(function() return gethui and gethui() end)

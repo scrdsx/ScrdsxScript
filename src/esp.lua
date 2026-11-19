@@ -21,7 +21,7 @@ local COL = {
 }
 local RED = Color3.fromRGB(231, 76, 60)
 local TAG = { Police = "POLICE", FireDepartment = "FIRE", Prisoner = "PRISONER" }
-local BG, STROKE = Color3.fromRGB(8, 11, 15), Color3.fromRGB(70, 78, 90)
+local BG, STROKE = Color3.fromRGB(21, 21, 24), Color3.fromRGB(52, 52, 58) -- flat neutral surfaces, same family as the window
 
 local BONES_R15 = {
 	{ "Head", "UpperTorso" }, { "UpperTorso", "LowerTorso" },
@@ -480,9 +480,11 @@ local function update(dt)
 						local txt = plr.DisplayName .. tag
 						if #info > 0 then txt = txt .. "<br/><font size=\"11\" color=\"#9aa3ad\">" .. table.concat(info, "  <font color=\"#4a525c\">|</font>  ") .. "</font>" end
 						if e.nameTxt ~= txt then e.nameTxt = txt; e.name.Text = txt end
-						local nsz = e.name.AbsoluteSize
+						local nowc = os.clock()
+					if not e.nsz or nowc - (e.nszT or 0) > 0.2 then e.nsz = e.name.AbsoluteSize; e.nszT = nowc end -- reading AbsoluteSize forces a layout pass, so not every frame
+					local nsz = e.nsz
 						e.name.Position = UDim2.fromOffset(math.clamp(cx, nsz.X / 2 + 4, math.max(vs.X - nsz.X / 2 - 4, nsz.X / 2 + 4)), math.max(y0 - 6, nsz.Y + 4))
-						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = c; e.nameBar.BackgroundColor3 = c end
+						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = STROKE; e.nameBar.BackgroundColor3 = c end
 						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.18 + tr * 0.82
 						e.nameBar.BackgroundTransparency = tr
 					else

@@ -96,7 +96,7 @@ function UI.new(opts)
 	gui.Parent = guiParent()
 	self.gui = gui
 
-	local holder = new("Frame", { Name = "Root", Size = UDim2.fromOffset(940, 600), AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), BackgroundTransparency = 1, BorderSizePixel = 0, Parent = gui })
+	local holder = new("Frame", { Name = "Root", Size = UDim2.fromOffset(940, 640), AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(.5, .5), BackgroundTransparency = 1, BorderSizePixel = 0, Parent = gui })
 	local root = new("Frame", { Name = "Window", Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ClipsDescendants = true, Parent = holder }, { corner(14) })
 	bind(self, root, "BackgroundColor3", "bg"); root.BackgroundTransparency = 0.02
 	mkStroke(self, "stroke", 0).Parent = root
@@ -124,10 +124,10 @@ function UI.new(opts)
 	local sub = text(self, opts.Subtitle or "", 11, "sub"); sub.Position = UDim2.fromOffset(60, 39); sub.Size = UDim2.new(1, -66, 0, 14); sub.TextWrapped = false; sub.Parent = brand
 
 	local nav = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(0, TOP_H), Size = UDim2.new(1, 0, 1, -TOP_H - 64), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
+		Position = UDim2.fromOffset(0, TOP_H), Size = UDim2.new(1, 0, 1, -TOP_H - 58), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollingDirection = Enum.ScrollingDirection.Y, Parent = side,
 	})
-	new("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, Parent = nav })
+	new("UIListLayout", { Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder, Parent = nav })
 	pad(14, 12, 0, 8).Parent = nav
 	self.nav = nav
 
@@ -249,12 +249,12 @@ function UI:Tab(name, opts)
 	if opts.Section and opts.Section ~= self.lastNavSection then
 		self.lastNavSection = opts.Section
 		local h = text(self, opts.Section, 11, "sub", T.bold)
-		h.Size = UDim2.new(1, 0, 0, 30); h.LayoutOrder = self.navOrder; h.TextWrapped = false; h.TextYAlignment = Enum.TextYAlignment.Bottom
+		h.Size = UDim2.new(1, 0, 0, 26); h.LayoutOrder = self.navOrder; h.TextWrapped = false; h.TextYAlignment = Enum.TextYAlignment.Bottom
 		h.Parent = self.nav
 		pad(10, 0, 0, 6).Parent = h
 		self.navOrder = self.navOrder + 1
 	end
-	local btn = new("TextButton", { Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", LayoutOrder = self.navOrder, BorderSizePixel = 0, Parent = self.nav }, { corner(10) })
+	local btn = new("TextButton", { Size = UDim2.new(1, 0, 0, 33), BackgroundTransparency = 1, AutoButtonColor = false, Text = "", LayoutOrder = self.navOrder, BorderSizePixel = 0, Parent = self.nav }, { corner(10) })
 	bind(self, btn, "BackgroundColor3", "accentDim")
 	local ico = opts.Icon and Icons.Make(btn, opts.Icon, 17, UDim2.new(0, 12, .5, -8.5))
 	if ico then bind(self, ico, "ImageColor3", "sub") end
