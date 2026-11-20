@@ -21,6 +21,7 @@ local Hop = __import("hop")
 local Shaders = __import("shaders")
 local Utility = __import("utility")
 local LootESP = __import("lootesp")
+local Soccer = __import("soccer")
 local Crosshair = __import("crosshair")
 local Visuals = __import("visuals")
 local Skins = __import("skins")
@@ -500,6 +501,34 @@ mBar:Toggle({ Name = "Clock", Default = true, Callback = function(v) Utility.Bar
 local mAfk = tUtil:Module({ Name = "Anti AFK", Default = true, Callback = function(on) Utility.AntiAfk = on end })
 safe("utility", Utility.Start)
 
+-- SOCCER (Ragdoll Soccer only) ------------------------------------------------------------------------------------------
+local SOCCER_PLACES = { [76989843787467] = true, [106931373443671] = true }
+if SOCCER_PLACES[game.PlaceId] then
+	local tSoc = win:Tab("Soccer", { Section = "Game", Icon = 5 })
+	Soccer.Notify = function(msg, secs) win:Notify(msg, secs or 2) end
+	local mSpd = tSoc:Module({ Name = "Speed boost", Default = false, Callback = function(on) Soccer.SetSpeed(on) end })
+	mSpd:Slider({ Name = "Speed multiplier", Min = 1, Max = 2, Step = 0.05, Default = Soccer.SpeedMult, Suffix = "x", Callback = function(v) Soccer.SetSpeedMult(v) end })
+	mSpd:Label({ Name = "How", Value = "scales the game's own move speed" })
+
+	-- Ronaldini Banini: shots go to the corner of the goal, the kick never misses, the ball is picked up and kept from further away
+	local banAim, banAcc, banSticky = true, true, true
+	local function applyBan(on)
+		Soccer.Aim = on and banAim
+		Soccer.SetAccurate(on and banAcc)
+		Soccer.SetSticky(on and banSticky)
+	end
+	local mBan = tSoc:Module({ Name = "Ronaldini Banini", Default = false, Callback = function(on) applyBan(on) end })
+	mBan:Toggle({ Name = "Aim shots at the goal", Default = true, Callback = function(v) banAim = v; if mBan:Get() then Soccer.Aim = v end end })
+	mBan:Choice({ Name = "Where in the goal", Options = Soccer.Corners, Default = Soccer.Corner, Callback = function(v) Soccer.Corner = v end })
+	mBan:Slider({ Name = "Only when already aiming within", Min = 15, Max = 120, Step = 5, Default = Soccer.Cone, Suffix = " deg", Callback = function(v) Soccer.Cone = v end })
+	mBan:Slider({ Name = "Max distance to the goal", Min = 20, Max = 140, Step = 5, Default = Soccer.MaxDist, Suffix = " st", Callback = function(v) Soccer.MaxDist = v end })
+	mBan:Toggle({ Name = "Perfect accuracy (no random miss)", Default = true, Callback = function(v) banAcc = v; if mBan:Get() then Soccer.SetAccurate(v) end end })
+	mBan:Toggle({ Name = "Sticky ball (wider pickup reach)", Default = true, Callback = function(v) banSticky = v; if mBan:Get() then Soccer.SetSticky(v) end end })
+	mBan:Slider({ Name = "Sticky strength", Min = 1, Max = 3, Step = 0.1, Default = Soccer.StickyMult, Suffix = "x", Callback = function(v) Soccer.StickyMult = v; if mBan:Get() and banSticky then Soccer.SetSticky(true, v) end end })
+	tSoc:Label({ Name = "Stamina", Value = "this game has none (not found in its code)" })
+	safe("soccer", Soccer.Start)
+end
+
 local tCfg = win:Tab("Configs", { Section = "Client", Icon = 8 })
 local current = Config.GetAutoload() or "default"
 local lCurrent = tCfg:Label({ Name = "Current config", Value = current })
@@ -714,6 +743,7 @@ local function unload()
 	Shaders.Destroy()
 	Utility.Destroy()
 	LootESP.Destroy()
+	Soccer.Destroy()
 	FPS.Destroy()
 	Crosshair.Destroy()
 	Visuals.Destroy()
