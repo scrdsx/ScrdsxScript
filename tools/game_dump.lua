@@ -89,12 +89,13 @@ if spySeconds == nil then spySeconds = 60 end
 spySeconds = tonumber(spySeconds) or 0
 local spyEnd = os.clock() + spySeconds
 local spyLines, spySeen, spyCount = {}, {}, 0
-local oldFS, oldIS
-if spySeconds > 0 and type(hookfunction) == "function" then
+local oldFS, oldIS, oldNC, oldUFS
+local inNC = false
+if spySeconds > 0 then
 	local function rec(kind, remote, ...)
 		local a = { ... }
 		local parts, ts = {}, {}
-		for i = 1, math.min(#a, 6) do parts[#parts + 1] = short(a[i]); ts[#ts + 1] = typesOf(a[i]) end
+		for i = 1, math.min(#a, 8) do parts[#parts + 1] = short(a[i]); ts[#ts + 1] = typesOf(a[i]) end
 		local name = remote:GetFullName()
 		local calls = (spySeen[name] or 0) + 1
 		spySeen[name] = calls
@@ -104,16 +105,40 @@ if spySeconds > 0 and type(hookfunction) == "function" then
 			spyLines[#spyLines + 1] = ("%s  %s  #%d  (%s)   types: %s"):format(kind, name, calls, table.concat(parts, ", "), table.concat(ts, ","))
 		end
 	end
-	pcall(function()
-		oldFS = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
-			if typeof(self) == "Instance" then pcall(rec, "FireServer", self, ...) end
-			return oldFS(self, ...)
+	local function nc(self, ...)
+		local m = getnamecallmethod()
+		if (m == "FireServer" or m == "InvokeServer") and typeof(self) == "Instance" and not inNC then
+			inNC = true
+			pcall(rec, m, self, ...)
+			inNC = false
+		end
+		return oldNC(self, ...)
+	end
+	-- 1) __namecall: this is how `remote:FireServer(...)` is dispatched for every remote class
+	if type(hookmetamethod) == "function" and type(getnamecallmethod) == "function" then
+		pcall(function() oldNC = hookmetamethod(game, "__namecall", newcclosure and newcclosure(nc) or nc) end)
+	end
+	-- 2) the methods themselves (for scripts that call them as plain functions)
+	if type(hookfunction) == "function" then
+		pcall(function()
+			oldFS = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
+				if typeof(self) == "Instance" and not inNC then pcall(rec, "FireServer", self, ...) end
+				return oldFS(self, ...)
+			end)
 		end)
-		oldIS = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
-			if typeof(self) == "Instance" then pcall(rec, "InvokeServer", self, ...) end
-			return oldIS(self, ...)
+		pcall(function()
+			oldUFS = hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, function(self, ...)
+				if typeof(self) == "Instance" and not inNC then pcall(rec, "FireServer(unreliable)", self, ...) end
+				return oldUFS(self, ...)
+			end)
 		end)
-	end)
+		pcall(function()
+			oldIS = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(self, ...)
+				if typeof(self) == "Instance" and not inNC then pcall(rec, "InvokeServer", self, ...) end
+				return oldIS(self, ...)
+			end)
+		end)
+	end
 end
 local finished = false
 task.spawn(function()
@@ -263,7 +288,8 @@ local ok, err = pcall(function()
 			if okd and type(src) == "string" and #src > 0 then
 				done = done + 1
 				slog(("\n----- %s (%d chars) -----"):format(r[2], #src))
-				slog(#src > 14000 and (src:sub(1, 14000) .. "\n-- [cut]") or src)
+				local cap = (prio(r[2]) == 0) and 120000 or 14000 -- mechanics scripts are kept whole, the rest is cut
+				slog(#src > cap and (src:sub(1, cap) .. "\n-- [cut]") or src)
 			end
 			if done % 5 == 0 then save() end
 			task.wait()
@@ -276,7 +302,9 @@ if not ok then log("\nDUMP ERROR: " .. tostring(err)); warn("[dump] error: " .. 
 
 -- let the recording window run out (the dump is usually done before it), then stop it and add what was recorded
 while spySeconds > 0 and os.clock() < spyEnd do task.wait(0.25) end
+pcall(function() if oldNC then hookmetamethod(game, "__namecall", oldNC) end end)
 pcall(function() if oldFS then hookfunction(Instance.new("RemoteEvent").FireServer, oldFS) end end)
+pcall(function() if oldUFS then hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, oldUFS) end end)
 if spySeconds > 0 then
 	log("\n== REMOTE CALLS RECORDED FOR " .. spySeconds .. " s (kind  remote  (argument types)) ==")
 	for _, l in ipairs(spyLines) do log(l) end
