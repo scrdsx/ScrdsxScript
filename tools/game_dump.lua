@@ -51,7 +51,7 @@ local function guiParent()
 	if okh and h then return h end
 	return lp:WaitForChild("PlayerGui")
 end
-pcall(function()
+if not env.DumpQuiet then pcall(function()
 	gui = Instance.new("ScreenGui")
 	gui.Name = tostring(math.random(1e6, 9e6)); gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 1000; gui.Parent = guiParent()
 	pill = Instance.new("Frame")
@@ -66,7 +66,7 @@ pcall(function()
 	pillText = Instance.new("TextLabel")
 	pillText.BackgroundTransparency = 1; pillText.Position = UDim2.fromOffset(18, 0); pillText.Size = UDim2.fromOffset(0, 34); pillText.AutomaticSize = Enum.AutomaticSize.X
 	pillText.Font = Enum.Font.BuilderSansBold; pillText.TextSize = 14; pillText.TextColor3 = Color3.fromRGB(240, 240, 245); pillText.Text = "Dump starting..."; pillText.Parent = pill
-end)
+end) end
 local function status(txt, color)
 	if pillText then pillText.Text = txt end
 	if dot and color then dot.BackgroundColor3 = color end
