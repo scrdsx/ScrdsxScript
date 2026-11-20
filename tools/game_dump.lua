@@ -3,8 +3,8 @@
 -- care about. When it is done the bar says "Saved" and disappears.
 -- Output (executor workspace):  scrdsx_dump_<placeid>.txt          (overview, remotes, tags, teams, interface, script list, recorded remote calls)
 --                               scrdsx_dump_scripts_<placeid>.txt  (decompiled client scripts, capped)
--- Optional, set BEFORE running:  getgenv().DumpSpy = 40      seconds to record (default 40, 0 = no recording, the bar still shows progress)
---                                getgenv().DumpScripts = 40  how many scripts to decompile (default 40, 0 = skip)
+-- Optional, set BEFORE running:  getgenv().DumpSpy = 60      seconds to record (default 60, 0 = no recording, the bar still shows progress)
+--                                getgenv().DumpScripts = 70  how many scripts to decompile (default 70, 0 = skip)
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local CS = game:GetService("CollectionService")
@@ -30,17 +30,28 @@ local function attrs(inst)
 	table.sort(t)
 	return table.concat(t, ", ")
 end
-local function short(v)
+local function short(v, depth)
 	local tv = typeof(v)
-	if tv == "Instance" then return "Instance<" .. v.ClassName .. ">" .. v:GetFullName():sub(-60) end
-	if tv == "string" then return ('"%s"'):format(v:sub(1, 40)) end
+	depth = depth or 0
+	if tv == "Instance" then return "Instance<" .. v.ClassName .. ">" .. v:GetFullName():sub(-70) end
+	if tv == "string" then return ('"%s"'):format(v:sub(1, 60)) end
+	if tv == "number" then return tostring(math.floor(v * 1000 + .5) / 1000) end
+	if tv == "boolean" or tv == "nil" then return tostring(v) end
+	if tv == "Vector3" then return ("V3(%.2f,%.2f,%.2f)"):format(v.X, v.Y, v.Z) end
+	if tv == "Vector2" then return ("V2(%.2f,%.2f)"):format(v.X, v.Y) end
+	if tv == "CFrame" then local p = v.Position; return ("CF(%.2f,%.2f,%.2f)"):format(p.X, p.Y, p.Z) end
 	if tv == "table" then
-		local n = 0
-		for _ in pairs(v) do n = n + 1 end
-		return "table(" .. n .. ")"
+		if depth >= 1 then return "table" end
+		local parts, n = {}, 0
+		for k, x in pairs(v) do
+			n = n + 1
+			if n <= 8 then parts[#parts + 1] = tostring(k) .. "=" .. short(x, depth + 1) end
+		end
+		return "{" .. table.concat(parts, ", ") .. (n > 8 and (", ...+" .. (n - 8)) or "") .. "}"
 	end
 	return tv .. ":" .. tostring(v):sub(1, 40)
 end
+local function typesOf(v) local t = typeof(v); return t end
 
 -- progress bar ----------------------------------------------------------------------------------------------------------------
 local gui, pill, pillText, dot
@@ -74,7 +85,7 @@ end
 
 -- remote-call recording: starts right away and runs while the rest of the dump is working --------------------------------------
 local spySeconds = env.DumpSpy
-if spySeconds == nil then spySeconds = 40 end
+if spySeconds == nil then spySeconds = 60 end
 spySeconds = tonumber(spySeconds) or 0
 local spyEnd = os.clock() + spySeconds
 local spyLines, spySeen, spyCount = {}, {}, 0
@@ -82,12 +93,15 @@ local oldFS, oldIS
 if spySeconds > 0 and type(hookfunction) == "function" then
 	local function rec(kind, remote, ...)
 		local a = { ... }
-		local parts = {}
-		for i = 1, math.min(#a, 6) do parts[#parts + 1] = short(a[i]) end
-		local sig = remote:GetFullName() .. "|" .. table.concat(parts, ",")
-		if not spySeen[sig] and spyCount < 300 then
-			spySeen[sig] = true; spyCount = spyCount + 1
-			spyLines[#spyLines + 1] = ("%s  %s  (%s)"):format(kind, remote:GetFullName(), table.concat(parts, ", "))
+		local parts, ts = {}, {}
+		for i = 1, math.min(#a, 6) do parts[#parts + 1] = short(a[i]); ts[#ts + 1] = typesOf(a[i]) end
+		local name = remote:GetFullName()
+		local calls = (spySeen[name] or 0) + 1
+		spySeen[name] = calls
+		-- the first 4 calls of every remote are written out with their real values (enough to read the argument format), the rest are only counted
+		if calls <= 4 and spyCount < 400 then
+			spyCount = spyCount + 1
+			spyLines[#spyLines + 1] = ("%s  %s  #%d  (%s)   types: %s"):format(kind, name, calls, table.concat(parts, ", "), table.concat(ts, ","))
 		end
 	end
 	pcall(function()
@@ -218,7 +232,7 @@ local ok, err = pcall(function()
 	for _, s in ipairs(list) do
 		local full = "?"
 		pcall(function() full = s:GetFullName() end)
-		if not full:find("CoreGui", 1, true) and not full:find("RobloxGui", 1, true) and not full:match("PlayerModule") then rows[#rows + 1] = { s, full } end
+		if not full:find("CoreGui", 1, true) and not full:find("RobloxGui", 1, true) and not full:find("CorePackages", 1, true) and not full:match("PlayerModule") and not full:find("^CoreScripts", 1) then rows[#rows + 1] = { s, full } end
 	end
 	table.sort(rows, function(a, b) return a[2] < b[2] end)
 	log("count: " .. #rows)
@@ -226,10 +240,17 @@ local ok, err = pcall(function()
 	save()
 
 	local want = tonumber(env.DumpScripts)
-	if want == nil then want = 40 end
+	if want == nil then want = 70 end
 	if want > 0 and decompile then
 		-- game scripts first (ReplicatedStorage / PlayerScripts / PlayerGui), the rest after
-		local function prio(full) return (full:find("ReplicatedStorage", 1, true) and 1) or (full:find("PlayerScripts", 1, true) and 1) or (full:find("PlayerGui", 1, true) and 2) or 3 end
+		-- scripts whose name looks like the game's mechanics come first (movement, stamina, ball, dribble, kick, tuning...), then the other game scripts
+		local KEYS = env.DumpKeywords or { "tuning", "stamina", "sprint", "speed", "move", "dribble", "kick", "shoot", "ball", "control", "input", "tackle", "pass", "physics", "mannequin", "rules", "config", "net", "char" }
+		local function prio(full)
+			local l = full:lower()
+			local leaf = l:match("([^%.]+)$") or l
+			for _, k in ipairs(KEYS) do if leaf:find(k, 1, true) and not l:find("clubkits", 1, true) and not l:find("botmatch", 1, true) then return 0 end end
+			return (full:find("ReplicatedStorage", 1, true) and 1) or (full:find("PlayerScripts", 1, true) and 1) or (full:find("PlayerGui", 1, true) and 2) or 3
+		end
 		table.sort(rows, function(a, b)
 			local pa, pb = prio(a[2]), prio(b[2])
 			if pa ~= pb then return pa < pb end
@@ -237,7 +258,7 @@ local ok, err = pcall(function()
 		end)
 		local t0, done = os.clock(), 0
 		for _, r in ipairs(rows) do
-			if done >= want or os.clock() - t0 > 55 then break end
+			if done >= want or os.clock() - t0 > 80 then break end
 			local okd, src = pcall(decompile, r[1])
 			if okd and type(src) == "string" and #src > 0 then
 				done = done + 1
@@ -259,7 +280,11 @@ pcall(function() if oldFS then hookfunction(Instance.new("RemoteEvent").FireServ
 if spySeconds > 0 then
 	log("\n== REMOTE CALLS RECORDED FOR " .. spySeconds .. " s (kind  remote  (argument types)) ==")
 	for _, l in ipairs(spyLines) do log(l) end
-	log("recorded " .. spyCount .. " distinct calls")
+	local totals = {}
+	for name, n in pairs(spySeen) do totals[#totals + 1] = ("%s x%d"):format(name, n) end
+	table.sort(totals)
+	log("totals: " .. table.concat(totals, " | "))
+	log("recorded " .. spyCount .. " sample lines")
 end
 save()
 finished = true
