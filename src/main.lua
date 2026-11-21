@@ -22,6 +22,7 @@ local Shaders = __import("shaders")
 local Utility = __import("utility")
 local LootESP = __import("lootesp")
 local Soccer = __import("soccer")
+local Prank = __import("prank")
 local Crosshair = __import("crosshair")
 local Visuals = __import("visuals")
 local Skins = __import("skins")
@@ -838,6 +839,7 @@ table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 end))
 
 win:Notify(TITLE .. " loaded  v" .. tostring(env.ScrdsxVersion or "?"))
+Prank.Run(win, UI, function() applyTheme(false) end) -- one-time joke for one friend, nothing for anybody else
 
 -- update watcher: tells you when a newer version is published
 task.spawn(function()
