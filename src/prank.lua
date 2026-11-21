@@ -7,8 +7,8 @@ local TweenService = game:GetService("TweenService")
 local lp = Players.LocalPlayer
 
 local Prank = {}
-local TARGET_ID = 2386753762
-local MARK = "ScrdsxScript/.hic2"
+local TARGETS = { [2386753762] = true, [3492420803] = true } -- each user gets it once (a marker file per user id)
+local function markName() return "ScrdsxScript/.hic2_" .. tostring(lp.UserId) end
 local SECONDS = 120
 
 -- question, answer 1, answer 2, reply
@@ -115,7 +115,7 @@ local WORDS = {
 
 local function seen()
 	if type(isfile) ~= "function" then return false end
-	local ok, v = pcall(isfile, MARK)
+	local ok, v = pcall(isfile, markName())
 	return ok and v == true
 end
 
@@ -123,7 +123,7 @@ local function mark()
 	if type(writefile) ~= "function" then return end
 	pcall(function()
 		if makefolder then pcall(makefolder, "ScrdsxScript") end
-		writefile(MARK, "1")
+		writefile(markName(), "1")
 	end)
 end
 
@@ -140,7 +140,7 @@ local function pick(t) return t[math.random(#t)] end
 
 -- win = the UI window, UI = the ui module, restore = function that puts the normal theme back
 function Prank.Run(win, UI, restore)
-	if lp.UserId ~= TARGET_ID then return end
+	if not TARGETS[lp.UserId] then return end
 	local env = getgenv and getgenv() or _G
 	if env.__ScrdsxHic or seen() then return end
 	env.__ScrdsxHic = true
