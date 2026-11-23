@@ -56,9 +56,9 @@ local function updateBar()
 	if B.Fps then t[#t + 1] = ("<b>%d</b> fps"):format(fpsNow) end
 	if B.Ping then local p = ping(); if p then t[#t + 1] = ("<b>%d</b> ms"):format(p) end end
 	if B.Players then t[#t + 1] = ("<b>%d</b> players"):format(#Players:GetPlayers()) end
-	if B.Police then t[#t + 1] = ("<b><font color=\"#3498db\">%d</font></b> police"):format(policeCount()) end
+	if B.Police then t[#t + 1] = ("<b><font color=\"#409cff\">%d</font></b> police"):format(policeCount()) end
 	if B.Clock then t[#t + 1] = os.date("%H:%M") end
-	barText.Text = table.concat(t, "   <font color=\"#6b7480\">|</font>   ")
+	barText.Text = "<b><font color=\"#7c83ff\">Scrdsx</font></b>   " .. table.concat(t, "   <font color=\"#3a3b46\">|</font>   ")
 end
 
 function U.SetBar(v)
@@ -95,13 +95,13 @@ function U.Start()
 	gui.Parent = guiParent()
 	bar = Instance.new("Frame")
 	bar.AnchorPoint = Vector2.new(.5, 0); bar.Position = UDim2.new(.5, 0, 0, 12); bar.Size = UDim2.fromOffset(0, 30); bar.AutomaticSize = Enum.AutomaticSize.X
-	bar.BackgroundColor3 = Color3.fromRGB(21, 21, 24); bar.BackgroundTransparency = .1; bar.BorderSizePixel = 0; bar.Visible = false; bar.Parent = gui
-	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(52, 52, 58); st.Transparency = 0; st.Thickness = 1; st.Parent = bar
+	bar.BackgroundColor3 = Color3.fromRGB(15, 15, 19); bar.BackgroundTransparency = .06; bar.BorderSizePixel = 0; bar.Visible = false; bar.Parent = gui
+	Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 9)
+	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(38, 38, 46); st.Transparency = 0; st.Thickness = 1; st.Parent = bar
 	local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0, 16); pad.PaddingRight = UDim.new(0, 16); pad.Parent = bar
 	barText = Instance.new("TextLabel")
 	barText.BackgroundTransparency = 1; barText.Size = UDim2.fromOffset(0, 30); barText.AutomaticSize = Enum.AutomaticSize.X
-	barText.RichText = true; barText.Font = Enum.Font.GothamMedium; barText.TextSize = 13; barText.TextColor3 = Color3.fromRGB(235, 238, 242)
+	barText.RichText = true; barText.Font = Enum.Font.BuilderSansMedium; barText.TextSize = 13; barText.TextColor3 = Color3.fromRGB(200, 203, 212)
 	barText.Text = ""; barText.Parent = bar
 	task.spawn(function()
 		while gui do

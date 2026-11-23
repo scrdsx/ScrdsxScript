@@ -126,6 +126,8 @@ local mEsp = tEsp:Module({ Name = "Player ESP", Default = false, Callback = func
 mEsp:Section("Shapes")
 mEsp:Toggle({ Name = "Box", Default = ESP.Boxes, Callback = function(v) ESP.Boxes = v end })
 mEsp:Toggle({ Name = "Corner box style (off = full outline)", Default = ESP.CornerBox, Callback = function(v) ESP.CornerBox = v end })
+mEsp:Toggle({ Name = "Box fill (soft gradient)", Default = ESP.Fill, Callback = function(v) ESP.Fill = v end })
+mEsp:Toggle({ Name = "Dark outlines (easier to see)", Default = ESP.Outline, Callback = function(v) ESP.Outline = v end })
 mEsp:Toggle({ Name = "Skeleton", Default = ESP.Skeleton, Callback = function(v) ESP.Skeleton = v end })
 mEsp:Toggle({ Name = "Tracers", Default = ESP.Tracers, Callback = function(v) ESP.Tracers = v end })
 cycle(mEsp, "Tracer starts at", { "Bottom", "Centre", "Cursor" }, function() return ESP.TracerFrom end, function(v) ESP.TracerFrom = v end)
@@ -135,6 +137,8 @@ mEsp:Section("Info")
 mEsp:Toggle({ Name = "Name + role (police blue, fire red)", Default = ESP.Names, Callback = function(v) ESP.Names = v end })
 mEsp:Toggle({ Name = "Health bar", Default = ESP.Health, Callback = function(v) ESP.Health = v end })
 mEsp:Toggle({ Name = "Distance", Default = ESP.Distance, Callback = function(v) ESP.Distance = v end })
+mEsp:Toggle({ Name = "Held item (gun, tool)", Default = ESP.Tool, Callback = function(v) ESP.Tool = v end })
+mEsp:Slider({ Name = "Text size", Min = 10, Max = 18, Step = 1, Default = ESP.TextSize, Suffix = " px", Callback = function(v) ESP.SetTextSize(v) end })
 mEsp:Toggle({ Name = "Wanted tag (red)", Default = ESP.Wanted, Callback = function(v) ESP.Wanted = v end })
 mEsp:Toggle({ Name = "Wanted stars + bounty (instead of the word WANTED)", Default = ESP.Stars, Callback = function(v) ESP.Stars = v end })
 mEsp:Toggle({ Name = "Car health next to the distance", Default = ESP.CarInfo, Callback = function(v) ESP.CarInfo = v end })
@@ -311,7 +315,7 @@ safe("skins", Skins.Start)
 -- Vehicle Mods tab
 local tVeh = win:Tab("Vehicle Mods", { Section = "Game", Icon = 1 })
 local lCar = tVeh:Label({ Name = "Car", Value = Vehicle.Info })
-local mRep = tVeh:Module({ Name = "Quick repair", Default = true, Callback = function() end })
+local mRep = tVeh:Module({ Name = "Quick repair", Default = true, Hidden = true, Callback = function() end })
 local lRep = mRep:Label({ Name = "Car health", Value = "-" })
 local repKey = mRep:Keybind({ Name = "Repair key", Default = Enum.KeyCode.J })
 mRep:Toggle({ Name = "Auto repair when damaged", Default = false, Callback = function(v) Repair.Auto = v end })
@@ -391,7 +395,7 @@ local lStam = mStam:Label({ Name = "Status", Value = Player.Info })
 Player.Changed = function() lStam:Set(Player.Info) end
 safe("player", Player.Start)
 
-local mHop = tPlayer:Module({ Name = "Server hop", Default = true, Callback = function() end })
+local mHop = tPlayer:Module({ Name = "Server hop", Default = true, Hidden = true, Callback = function() end })
 mHop:Button({ Name = "Hop to a low server with police", NoSave = true, Callback = function() Hop.Go(false) end })
 local hopKey = mHop:Keybind({ Name = "Hop key", Default = Enum.KeyCode.H })
 mHop:Slider({ Name = "Minimum players", Min = 3, Max = 30, Step = 1, Default = Hop.MinPlayers, Callback = function(v) Hop.MinPlayers = v end })
@@ -399,7 +403,7 @@ mHop:Slider({ Name = "Minimum police", Min = 1, Max = 8, Step = 1, Default = Hop
 mHop:Toggle({ Name = "Keep hopping until enough police", Default = true, Callback = function(v) Hop.Auto = v end })
 Hop.Notify = function(msg, secs, kind) win:Notify(msg, secs or 3, kind) end
 safe("hop", Hop.Start)
-local mLoot = tPlayer:Module({ Name = "Quick loot", Default = true, Callback = function() end })
+local mLoot = tPlayer:Module({ Name = "Quick loot", Default = true, Hidden = true, Callback = function() end })
 local lLoot = mLoot:Label({ Name = "Status", Value = Loot.Info })
 local lootKey = mLoot:Keybind({ Name = "Loot key (money, gold, items in reach)", Default = Enum.KeyCode.Y })
 mLoot:Label({ Name = "How it works", Value = "everything in reach, all at once" })
@@ -432,39 +436,7 @@ tWorld:Section("Utility")
 tWorld:Toggle({ Name = "Anti AFK (never kicked for idling)", Default = Extras.AntiAfk, Callback = function(v) Extras.AntiAfk = v end })
 safe("extras", Extras.Start)
 
--- FPS tab: client-side optimisations (each one remembers the original value, so turning it off restores everything)
-local tFps = win:Tab("FPS", { Section = "Game", Icon = 7 })
-local lFps = tFps:Label({ Name = "FPS now", Value = "-" })
-local lLow = tFps:Label({ Name = "Worst frame (last 2 s)", Value = "-" })
-tFps:Button({ Name = "Preset: invisible tweaks (you will not notice them)", NoSave = true, Callback = function()
-	FPS.Preset("invisible"); win:Notify("FPS: invisible tweaks on", 2.5)
-end })
-tFps:Button({ Name = "Preset: maximum FPS (no shadows, no particles)", NoSave = true, Callback = function()
-	FPS.Preset("max"); win:Notify("FPS: maximum mode on", 2.5)
-end })
-tFps:Button({ Name = "Turn all optimisations off", NoSave = true, Callback = function()
-	FPS.AllOff(); win:Notify("FPS: everything back to normal", 2.5)
-end })
-tFps:Section("Things you will not notice")
-tFps:Toggle({ Name = "Post effects off (bloom, blur, sun rays, depth of field)", Default = false, Callback = function(v) FPS.SetEffects(v) end })
-tFps:Toggle({ Name = "Cheaper environment lighting", Default = false, Callback = function(v) FPS.SetLighting(v) end })
-tFps:Toggle({ Name = "Calm water + no grass sway", Default = false, Callback = function(v) FPS.SetTerrain(v) end })
-tFps:Toggle({ Name = "Lower mesh detail", Default = false, Callback = function(v) FPS.SetMeshDetail(v) end })
-tFps:Section("Bigger savings (the world looks a little different)")
-tFps:Toggle({ Name = "No shadows", Default = false, Callback = function(v) FPS.SetShadows(v) end })
-tFps:Toggle({ Name = "No particles (smoke, fire, sparks, trails)", Default = false, Callback = function(v) FPS.SetParticles(v) end })
-tFps:Toggle({ Name = "Lower graphics level", Default = false, Callback = function(v) FPS.SetQuality(v) end })
-tFps:Slider({ Name = "Graphics level (1 = lowest)", Min = 1, Max = 10, Step = 1, Default = FPS.QualityLevel, Callback = function(v) FPS.SetQualityLevel(v) end })
-tFps:Section("Frame rate limit")
-tFps:Toggle({ Name = "Unlock the FPS limit", Default = false, Callback = function(v) FPS.SetUnlock(v) end })
-tFps:Slider({ Name = "Limit", Min = 30, Max = 360, Step = 10, Default = FPS.CapValue, Suffix = " fps", Callback = function(v) FPS.SetCap(v) end })
 safe("fps", FPS.Start)
-task.spawn(function()
-	while true do
-		task.wait(0.5)
-		pcall(function() lFps:Set(FPS.Fps); lLow:Set(FPS.Low > 0 and (FPS.Low .. " fps") or "-") end)
-	end
-end)
 
 -- Auto Drive tab: the car drives itself like an NPC (roam the map, follow a player, park straight)
 local NPC = __import("autonpc")
@@ -513,7 +485,7 @@ mTime:Label({ Name = "Note", Value = "needs Shader look on to hold" })
 local tUtil = win:Tab("Utility", { Section = "Game", Icon = 21 })
 local mFov = tUtil:Module({ Name = "Field of view", Default = false, Callback = function(on) Utility.Fov = on end })
 mFov:Slider({ Name = "FOV", Min = 40, Max = 120, Step = 1, Default = Utility.FovValue, Callback = function(v) Utility.FovValue = v end })
-local mZoom = tUtil:Module({ Name = "Hold to zoom", Default = true, Callback = function() end })
+local mZoom = tUtil:Module({ Name = "Hold to zoom", Default = true, Hidden = true, Callback = function() end })
 local zoomKey = mZoom:Keybind({ Name = "Zoom key", Default = Utility.ZoomKey, Callback = function(k) if k then Utility.ZoomKey = k end end })
 mZoom:Slider({ Name = "Zoom FOV", Min = 8, Max = 60, Step = 1, Default = Utility.ZoomFov, Callback = function(v) Utility.ZoomFov = v end })
 local mBar = tUtil:Module({ Name = "Info bar", Default = false, Callback = function(on) Utility.SetBar(on) end })
@@ -522,7 +494,7 @@ mBar:Toggle({ Name = "Ping", Default = true, Callback = function(v) Utility.BarP
 mBar:Toggle({ Name = "Players", Default = true, Callback = function(v) Utility.BarParts.Players = v end })
 mBar:Toggle({ Name = "Police online", Default = true, Callback = function(v) Utility.BarParts.Police = v end })
 mBar:Toggle({ Name = "Clock", Default = true, Callback = function(v) Utility.BarParts.Clock = v end })
-local mAfk = tUtil:Module({ Name = "Anti AFK", Default = true, Callback = function(on) Utility.AntiAfk = on end })
+local mAfk = tUtil:Module({ Name = "Anti AFK", Default = true, Hidden = true, Callback = function(on) Utility.AntiAfk = on end })
 safe("utility", Utility.Start)
 
 -- SOCCER (Ragdoll Soccer only) ------------------------------------------------------------------------------------------
@@ -631,6 +603,14 @@ local tSet = win:Tab("Settings", { Section = "Client", Icon = 9 })
 tSet:Section("Window")
 tSet:Slider({ Name = "UI scale", Min = 0.7, Max = 1.4, Step = 0.05, Default = 1, Callback = function(v) win:SetScale(v) end })
 tSet:Slider({ Name = "Blur behind the window", Min = 0, Max = 30, Step = 1, Default = 0, Callback = function(v) win:SetBlur(v) end })
+tSet:Toggle({ Name = "Module list (top right of the screen)", Default = true, Callback = function(v) win:SetArrayList(v) end })
+-- PERFORMANCE: no FPS tab any more. The script itself is light (nothing per frame unless a visual is on); these are the optional extras.
+tSet:Section("Performance")
+local smartT = tSet:Toggle({ Name = "Smart boost (calm water, no grass sway, cheaper lighting)", Default = true, Callback = function(v) FPS.SetTerrain(v); FPS.SetLighting(v) end })
+tSet:Toggle({ Name = "Lower mesh detail far away", Default = false, Callback = function(v) FPS.SetMeshDetail(v) end })
+tSet:Toggle({ Name = "Max FPS (no shadows, no particles, no post effects)", Default = false, Callback = function(v) FPS.SetShadows(v); FPS.SetParticles(v); FPS.SetEffects(v) end })
+tSet:Toggle({ Name = "Unlock the FPS limit", Default = false, Callback = function(v) FPS.SetUnlock(v) end })
+tSet:Slider({ Name = "FPS limit", Min = 30, Max = 360, Step = 10, Default = FPS.CapValue, Suffix = " fps", Callback = function(v) FPS.SetCap(v) end })
 -- theme: accent + background as hex, applied to the window, remembered between sessions
 local THEME_FILE = "ScrdsxScript/theme.json"
 local theme = { accent = "", bg = "" }
@@ -672,11 +652,11 @@ local bgPick = tSet:ColorPicker({ Name = "Background colour", NoSave = true, Def
 	theme.bg = toHex(col); applyTheme(final)
 end })
 local THEMES = {
-	{ "Mono", UI.Palette().accent, UI.Palette().bg }, { "Aurora", Color3.fromRGB(139, 92, 246), Color3.fromRGB(11, 10, 22) }, { "Amber", Color3.fromRGB(243, 156, 18), Color3.fromRGB(14, 13, 12) }, { "Ocean", Color3.fromRGB(52, 152, 219), Color3.fromRGB(10, 16, 26) },
+	{ "Default", UI.Palette().accent, UI.Palette().bg }, { "Mono", Color3.fromRGB(236, 237, 242), Color3.fromRGB(14, 14, 16) }, { "Aurora", Color3.fromRGB(139, 92, 246), Color3.fromRGB(11, 10, 22) }, { "Amber", Color3.fromRGB(243, 156, 18), Color3.fromRGB(14, 13, 12) }, { "Ocean", Color3.fromRGB(52, 152, 219), Color3.fromRGB(10, 16, 26) },
 	{ "Violet", Color3.fromRGB(155, 110, 255), Color3.fromRGB(14, 12, 26) }, { "Mint", Color3.fromRGB(46, 204, 150), Color3.fromRGB(10, 20, 18) },
 	{ "Rose", Color3.fromRGB(255, 105, 160), Color3.fromRGB(22, 12, 18) }, { "Crimson", Color3.fromRGB(231, 76, 60), Color3.fromRGB(20, 11, 11) },
 }
-local themeNames, themeName = {}, "Mono"
+local themeNames, themeName = {}, "Default"
 for _, t in ipairs(THEMES) do themeNames[#themeNames + 1] = t[1] end
 tSet:Choice({ Name = "Theme preset", NoSave = true, Options = themeNames, Default = themeName, Callback = function(v)
 	themeName = v
@@ -804,6 +784,9 @@ if Config.Available then
 		end
 	end)
 end
+
+-- the smart boost is on by default: apply it now (a toggle that keeps its default value never fires its callback)
+if smartT:Get() then FPS.SetTerrain(true); FPS.SetLighting(true) end
 
 table.insert(win.conns, UIS.InputBegan:Connect(function(i, gp)
 	if i.KeyCode == Enum.KeyCode.RightShift then

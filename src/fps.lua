@@ -67,6 +67,7 @@ local function effectOff(d) if EFFECTS[d.ClassName] and d.Name ~= "ScrdsxGlass" 
 local function effectOn(d) if EFFECTS[d.ClassName] then restoreInst(d, { "Enabled" }) end end
 function FPS.SetEffects(v)
 	FPS.Effects = v
+	if FPS._watch then FPS._watch() end
 	eachWorld(v and effectOff or effectOn)
 end
 
@@ -109,6 +110,7 @@ local function meshLow(d) if d:IsA("MeshPart") then setProp(d, "RenderFidelity",
 local function meshBack(d) if d:IsA("MeshPart") then restoreInst(d, { "RenderFidelity" }) end end
 function FPS.SetMeshDetail(v)
 	FPS.MeshDetail = v
+	if FPS._watch then FPS._watch() end
 	pcall(function()
 		local r = settings().Rendering
 		if v then
@@ -127,6 +129,7 @@ local function lightOff(d) if LIGHTS[d.ClassName] then setProp(d, "Shadows", fal
 local function lightOn(d) if LIGHTS[d.ClassName] then restoreInst(d, { "Shadows" }) end end
 function FPS.SetShadows(v)
 	FPS.Shadows = v
+	if FPS._watch then FPS._watch() end
 	pcall(function()
 		if v then
 			if saved.shadows == nil then saved.shadows = Lighting.GlobalShadows end
@@ -144,6 +147,7 @@ local function emitOff(d) if EMITTERS[d.ClassName] then setProp(d, "Enabled", fa
 local function emitOn(d) if EMITTERS[d.ClassName] then restoreInst(d, { "Enabled" }) end end
 function FPS.SetParticles(v)
 	FPS.Particles = v
+	if FPS._watch then FPS._watch() end
 	eachWorld(v and emitOff or emitOn)
 end
 
@@ -195,7 +199,20 @@ function FPS.AllOff()
 end
 
 -- new objects that appear while an option is on (cars, effects, streamed map) are handled as they arrive
-local function onAdded(d)
+local onAdded
+local function watch()
+	local need = FPS.Effects or FPS.Particles or FPS.Shadows or FPS.MeshDetail
+	if need and not conns.added then
+		conns.added = workspace.DescendantAdded:Connect(function(d) pcall(onAdded, d) end)
+		conns.lightAdded = Lighting.DescendantAdded:Connect(function(d) pcall(onAdded, d) end)
+	elseif not need and conns.added then
+		conns.added:Disconnect(); conns.lightAdded:Disconnect()
+		conns.added, conns.lightAdded = nil, nil
+	end
+end
+FPS._watch = watch
+
+function onAdded(d)
 	if FPS.Effects and EFFECTS[d.ClassName] then setProp(d, "Enabled", false)
 	elseif FPS.Particles and EMITTERS[d.ClassName] then setProp(d, "Enabled", false)
 	elseif FPS.Shadows and LIGHTS[d.ClassName] then setProp(d, "Shadows", false)
@@ -203,23 +220,7 @@ local function onAdded(d)
 end
 
 function FPS.Start()
-	if conns.step then return end
-	conns.added = workspace.DescendantAdded:Connect(function(d) pcall(onAdded, d) end)
-	conns.lightAdded = Lighting.DescendantAdded:Connect(function(d) pcall(onAdded, d) end)
-	-- frames per second (average of the last half second) and the worst frame time of the last 2 seconds
-	local acc, n, worst, winStart = 0, 0, 0, os.clock()
-	conns.step = RunService.RenderStepped:Connect(function(dt)
-		acc, n = acc + dt, n + 1
-		if dt > worst then worst = dt end
-		if acc >= 0.5 then
-			FPS.Fps = math.floor(n / acc + 0.5)
-			acc, n = 0, 0
-		end
-		if os.clock() - winStart > 2 then
-			FPS.Low = worst > 0 and math.floor(1 / worst + 0.5) or 0
-			worst, winStart = 0, os.clock()
-		end
-	end)
+	FPS.Info = "ready"
 end
 
 function FPS.Destroy()

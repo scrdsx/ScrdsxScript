@@ -29,7 +29,7 @@ local function waitFor(cond, timeout)
 	return true
 end
 
-local BG, TEXT, SUB, TRACK = Color3.fromRGB(16, 16, 18), Color3.fromRGB(240, 240, 245), Color3.fromRGB(135, 135, 146), Color3.fromRGB(40, 40, 46)
+local BG, TEXT, SUB, TRACK, ACC = Color3.fromRGB(12, 12, 15), Color3.fromRGB(236, 237, 242), Color3.fromRGB(138, 141, 153), Color3.fromRGB(33, 33, 41), Color3.fromRGB(124, 131, 255)
 
 function Loading.run(title, subtitle, extraSteps)
 	local gui = Instance.new("ScreenGui")
@@ -66,7 +66,7 @@ function Loading.run(title, subtitle, extraSteps)
 	track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Parent = col
 	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 	local fill = Instance.new("Frame")
-	fill.Size = UDim2.fromScale(0, 1); fill.BackgroundColor3 = TEXT; fill.BorderSizePixel = 0; fill.Parent = track
+	fill.Size = UDim2.fromScale(0, 1); fill.BackgroundColor3 = ACC; fill.BorderSizePixel = 0; fill.Parent = track
 	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
 	local status = Instance.new("TextLabel")

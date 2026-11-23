@@ -29,7 +29,7 @@ local conn, chamConn
 local pool = { pointers = {}, markers = {} }
 local avatars = {}
 local WANTED = Color3.fromRGB(255, 70, 70)
-local BG = Color3.fromRGB(21, 21, 24)
+local BG = Color3.fromRGB(15, 15, 19)
 
 local function guiParent()
 	local ok, h = pcall(function() return gethui and gethui() end)
@@ -220,7 +220,7 @@ local function frameStep()
 						e.cur = e.cur and e.cur:Lerp(pos, 0.4) or pos
 						local col = colourOf(plr, P)
 						local s = P.Scale * (d > 700 and 0.85 or 1)
-						e.root.Visible = true
+						if not e.root.Visible then e.root.Visible = true end
 						e.root.Position = UDim2.fromOffset(e.cur.X, e.cur.Y)
 						-- size and colour only change rarely: set them only when they did (property writes are the costly part)
 						if e.s ~= s then
@@ -265,15 +265,19 @@ local function frameStep()
 						nM = nM + 1
 						local px = math.clamp(M.Size * (28 / math.max(d, 10)) ^ 0.5, M.Size * 0.5, M.Size * 1.25)
 						local col = colourOf(plr, M)
-						e.root.Visible = true
-						e.root.Size = UDim2.fromOffset(px, px)
-						e.root.Position = UDim2.fromOffset(sp.X, sp.Y)
-						e.stroke.Color = col
+						-- only write what changed (property writes are what costs frames)
+						if not e.root.Visible then e.root.Visible = true end
+						local pq = math.floor(px + .5)
+						if e.px ~= pq then e.px = pq; e.root.Size = UDim2.fromOffset(pq, pq) end
+						if not e.sx or math.abs(e.sx - sp.X) > .5 or math.abs(e.sy - sp.Y) > .5 then e.sx, e.sy = sp.X, sp.Y; e.root.Position = UDim2.fromOffset(sp.X, sp.Y) end
+						if e.col ~= col then e.col = col; e.stroke.Color = col end
 						local want = avatarFor(plr.UserId, M.Kind)
 						if e.img.Image ~= want then e.img.Image = want end
-						e.name.Text = M.Name and plr.DisplayName or ""
-						e.dist.Text = M.Distance and (math.floor(d) .. " st") or ""
-						e.dist.Position = UDim2.new(.5, 0, 1, M.Name and 16 or 3)
+						local nt = M.Name and plr.DisplayName or ""
+						if e.name.Text ~= nt then e.name.Text = nt end
+						local dt_ = M.Distance and (math.floor(d) .. " st") or ""
+						if e.dist.Text ~= dt_ then e.dist.Text = dt_ end
+						if e.nameOn ~= M.Name then e.nameOn = M.Name; e.dist.Position = UDim2.new(.5, 0, 1, M.Name and 16 or 3) end
 					end
 				end
 			end

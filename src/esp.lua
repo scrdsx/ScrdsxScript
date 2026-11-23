@@ -1,5 +1,8 @@
--- ESP: other players with box (full or corner style), skeleton, name + role, health bar, distance, tracer, WANTED tag and a hover card,
--- plus a police radar pill. Plain GUI instances only (no Drawing library), so it works on every executor. It fades out with distance.
+-- ESP v2: other players with box (corners or full, dark outline, optional gradient fill), side health bar, name + role, a detail line
+-- (distance, wanted stars / timer, car health, held item), skeleton, outlined tracers, a hover card and the police radar pill.
+-- Plain GUI instances (works on every executor). Speed: body parts are looked up once per character, every element remembers what it
+-- last showed and is only written when that changes by half a pixel or more (property writes are what costs frames, not the maths),
+-- and nothing is touched for players that stay hidden.
 -- Roles come from the game's own Teams: Police = blue, FireDepartment = red, Prisoner = grey, Citizen = white, other jobs use the team colour.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,20 +11,23 @@ local lp = Players.LocalPlayer
 local V3 = Vector3.new
 
 local ESP = {
-	Enabled = false, Boxes = true, CornerBox = true, Skeleton = true, Names = true, Health = true, Distance = true, Tracers = false, TracerFrom = "Bottom", TracerTo = "Feet", TracerThickness = 1.4, Wanted = true, Hover = true,
-	Fade = true, Radar = true, MaxDist = 900, RadarDist = 350,
+	Enabled = false, Boxes = true, CornerBox = true, Fill = true, Outline = true, Skeleton = false, Names = true, Health = true, Distance = true, Tool = true,
+	Tracers = false, TracerFrom = "Bottom", TracerTo = "Feet", TracerThickness = 1.4, Wanted = true, Hover = true,
+	Fade = true, Radar = true, MaxDist = 900, RadarDist = 350, TextSize = 13,
 	Stars = true, CarInfo = true, Spots = false, SpotDist = 220, SpotsWantedOnly = false,
 	Teams = { Police = true, FireDepartment = true, Citizen = true, Other = true },
 	OnPolice = nil, Info = "off",
 }
 
 local COL = {
-	Police = Color3.fromRGB(52, 152, 219), FireDepartment = Color3.fromRGB(231, 76, 60),
-	Prisoner = Color3.fromRGB(150, 150, 160), Citizen = Color3.fromRGB(235, 235, 240),
+	Police = Color3.fromRGB(64, 156, 255), FireDepartment = Color3.fromRGB(240, 86, 70),
+	Prisoner = Color3.fromRGB(160, 160, 170), Citizen = Color3.fromRGB(236, 237, 242),
 }
-local RED = Color3.fromRGB(231, 76, 60)
+local RED = Color3.fromRGB(255, 72, 72)
 local TAG = { Police = "POLICE", FireDepartment = "FIRE", Prisoner = "PRISONER" }
-local BG, STROKE = Color3.fromRGB(21, 21, 24), Color3.fromRGB(52, 52, 58) -- flat neutral surfaces, same family as the window
+local BG, STROKE = Color3.fromRGB(15, 15, 19), Color3.fromRGB(38, 38, 46)
+local BLACK = Color3.new(0, 0, 0)
+local HP_LO, HP_MID, HP_HI = Color3.fromRGB(240, 70, 60), Color3.fromRGB(245, 200, 60), Color3.fromRGB(70, 215, 120)
 
 local BONES_R15 = {
 	{ "Head", "UpperTorso" }, { "UpperTorso", "LowerTorso" },
@@ -145,87 +151,121 @@ local gui, conn, addConn, remConn
 local entries = {}
 local hover, hoverLabel, radar, radarArrow, radarText, radarStroke
 
-local function label(parent, size, bold, radius)
-	local l = mk("TextLabel", {
-		BackgroundColor3 = BG, BackgroundTransparency = 0.4, BorderSizePixel = 0, Font = bold and Enum.Font.BuilderSansBold or Enum.Font.BuilderSansMedium,
-		TextSize = size, TextColor3 = Color3.new(1, 1, 1), RichText = true, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0), Visible = false,
-	}, parent)
-	mk("UICorner", { CornerRadius = radius and UDim.new(0, radius) or UDim.new(1, 0) }, l)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9), PaddingTop = UDim.new(0, radius and 4 or 3), PaddingBottom = UDim.new(0, radius and 6 or 3) }, l)
-	mk("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1.2, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, l)
-	return l
+local function hpColor(f)
+	if f > 0.5 then return HP_MID:Lerp(HP_HI, (f - 0.5) * 2) end
+	return HP_LO:Lerp(HP_MID, f * 2)
 end
 
-local function lineFrame(parent)
-	return mk("Frame", { AnchorPoint = Vector2.new(.5, .5), BorderSizePixel = 0, BackgroundColor3 = COL.Citizen, Visible = false }, parent)
+-- write-on-change helpers: every element keeps what it last showed in e.c
+local function vis(e, f, v)
+	if e.c[f] ~= v then e.c[f] = v; f.Visible = v end
+end
+local function rect(e, f, x, y, w, h)
+	local c = e.r[f]
+	if not c then c = {}; e.r[f] = c end
+	if not c[1] or math.abs(c[1] - x) > .5 or math.abs(c[2] - y) > .5 or math.abs(c[3] - w) > .5 or math.abs(c[4] - h) > .5 then
+		c[1], c[2], c[3], c[4] = x, y, w, h
+		f.Position = UDim2.fromOffset(x, y); f.Size = UDim2.fromOffset(w, h)
+	end
+end
+local function at(e, f, x, y)
+	local c = e.r[f]
+	if not c then c = {}; e.r[f] = c end
+	if not c[1] or math.abs(c[1] - x) > .5 or math.abs(c[2] - y) > .5 then
+		c[1], c[2] = x, y
+		f.Position = UDim2.fromOffset(x, y)
+	end
+end
+local function prop(e, key, f, p, v)
+	if e.p[key] ~= v then e.p[key] = v; f[p] = v end
+end
+-- a thin rotated frame on the segment (x1,y1)-(x2,y2)
+local function seg(e, f, x1, y1, x2, y2, th)
+	local c = e.r[f]
+	if not c then c = {}; e.r[f] = c end
+	if not c[1] or math.abs(c[1] - x1) > .5 or math.abs(c[2] - y1) > .5 or math.abs(c[3] - x2) > .5 or math.abs(c[4] - y2) > .5 or c[5] ~= th then
+		c[1], c[2], c[3], c[4], c[5] = x1, y1, x2, y2, th
+		local dx, dy = x2 - x1, y2 - y1
+		f.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), th)
+		f.Position = UDim2.fromOffset(x1 + dx / 2, y1 + dy / 2)
+		f.Rotation = math.deg(math.atan2(dy, dx))
+	end
 end
 
--- put a thin frame on the segment (x1,y1)-(x2,y2)
-local function seg(f, x1, y1, x2, y2, th)
-	local dx, dy = x2 - x1, y2 - y1
-	f.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), th)
-	f.Position = UDim2.fromOffset(x1 + dx / 2, y1 + dy / 2)
-	f.Rotation = math.deg(math.atan2(dy, dx))
-	f.Visible = true
+local function line(z)
+	return mk("Frame", { AnchorPoint = Vector2.new(.5, .5), BorderSizePixel = 0, BackgroundColor3 = COL.Citizen, Visible = false, ZIndex = z or 2 }, gui)
 end
+local function txt(size, z, ay)
+	return mk("TextLabel", {
+		AnchorPoint = Vector2.new(.5, ay), Size = UDim2.fromOffset(260, size + 4), BackgroundTransparency = 1, Font = Enum.Font.BuilderSansBold, TextSize = size,
+		TextColor3 = Color3.new(1, 1, 1), TextStrokeColor3 = BLACK, TextStrokeTransparency = 0.3, RichText = true, Text = "", Visible = false, ZIndex = z or 4,
+	}, gui)
+end
+
+local PARTS = { "boxO", "box", "fill", "hpBg", "name", "info", "lineO", "line" }
 
 local function newEntry(plr)
-	local e = { plr = plr, init = false, bones = {}, corners = {} }
-	e.box = mk("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }, gui)
-	e.stroke = mk("UIStroke", { Thickness = 1.5, Color = COL.Citizen }, e.box)
+	local e = { plr = plr, c = {}, r = {}, p = {}, bones = {}, corners = {}, cornersO = {} }
+	-- full box: dark outline behind, colour line on top, soft gradient fill inside
+	e.boxO = mk("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, ZIndex = 1 }, gui)
+	mk("UIStroke", { Thickness = 3, Color = BLACK, Transparency = 0.5 }, e.boxO)
+	e.box = mk("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, ZIndex = 2 }, gui)
+	e.boxS = mk("UIStroke", { Thickness = 1, Color = COL.Citizen }, e.box)
+	e.fill = mk("Frame", { BackgroundColor3 = COL.Citizen, BorderSizePixel = 0, Visible = false, ZIndex = 1 }, gui)
+	mk("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.96), NumberSequenceKeypoint.new(1, 0.76) }) }, e.fill)
 	for i = 1, 8 do
-		local c = mk("Frame", { BorderSizePixel = 0, BackgroundColor3 = COL.Citizen, Visible = false }, gui)
-		e.corners[i] = c
+		e.cornersO[i] = mk("Frame", { BorderSizePixel = 0, BackgroundColor3 = BLACK, BackgroundTransparency = 0.5, Visible = false, ZIndex = 1 }, gui)
+		e.corners[i] = mk("Frame", { BorderSizePixel = 0, BackgroundColor3 = COL.Citizen, Visible = false, ZIndex = 2 }, gui)
 	end
-	e.hpBg = mk("Frame", { BackgroundColor3 = Color3.fromRGB(10, 10, 12), BackgroundTransparency = 0.15, BorderSizePixel = 0, Visible = false }, gui)
-	mk("UICorner", { CornerRadius = UDim.new(0, 2) }, e.hpBg)
-	e.hp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(80, 220, 120) }, e.hpBg)
-	mk("UICorner", { CornerRadius = UDim.new(0, 2) }, e.hp)
-	e.name = label(gui, 13, true, 8); e.name.AnchorPoint = Vector2.new(.5, 1); e.name.ClipsDescendants = true
-	-- health lives as a thin line along the bottom of the name card
-	e.nameScale = mk("UIScale", { Scale = 1 }, e.name)
-	e.nameBar = mk("Frame", { Size = UDim2.new(0, 3, 1, 0), BorderSizePixel = 0, BackgroundColor3 = COL.Citizen }, e.name)
-e.name.LineHeight = 1.1
-e.nameHp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(80, 220, 120), Visible = false }, e.name)
-	e.dist = label(gui, 11, false, 7); e.dist.AnchorPoint = Vector2.new(.5, 0); e.dist.TextColor3 = Color3.fromRGB(190, 190, 196)
-	e.nameSt = e.name:FindFirstChildOfClass("UIStroke")
-	e.line = lineFrame(gui)
-	for i = 1, #BONES_R15 do e.bones[i] = lineFrame(gui) end
+	-- health: a thin bar along the left side of the box
+	e.hpBg = mk("Frame", { BackgroundColor3 = BLACK, BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false, ZIndex = 2 }, gui)
+	e.hp = mk("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 1, 1, -1), Size = UDim2.new(1, -2, 1, -2), BorderSizePixel = 0, BackgroundColor3 = HP_HI, ZIndex = 3 }, e.hpBg)
+	e.name = txt(ESP.TextSize, 4, 1)
+	e.info = txt(ESP.TextSize - 2, 4, 0)
+	e.info.Font = Enum.Font.BuilderSansMedium
+	e.info.TextColor3 = Color3.fromRGB(210, 213, 222)
+	e.lineO = line(1); e.lineO.BackgroundColor3 = BLACK; e.lineO.BackgroundTransparency = 0.55
+	e.line = line(2)
+	for i = 1, #BONES_R15 do e.bones[i] = line(2) end
 	entries[plr] = e
 	return e
 end
 
 local function hide(e)
-	e.box.Visible = false; e.hpBg.Visible = false; e.name.Visible = false; e.dist.Visible = false; e.line.Visible = false
-	for _, c in ipairs(e.corners) do c.Visible = false end
+	if e.hidden then return end
+	e.hidden = true
+	for _, k in ipairs(PARTS) do e[k].Visible = false end
+	for i = 1, 8 do e.corners[i].Visible = false; e.cornersO[i].Visible = false end
 	for _, b in ipairs(e.bones) do b.Visible = false end
-	e.init = false
+	e.c, e.r = {}, {}
 end
 
 local function dropEntry(plr)
 	local e = entries[plr]
 	if not e then return end
 	entries[plr] = nil
-	pcall(function() e.box:Destroy(); e.hpBg:Destroy(); e.name:Destroy(); e.dist:Destroy(); e.line:Destroy() end)
-	for _, c in ipairs(e.corners) do pcall(function() c:Destroy() end) end
+	for _, k in ipairs(PARTS) do pcall(function() e[k]:Destroy() end) end
+	for i = 1, 8 do pcall(function() e.corners[i]:Destroy(); e.cornersO[i]:Destroy() end) end
 	for _, b in ipairs(e.bones) do pcall(function() b:Destroy() end) end
 end
 
 local function buildGui()
 	gui = mk("ScreenGui", { Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 4, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, guiParent())
-	hover = mk("Frame", { BackgroundColor3 = BG, BackgroundTransparency = 0.25, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Visible = false, ZIndex = 5 }, gui)
-	mk("UISizeConstraint", { MinSize = Vector2.new(190, 0) }, hover)
+	hover = mk("Frame", { BackgroundColor3 = BG, BackgroundTransparency = 0.06, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Visible = false, ZIndex = 8 }, gui)
+	mk("UISizeConstraint", { MinSize = Vector2.new(200, 0) }, hover)
 	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, hover)
 	mk("UIStroke", { Color = STROKE, Thickness = 1 }, hover)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }, hover)
-	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = Enum.Font.BuilderSansMedium, TextSize = 12,
-		TextColor3 = Color3.fromRGB(215, 215, 220), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, RichText = true, ZIndex = 6 }, hover)
-	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(176, 32), BackgroundColor3 = BG, BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false }, gui)
-	mk("UICorner", { CornerRadius = UDim.new(0, 16) }, radar)
-	radarStroke = mk("UIStroke", { Color = COL.Police, Thickness = 1.5 }, radar)
-	radarArrow = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 4), Size = UDim2.fromOffset(24, 24), Text = "▲", TextSize = 18, Font = Enum.Font.BuilderSansBold, TextColor3 = COL.Police }, radar)
-	radarText = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(38, 0), Size = UDim2.new(1, -46, 1, 0), Text = "", TextSize = 13, Font = Enum.Font.BuilderSansBold,
-		TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, RichText = true }, radar)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10) }, hover)
+	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = Enum.Font.BuilderSansMedium, TextSize = 13,
+		TextColor3 = Color3.fromRGB(196, 199, 209), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, RichText = true, LineHeight = 1.15, ZIndex = 9 }, hover)
+	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = BG, BackgroundTransparency = 0.08, BorderSizePixel = 0, Visible = false }, gui)
+	mk("UICorner", { CornerRadius = UDim.new(0, 9) }, radar)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 14) }, radar)
+	radarStroke = mk("UIStroke", { Color = COL.Police, Thickness = 1.2, Transparency = 0.2 }, radar)
+	mk("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8) }, radar)
+	radarArrow = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 20), Text = "▲", TextSize = 15, Font = Enum.Font.BuilderSansBold, TextColor3 = COL.Police }, radar)
+	radarText = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Text = "", TextSize = 13, Font = Enum.Font.BuilderSansBold,
+		TextColor3 = Color3.new(1, 1, 1), RichText = true }, radar)
 end
 
 -- nearest police player or police car with its lights on
@@ -340,27 +380,25 @@ local function hideAll()
 	if hover then hover.Visible = false end
 end
 
--- players nearest first (re-sorted a few times a second): near plates get the space, far ones are the ones that give way
-local ordList, ordT = {}, -99
-local function ordered(now)
-	if now - ordT > 0.3 then
-		ordT = now
-		ordList = {}
-		for plr, e in pairs(entries) do ordList[#ordList + 1] = { plr, e } end
-		table.sort(ordList, function(a, b) return (a[2].lastD or 1e9) < (b[2].lastD or 1e9) end)
-	end
-	local i = 0
-	return function()
-		while true do
-			i = i + 1
-			local p = ordList[i]
-			if not p then return nil end
-			if entries[p[1]] == p[2] then return p[1], p[2] end
+-- body parts of a character, looked up once (and again only when the character changes or a part goes missing)
+local function charRef(e, plr, now)
+	local ch = plr.Character
+	if ch ~= e.ch or (e.hrp and e.hrp.Parent ~= ch) or (not e.hrp and now - (e.retry or 0) > 0.5) then
+		e.ch, e.retry = ch, now
+		e.hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+		e.hum = ch and ch:FindFirstChildOfClass("Humanoid")
+		e.head = ch and ch:FindFirstChild("Head")
+		e.bl = nil
+		e.foot = 3
+		if e.hrp and e.hum then
+			local r6 = e.hum.RigType == Enum.HumanoidRigType.R6
+			e.foot = e.hrp.Size.Y / 2 + (r6 and 2 or math.max(e.hum.HipHeight, 1.2))
 		end
 	end
+	return ch, e.hrp, e.hum
 end
 
-local function update(dt)
+local function update()
 	if not gui then return end
 	local cam = workspace.CurrentCamera
 	if not cam then return end
@@ -373,40 +411,33 @@ local function update(dt)
 	if not ESP.Enabled then hideAll(); return end
 
 	local vs = cam.ViewportSize
-	local mouse = UIS:GetMouseLocation()
+	local mouse = (ESP.Hover or ESP.TracerFrom == "Cursor") and UIS:GetMouseLocation() or nil
 	local hoverBest, hoverD, hoverText
-	local placed = {}
-	for plr, e in ordered(now) do
-		local ch = plr.Character
-		local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-		local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+	for plr, e in pairs(entries) do
 		local shown = false
+		local ch, hrp, hum = charRef(e, plr, now)
 		if hrp and hum and hum.Health > 0 then
 			local role, col, group = roleOf(plr)
-			local d = (hrp.Position - origin).Magnitude
-			e.lastD = d
+			local pos = hrp.Position
+			local d = (pos - origin).Magnitude
 			if ESP.Teams[group] and d <= ESP.MaxDist then
-				local top = cam:WorldToViewportPoint(hrp.Position + V3(0, 3, 0))
-				local bot = cam:WorldToViewportPoint(hrp.Position - V3(0, 3.2, 0))
-				if top.Z > 0 and bot.Z > 0 then
+				local head = e.head
+				local topW = (head and head.Parent) and (head.Position + V3(0, head.Size.Y * 0.62, 0)) or (pos + V3(0, 2.6, 0))
+				local top = cam:WorldToViewportPoint(topW)
+				local bot = cam:WorldToViewportPoint(pos - V3(0, e.foot or 3, 0))
+				if top.Z > 0 and bot.Z > 0 and bot.Y > -50 and top.Y < vs.Y + 50 then
 					shown = true
+					e.hidden = false
 					local wanted = hrp:GetAttribute("IsWanted") == true
-					local c = (wanted and ESP.Wanted) and RED or col
-					-- slow data (stars, car damage): refreshed a few times a second, not every frame
+					-- slow data (stars, car damage, held item, text): a few times a second, spread over different frames
 					if now - (e.slow or 0) > 0.5 then
-						e.slow = now + (e.jit or 0)
-						e.jit = e.jit or (math.random() * 0.4) -- spread the players over different frames
+						e.jit = e.jit or (math.random() * 0.3)
+						e.slow = now + e.jit
 						if ESP.Stars and (wanted or e.stars) then
 							e.stars, e.bounty = scanWanted(plr, ch, hrp)
 							if wanted and not e.dumpW then
 								e.dumpW = true
 								dumpAttrs("wanted hrp", hrp); dumpAttrs("wanted character", ch); dumpAttrs("wanted player", plr)
-								local ls = plr:FindFirstChild("leaderstats")
-								if ls then
-									local t = {}
-									for _, cc in ipairs(ls:GetChildren()) do t[#t + 1] = cc.Name .. "=" .. tostring(cc:IsA("ValueBase") and cc.Value) end
-									note("ls" .. table.concat(t, ","), "leaderstats: " .. table.concat(t, ", "))
-								end
 							end
 						elseif not wanted then
 							e.stars, e.bounty = nil, nil
@@ -416,137 +447,118 @@ local function update(dt)
 							e.car = car
 							if car then
 								e.carFrac, e.carReal = scanCar(e, car)
-								if not e.dumpC then
-									e.dumpC = true
-									dumpAttrs("car", car)
-									local kids = {}
-									for _, k in ipairs(car:GetChildren()) do
-										kids[#kids + 1] = k.Name .. ":" .. k.ClassName
-										if #kids >= 40 then break end
-									end
-									note("carkids" .. #kids, "car children: " .. table.concat(kids, ", "))
-								end
+								if not e.dumpC then e.dumpC = true; dumpAttrs("car", car) end
 							else
 								e.carFrac = nil
 							end
 						else
 							e.car, e.carFrac = nil, nil
 						end
+						local tool = ESP.Tool and ch:FindFirstChildOfClass("Tool")
+						e.toolName = tool and tool.Name or nil
+						-- name line
+						local tag = TAG[role] and ("  <font size=\"%d\" color=\"%s\">%s</font>"):format(ESP.TextSize - 3, hex(col), TAG[role]) or ""
+						local nm = (wanted and ESP.Wanted) and ("<font color=\"%s\">%s</font>"):format(hex(RED), plr.DisplayName) or plr.DisplayName
+						e.nameText = nm .. tag
+						-- detail line (distance is added per frame below)
+						local bits = {}
+						if wanted and ESP.Wanted then
+							local since = tonumber(hrp:GetAttribute("StartTime"))
+							if ESP.Stars and e.stars then bits[#bits + 1] = ("<font color=\"#ff5a5a\"><b>%s</b></font>"):format(starText(e.stars))
+							elseif since then
+								local s = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
+								bits[#bits + 1] = ("<font color=\"#ff5a5a\"><b>WANTED %d:%02d</b></font>"):format(math.floor(s / 60), s % 60)
+							else bits[#bits + 1] = "<font color=\"#ff5a5a\"><b>WANTED</b></font>" end
+						end
+						if ESP.CarInfo and e.carFrac and (e.carReal or e.carFrac < 0.995) then
+							bits[#bits + 1] = ("<font color=\"%s\"><b>CAR %d%%</b></font>"):format(hex(hpColor(e.carFrac)), math.floor(e.carFrac * 100 + .5))
+						end
+						if ESP.CarInfo and e.car and tostring(e.car:GetAttribute("flatTires") or "") ~= "" then bits[#bits + 1] = "<font color=\"#ff5a5a\"><b>FLAT</b></font>" end
+						if e.toolName then bits[#bits + 1] = ("<font color=\"#c9b6ff\">%s</font>"):format(e.toolName) end
+						e.infoBits = table.concat(bits, "  ")
 					end
-					-- no easing on the screen position: it lagged behind the player whenever the camera turned. Exact every frame.
-					local h = math.max(bot.Y - top.Y, 8)
-					local w = h * 0.55
-					local x0, y0 = top.X - w / 2, top.Y
-					local cx = x0 + w / 2
-					-- fade with distance (the last 40% of the range)
-					local fade = ESP.Fade and math.clamp(1 - (d - ESP.MaxDist * 0.6) / (ESP.MaxDist * 0.4), 0.25, 1) or 1
-					local tr = 1 - fade
 
-					-- box: full outline or corners only
-					if ESP.Boxes and not ESP.CornerBox then
-						e.box.Visible = true
-						e.box.Position = UDim2.fromOffset(x0, y0); e.box.Size = UDim2.fromOffset(w, h)
-						e.stroke.Color = c; e.stroke.Transparency = tr
-					else
-						e.box.Visible = false
+					local c = (wanted and ESP.Wanted) and RED or col
+					local h = math.max(bot.Y - top.Y, 6)
+					local w = math.max(h * 0.58, 4)
+					local cx = (top.X + bot.X) / 2
+					local x0, y0 = cx - w / 2, top.Y
+					local fade = ESP.Fade and math.clamp(1 - (d - ESP.MaxDist * 0.6) / (ESP.MaxDist * 0.4), 0.2, 1) or 1
+					local tr = 1 - fade
+					local trQ = math.floor(tr * 20 + .5) / 20 -- transparency in 5% steps: fewer writes while walking away
+
+					-- box
+					local full = ESP.Boxes and not ESP.CornerBox
+					vis(e, e.box, full)
+					vis(e, e.boxO, full and ESP.Outline)
+					if full then
+						rect(e, e.box, x0, y0, w, h)
+						prop(e, "bc", e.boxS, "Color", c); prop(e, "bt", e.boxS, "Transparency", trQ)
+						if ESP.Outline then rect(e, e.boxO, x0, y0, w, h) end
 					end
-					if ESP.Boxes and ESP.CornerBox then
-						local l, t = math.max(math.min(w, h) * 0.28, 5), 1.5
+					local corn = ESP.Boxes and ESP.CornerBox
+					if corn then
+						local l, t = math.max(math.min(w, h) * 0.26, 4), (d < 150 and 2 or 1.5)
 						local P = {
 							{ x0, y0, l, t }, { x0, y0, t, l }, { x0 + w - l, y0, l, t }, { x0 + w - t, y0, t, l },
 							{ x0, y0 + h - t, l, t }, { x0, y0 + h - l, t, l }, { x0 + w - l, y0 + h - t, l, t }, { x0 + w - t, y0 + h - l, t, l },
 						}
-						for i, cf in ipairs(e.corners) do
-							local p = P[i]
-							cf.Position = UDim2.fromOffset(p[1], p[2]); cf.Size = UDim2.fromOffset(p[3], p[4])
-							cf.BackgroundColor3 = c; cf.BackgroundTransparency = tr; cf.Visible = true
+						for i = 1, 8 do
+							local p, cf, co = P[i], e.corners[i], e.cornersO[i]
+							vis(e, cf, true)
+							rect(e, cf, p[1], p[2], p[3], p[4])
+							vis(e, co, ESP.Outline)
+							if ESP.Outline then rect(e, co, p[1] - 1, p[2] - 1, p[3] + 2, p[4] + 2) end
+						end
+						if e.p.cc ~= c or e.p.ct ~= trQ then
+							e.p.cc, e.p.ct = c, trQ
+							for i = 1, 8 do e.corners[i].BackgroundColor3 = c; e.corners[i].BackgroundTransparency = trQ; e.cornersO[i].BackgroundTransparency = 0.5 + trQ * 0.5 end
 						end
 					else
-						for _, cf in ipairs(e.corners) do cf.Visible = false end
+						for i = 1, 8 do vis(e, e.corners[i], false); vis(e, e.cornersO[i], false) end
+					end
+					local fill = ESP.Boxes and ESP.Fill
+					vis(e, e.fill, fill)
+					if fill then rect(e, e.fill, x0, y0, w, h); prop(e, "fc", e.fill, "BackgroundColor3", c) end
+
+					-- health bar (left side)
+					vis(e, e.hpBg, ESP.Health)
+					if ESP.Health then
+						local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+						local fq = math.floor(frac * 50 + .5) / 50
+						rect(e, e.hpBg, x0 - 6, y0 - 1, 4, h + 2)
+						if e.p.hf ~= fq then
+							e.p.hf = fq
+							e.hp.Size = UDim2.new(1, -2, fq, -2 * fq)
+							e.hp.BackgroundColor3 = hpColor(fq)
+						end
+						prop(e, "ht", e.hpBg, "BackgroundTransparency", 0.3 + trQ * 0.7)
 					end
 
-					-- health bar (left of the box)
-					e.hpBg.Visible = false
-					if ESP.Health and ESP.Names then
-					local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
-					e.nameHp.Visible = true
-					e.nameHp.Size = UDim2.new(frac, 0, 0, 3)
-					e.nameHp.BackgroundColor3 = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), frac)
-					e.nameHp.BackgroundTransparency = tr
-					else
-					e.nameHp.Visible = false
-					end
-
-					-- name plate: line 1 = name + role, line 2 = distance / health / wanted timer / car. Team colour bar on the left, health line along the bottom.
-					local wt = ""
-					if wanted and ESP.Wanted then
-						local since = ESP.Stars and tonumber(hrp:GetAttribute("StartTime"))
-						if e.stars then wt = ("<font color=\"#e74c3c\"><b>%s</b></font>"):format(starText(e.stars))
-						elseif since then
-							local s = math.max(0, math.floor(workspace:GetServerTimeNow() - since))
-							wt = ("<font color=\"#e74c3c\"><b>WANTED %d:%02d</b></font>"):format(math.floor(s / 60), s % 60)
-						else wt = "<font color=\"#e74c3c\"><b>WANTED</b></font>" end
-					end
+					-- name over the box, detail line under it
+					vis(e, e.name, ESP.Names)
 					if ESP.Names then
-						e.name.Visible = true
-						local info = {}
-						if ESP.Distance then info[#info + 1] = ("<b>%d</b> st"):format(math.floor(d)) end
-						if ESP.Health then info[#info + 1] = ("<b>%d</b> hp"):format(math.floor(hum.Health + .5)) end
-						if wt ~= "" then info[#info + 1] = wt end
-						if ESP.CarInfo and e.carFrac and (e.carReal or e.carFrac < 0.995) then
-							local f = e.carFrac
-							local cc = Color3.fromRGB(231, 76, 60):Lerp(Color3.fromRGB(39, 174, 96), f)
-							info[#info + 1] = ("<font color=\"%s\"><b>CAR %d%%</b></font>"):format(hex(cc), math.floor(f * 100 + .5))
-						end
-						if ESP.CarInfo and e.car and tostring(e.car:GetAttribute("flatTires") or "") ~= "" then info[#info + 1] = "<font color=\"#e74c3c\"><b>FLAT</b></font>" end
-						local tag = TAG[role] and ("  <font color=\"%s\" size=\"11\">%s</font>"):format(hex(col), TAG[role]) or ""
-						local txt = plr.DisplayName .. tag
-						if #info > 0 then txt = txt .. "<br/><font size=\"11\" color=\"#9aa3ad\">" .. table.concat(info, "  <font color=\"#4a525c\">|</font>  ") .. "</font>" end
-						if e.nameTxt ~= txt then e.nameTxt = txt; e.name.Text = txt end
-						local nowc = os.clock()
-					if not e.nsz or nowc - (e.nszT or 0) > 0.2 then e.nsz = e.name.AbsoluteSize; e.nszT = nowc end -- reading AbsoluteSize forces a layout pass, so not every frame
-					local nsz = e.nsz
-						-- farther players get smaller plates; a plate that would land on top of a nearer one is left out (the box and tracer stay)
-						local sc = math.clamp(1.05 - d / 800, 0.68, 1)
-						if math.abs(e.nameScale.Scale - sc) > 0.02 then e.nameScale.Scale = sc end
-						local px = math.clamp(cx, nsz.X / 2 + 4, math.max(vs.X - nsz.X / 2 - 4, nsz.X / 2 + 4))
-						local py = math.max(y0 - 6, nsz.Y + 4)
-						local hw, hh = nsz.X / 2 + 3, nsz.Y + 3
-						local clash = false
-						for _, r in ipairs(placed) do
-							if math.abs(px - r[1]) < hw + r[3] and py > r[2] - r[4] and py - hh < r[2] then clash = true; break end
-						end
-						if clash then
-							e.name.Visible = false
-						else
-							placed[#placed + 1] = { px, py, hw, hh }
-							e.name.Position = UDim2.fromOffset(px, py)
-						end
-						if e.nameCol ~= c then e.nameCol = c; e.nameSt.Color = STROKE; e.nameBar.BackgroundColor3 = c end
-						e.name.TextTransparency = tr; e.name.BackgroundTransparency = 0.18 + tr * 0.82
-						e.nameBar.BackgroundTransparency = tr
-					else
-						e.name.Visible = false
+						at(e, e.name, cx, y0 - 2)
+						prop(e, "nt", e.name, "Text", e.nameText or plr.DisplayName)
+						prop(e, "ntr", e.name, "TextTransparency", trQ)
+						prop(e, "nst", e.name, "TextStrokeTransparency", 0.3 + trQ * 0.7)
 					end
-					-- the separate distance pill is only used when the name plate is off
-					if ESP.Distance and not ESP.Names then
-						e.dist.Visible = true
-						local dsz = e.dist.AbsoluteSize
-						e.dist.Position = UDim2.fromOffset(math.clamp(cx, dsz.X / 2 + 4, math.max(vs.X - dsz.X / 2 - 4, dsz.X / 2 + 4)), math.min(y0 + h + 3, vs.Y - dsz.Y - 4))
-						local dtxt = math.floor(d) .. " st"
-						if e.distTxt ~= dtxt then e.distTxt = dtxt; e.dist.Text = dtxt end
-						e.dist.TextTransparency = tr; e.dist.BackgroundTransparency = 0.3 + tr * 0.7
-					else
-						e.dist.Visible = false
+					local dq = d < 100 and math.floor(d) or math.floor(d / 5) * 5
+					local info = ESP.Distance and (("<b>%d</b> st"):format(dq)) or ""
+					if e.infoBits and e.infoBits ~= "" then info = info ~= "" and (info .. "  " .. e.infoBits) or e.infoBits end
+					vis(e, e.info, info ~= "")
+					if info ~= "" then
+						at(e, e.info, cx, y0 + h + 3)
+						prop(e, "it", e.info, "Text", info)
+						prop(e, "itr", e.info, "TextTransparency", trQ)
+						prop(e, "ist", e.info, "TextStrokeTransparency", 0.3 + trQ * 0.7)
 					end
 
-					-- skeleton
-					if ESP.Skeleton and d < 300 then
-						-- body parts are looked up once per character, and each part is projected once per frame (not once per bone end)
+					-- skeleton (close players only)
+					if ESP.Skeleton and d < 260 then
 						local rig = hum.RigType == Enum.HumanoidRigType.R15 and BONES_R15 or BONES_R6
-						if e.bch ~= ch or (e.bmiss and now - e.bt > 1) then
-							e.bch, e.bt, e.bmiss = ch, now, false
-							e.bl = {}
+						if not e.bl or (e.bmiss and now - (e.bt or 0) > 1) then
+							e.bt, e.bmiss, e.bl = now, false, {}
 							for i, b in ipairs(rig) do
 								local q1, q2 = ch:FindFirstChild(b[1]), ch:FindFirstChild(b[2])
 								e.bl[i] = { q1, q2 }
@@ -562,37 +574,40 @@ local function update(dt)
 						for i, bf in ipairs(e.bones) do
 							local pair = e.bl[i]
 							local used = false
-							if pair then
-								local p1, p2 = pair[1], pair[2]
-								if p1 and p2 then
-									local a = pt(p1)
-									local z = pt(p2)
-									if a.Z > 0 and z.Z > 0 then
-										seg(bf, a.X, a.Y, z.X, z.Y, 1.3)
-										bf.BackgroundColor3 = c; bf.BackgroundTransparency = tr
-										used = true
-									end
+							if pair and pair[1] and pair[2] then
+								local a, z = pt(pair[1]), pt(pair[2])
+								if a.Z > 0 and z.Z > 0 then
+									seg(e, bf, a.X, a.Y, z.X, z.Y, 1.4)
+									used = true
 								end
 							end
-							if not used then bf.Visible = false end
+							vis(e, bf, used)
 						end
-					else
-						for _, bf in ipairs(e.bones) do bf.Visible = false end
+						if e.p.sc ~= c or e.p.st ~= trQ then
+							e.p.sc, e.p.st = c, trQ
+							for _, bf in ipairs(e.bones) do bf.BackgroundColor3 = c; bf.BackgroundTransparency = trQ end
+						end
+					elseif e.bones[1] then
+						for _, bf in ipairs(e.bones) do vis(e, bf, false) end
 					end
 
-					-- tracer (from the bottom / centre / cursor to the feet, body or head)
+					-- tracer (from the bottom / centre / cursor to the feet, body or head), dark outline under it
+					vis(e, e.line, ESP.Tracers)
+					vis(e, e.lineO, ESP.Tracers and ESP.Outline)
 					if ESP.Tracers then
-						local ox, oy = vs.X / 2, vs.Y
-						if ESP.TracerFrom == "Centre" then oy = vs.Y / 2 elseif ESP.TracerFrom == "Cursor" then ox, oy = mouse.X, mouse.Y end
+						local ox, oy = vs.X / 2, vs.Y - 2
+						if ESP.TracerFrom == "Centre" then oy = vs.Y / 2 elseif ESP.TracerFrom == "Cursor" and mouse then ox, oy = mouse.X, mouse.Y end
 						local ty = y0 + h
 						if ESP.TracerTo == "Head" then ty = y0 elseif ESP.TracerTo == "Body" then ty = y0 + h / 2 end
-						seg(e.line, ox, oy, cx, ty, ESP.TracerThickness * (wanted and 1.5 or 1))
-						e.line.BackgroundColor3 = c; e.line.BackgroundTransparency = 0.2 + tr * 0.8
-					else
-						e.line.Visible = false
+						local th = ESP.TracerThickness * (wanted and 1.5 or 1)
+						seg(e, e.line, ox, oy, cx, ty, th)
+						if ESP.Outline then seg(e, e.lineO, ox, oy, cx, ty, th + 2) end
+						prop(e, "lc", e.line, "BackgroundColor3", c)
+						prop(e, "lt", e.line, "BackgroundTransparency", 0.15 + trQ * 0.85)
+						prop(e, "lot", e.lineO, "BackgroundTransparency", 0.55 + trQ * 0.45)
 					end
 
-					if ESP.Hover and mouse.X > x0 - 10 and mouse.X < x0 + w + 10 and mouse.Y > y0 - 10 and mouse.Y < y0 + h + 10 and (not hoverD or d < hoverD) then
+					if ESP.Hover and mouse and mouse.X > x0 - 10 and mouse.X < x0 + w + 10 and mouse.Y > y0 - 10 and mouse.Y < y0 + h + 10 and (not hoverD or d < hoverD) then
 						hoverBest, hoverD = e, d
 						hoverText = hoverInfo(e, hum, role, col, d, wanted)
 					end
@@ -602,13 +617,13 @@ local function update(dt)
 		if not shown then hide(e) end
 	end
 	if hoverBest then
-		hoverLabel.Text = hoverText
+		if hoverLabel.Text ~= hoverText then hoverLabel.Text = hoverText end
 		hover.Visible = true
 		local hs = hover.AbsoluteSize
 		local hx = mouse.X + 18
 		if hx + hs.X > vs.X - 6 then hx = mouse.X - 18 - hs.X end -- no room on the right: open to the left of the cursor
 		hover.Position = UDim2.fromOffset(math.max(hx, 6), math.clamp(mouse.Y + 18, 6, math.max(vs.Y - hs.Y - 6, 6)))
-	else
+	elseif hover.Visible then
 		hover.Visible = false
 	end
 end
@@ -748,14 +763,24 @@ function ESP.SetEnabled(v)
 	if not v and gui then hideAll() end
 end
 
+-- text size changes rebuild the labels' size (only when it really changed)
+function ESP.SetTextSize(n)
+	ESP.TextSize = n
+	for _, e in pairs(entries) do
+		e.name.TextSize = n; e.name.Size = UDim2.fromOffset(260, n + 4)
+		e.info.TextSize = n - 2; e.info.Size = UDim2.fromOffset(260, n + 2)
+		e.slow = 0
+	end
+end
+
 function ESP.Start()
 	if gui then return end
 	buildGui()
 	for _, p in ipairs(Players:GetPlayers()) do if p ~= lp then newEntry(p) end end
 	addConn = Players.PlayerAdded:Connect(function(p) if p ~= lp then newEntry(p) end end)
 	remConn = Players.PlayerRemoving:Connect(dropEntry)
-	conn = RunService.RenderStepped:Connect(function(dt)
-		local ok, err = pcall(update, dt)
+	conn = RunService.RenderStepped:Connect(function()
+		local ok, err = pcall(update)
 		if not ok and ESP.Info ~= "error" then ESP.Info = "error"; warn("[esp] " .. tostring(err)) end
 	end)
 end
