@@ -223,6 +223,7 @@ end
 
 function Radar.Start()
 	if conn then return end
+	pcall(function() getgenv().ScrdsxRadarInfo = function() return ("%s  |  sent %d, fined %d"):format(Radar.Info, Radar.Total, Radar.Fines) end end)
 	conn = RunService.Heartbeat:Connect(function()
 		if not Radar.Enabled then return end
 		local ok, err = pcall(sweep)
