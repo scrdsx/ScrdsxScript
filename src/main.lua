@@ -1,6 +1,6 @@
 -- Scrdsx Solutions (Emergency Hamburg). Entry point: loading screen, the window, one file per tab (src/tabs/), configs, unload.
 -- Folders:  core/ (config, sounds, logo, icons, loading)   ui/ (the UI library)   tabs/ (what each tab shows)
---           combat/  visuals/  vehicle/  drive/  player/  client/   (the features themselves)
+--           combat/  visuals/  vehicle/  police/  drive/  player/  client/   (the features themselves)
 local UIS = game:GetService("UserInputService")
 local UI = __import("ui/init")
 local Sfx = __import("core/sfx")
@@ -38,7 +38,7 @@ local ctx = {
 }
 
 -- TABS (order = order in the sidebar) -------------------------------------------------------------------------------------------
-for _, name in ipairs({ "aim", "visuals", "chams", "crosshair", "skins", "vehicle", "player", "shaders", "utility" }) do
+for _, name in ipairs({ "aim", "visuals", "chams", "crosshair", "skins", "vehicle", "police", "player", "shaders", "utility" }) do
 	safe("tab " .. name, function() __import("tabs/" .. name)(ctx) end)
 end
 safe("fps", FPS.Start)
@@ -46,7 +46,7 @@ local configs = __import("tabs/configs")(ctx)
 
 -- every feature module, for unload (each one puts back what it changed)
 local FEATURES = {
-	"vehicle/vehicle", "vehicle/maybach", "vehicle/fly", "vehicle/anticrash", "vehicle/antiflat", "vehicle/speed", "vehicle/repair",
+	"vehicle/vehicle", "vehicle/maybach", "vehicle/fly", "vehicle/anticrash", "vehicle/antiflat", "vehicle/speed", "vehicle/repair", "police/radar",
 	"drive/autonpc", "player/player", "player/world", "player/loot", "player/hop",
 	"visuals/esp", "visuals/shops", "visuals/route", "visuals/lootesp", "visuals/chams", "visuals/skins", "visuals/shaders",
 	"combat/aim", "combat/crosshair", "client/utility", "client/fps",
