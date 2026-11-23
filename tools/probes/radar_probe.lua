@@ -1,6 +1,6 @@
 -- radar_probe.lua : records a REAL radar gun measurement so Radar Farm can copy it exactly.
 -- Run it (Radar Farm OFF), be Police, hold the radar gun, aim (right mouse) at a car going over the limit and click to measure.
--- Do 2-3 measurements (one that fines, if you can), then press End. Report -> clipboard + workspace/radar_report.txt
+-- Do 2-3 measurements (one that fines, if you can), then press Right Ctrl. Report -> clipboard + workspace/radar_report.txt
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService")
@@ -137,5 +137,5 @@ local function stop()
 	print("[radar probe] done, " .. #out .. " lines" .. (ok and " (copied)" or ""))
 end
 env.RadarProbe = { Stop = stop }
-conns[#conns + 1] = UIS.InputBegan:Connect(function(i) if i.KeyCode == Enum.KeyCode.End then stop() end end)
-print("[radar probe] running: measure a speeding car with the radar gun 2-3 times, then press End")
+conns[#conns + 1] = UIS.InputBegan:Connect(function(i) if i.KeyCode == Enum.KeyCode.RightControl then stop() end end)
+print("[radar probe] running: measure a speeding car with the radar gun 2-3 times, then press Right Ctrl")
