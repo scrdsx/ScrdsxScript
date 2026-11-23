@@ -1,5 +1,5 @@
-"""Turns the map export (tools/map_export.lua -> mapexport/*.csv) into src/roaddata.lua: the footprints of every "Road" part (4 corners + height)
-and the road cells blocked by solid things standing on the road (hedges, pumps, canopies, bases...). src/roadplan.lua plans on this data.
+"""Turns the map export (tools/probes/map_export.lua -> mapexport/*.csv) into src/drive/roaddata.lua: the footprints of every "Road" part (4 corners + height)
+and the road cells blocked by solid things standing on the road (hedges, pumps, canopies, bases...). src/drive/roadplan.lua plans on this data.
 usage: python gen_roaddata.py [mapexport folder] [output file]
 """
 import csv, glob, math, os, sys
@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import roadnet as rn
 
 folder = sys.argv[1] if len(sys.argv) > 1 else r"C:\Users\vared\Downloads\Download\workspace\ScrdsxScript\mapexport"
-out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "roaddata.lua")
+out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "drive", "roaddata.lua")
 
 
 def key(i, j, l):

@@ -1,7 +1,7 @@
 -- Loading screen: short and quiet. Flat dark backdrop, logo pops in, title, one thin progress bar driven by real readiness checks (about 1.5 s when the game is ready).
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
-local Logo = __import("logo")
+local Logo = __import("core/logo")
 
 local Loading = {}
 

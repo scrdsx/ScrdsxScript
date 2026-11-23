@@ -5,7 +5,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
-local ESP = __import("esp")
+local ESP = __import("visuals/esp")
 
 local function style(color, color2)
 	return {

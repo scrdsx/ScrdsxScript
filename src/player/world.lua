@@ -1,15 +1,15 @@
--- Extras: small client-side helpers. Lighting / camera ones only change what YOUR screen shows. Movement ones are marked risky: the server
--- may notice a changed walk speed or a character walking through walls.
+-- World: lighting (fullbright, no fog, time of day), unlimited camera zoom and movement helpers (infinite jump, noclip, walk speed).
+-- Lighting / camera only change what YOUR screen shows. Movement ones are risky: the server may notice them.
+-- (Field of view, hold-to-zoom and anti-AFK live in client/utility.lua.)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local lp = Players.LocalPlayer
 
-local Extras = {
-	AntiAfk = true,
+local World = {
 	Fullbright = false, NoFog = false, LockTime = false, Time = 14,
-	FovOn = false, Fov = 90, Zoom = false,
+	Zoom = false,
 	InfJump = false, Noclip = false, SpeedOn = false, Speed = 24,
 	Info = "ready",
 }
@@ -35,24 +35,15 @@ local conns = {}
 local noclipParts = {}
 local ncChar, ncT, ncList = nil, 0, {}
 local lastLight = 0
-local origFov, origZoom, origSpeed
+local origZoom, origSpeed
 
 local function char() local c = lp.Character; return c, c and c:FindFirstChildOfClass("Humanoid") end
 
-function Extras.Start()
+function World.Start()
 	if #conns > 0 then return end
-	-- anti AFK: the game never kicks you for standing still
-	table.insert(conns, lp.Idled:Connect(function()
-		if not Extras.AntiAfk then return end
-		pcall(function()
-			local vu = game:GetService("VirtualUser")
-			vu:CaptureController()
-			vu:ClickButton2(Vector2.new())
-		end)
-	end))
 	-- infinite jump
 	table.insert(conns, UIS.JumpRequest:Connect(function()
-		if not Extras.InfJump then return end
+		if not World.InfJump then return end
 		local _, h = char()
 		if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
 	end))
@@ -61,29 +52,37 @@ function Extras.Start()
 		local now = os.clock()
 		if now - lastLight > 0.5 then
 			lastLight = now
-			local want = Extras.Fullbright or Extras.NoFog or Extras.LockTime
+			local want = World.Fullbright or World.NoFog or World.LockTime
 			if want then remember() end
-			if Extras.Fullbright then
+			if World.Fullbright then
 				Lighting.Brightness = 2
 				Lighting.ClockTime = 14
 				Lighting.GlobalShadows = false
 				Lighting.Ambient = Color3.fromRGB(170, 170, 170)
 				Lighting.OutdoorAmbient = Color3.fromRGB(170, 170, 170)
 			end
-			if Extras.NoFog then
+			if World.NoFog then
 				Lighting.FogEnd = 1e6
 				Lighting.FogStart = 1e6
 				local at = Lighting:FindFirstChildOfClass("Atmosphere")
 				if at then at.Density = 0; at.Haze = 0 end
 			end
-			if Extras.LockTime and not Extras.Fullbright then Lighting.ClockTime = Extras.Time end
+			if World.LockTime and not World.Fullbright then Lighting.ClockTime = World.Time end
+		end
+		-- unlimited camera zoom
+		if World.Zoom then
+			if not origZoom then origZoom = lp.CameraMaxZoomDistance end
+			if lp.CameraMaxZoomDistance ~= 1000 then lp.CameraMaxZoomDistance = 1000 end
+		elseif origZoom then
+			lp.CameraMaxZoomDistance = origZoom
+			origZoom = nil
 		end
 		-- walk speed
-		if Extras.SpeedOn then
+		if World.SpeedOn then
 			local _, h = char()
 			if h then
 				if not origSpeed then origSpeed = h.WalkSpeed end
-				h.WalkSpeed = Extras.Speed
+				h.WalkSpeed = World.Speed
 			end
 		elseif origSpeed then
 			local _, h = char()
@@ -93,7 +92,7 @@ function Extras.Start()
 	end))
 	-- noclip
 	table.insert(conns, RunService.Stepped:Connect(function()
-		if Extras.Noclip then
+		if World.Noclip then
 			local c = char()
 			if c then
 				-- the character's parts are listed once per character (and re-listed every 2 s for new accessories), not every physics step
@@ -114,39 +113,17 @@ function Extras.Start()
 			noclipParts = {}
 		end
 	end))
-	-- camera: field of view and zoom
-	table.insert(conns, RunService.RenderStepped:Connect(function()
-		local cam = workspace.CurrentCamera
-		if cam then
-			if Extras.FovOn then
-				if not origFov then origFov = cam.FieldOfView end
-				cam.FieldOfView = Extras.Fov
-			elseif origFov then
-				cam.FieldOfView = origFov
-				origFov = nil
-			end
-		end
-		if Extras.Zoom then
-			if not origZoom then origZoom = lp.CameraMaxZoomDistance end
-			lp.CameraMaxZoomDistance = 1000
-		elseif origZoom then
-			lp.CameraMaxZoomDistance = origZoom
-			origZoom = nil
-		end
-	end))
 end
 
-function Extras.Refresh()
-	if not (Extras.Fullbright or Extras.NoFog or Extras.LockTime) then restoreLighting() end
+function World.Refresh()
+	if not (World.Fullbright or World.NoFog or World.LockTime) then restoreLighting() end
 end
 
-function Extras.Destroy()
-	Extras.Fullbright, Extras.NoFog, Extras.LockTime, Extras.FovOn, Extras.Zoom = false, false, false, false, false
-	Extras.InfJump, Extras.Noclip, Extras.SpeedOn = false, false, false
+function World.Destroy()
+	World.Fullbright, World.NoFog, World.LockTime, World.Zoom = false, false, false, false
+	World.InfJump, World.Noclip, World.SpeedOn = false, false, false
 	pcall(function()
 		restoreLighting()
-		local cam = workspace.CurrentCamera
-		if cam and origFov then cam.FieldOfView = origFov end
 		if origZoom then lp.CameraMaxZoomDistance = origZoom end
 		local _, h = char()
 		if h and origSpeed then h.WalkSpeed = origSpeed end
@@ -156,4 +133,4 @@ function Extras.Destroy()
 	conns = {}
 end
 
-return Extras
+return World

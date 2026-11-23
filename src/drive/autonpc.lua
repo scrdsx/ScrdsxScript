@@ -5,8 +5,8 @@
 --   Park   : "Park straight": look at a parking space, press the park key; the car drives up to it, lines up with the space and rolls in straight.
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
-local Drive = __import("autodrive")
-local Data = __import("roaddata")
+local Drive = __import("drive/autodrive")
+local Data = __import("drive/roaddata")
 local lp = Players.LocalPlayer
 local V3 = Vector3.new
 

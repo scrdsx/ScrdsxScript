@@ -10,8 +10,8 @@ local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 local V3 = Vector3.new
-local RoadPlan = __import("roadplan")
-local RoadData = __import("roaddata")
+local RoadPlan = __import("drive/roadplan")
+local RoadData = __import("drive/roaddata")
 
 local REM = {
 	THROTTLE = "e805d6ad-9279-4c0d-8a9d-c12d7342cb1b",

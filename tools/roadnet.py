@@ -1,6 +1,6 @@
 """Road network from the real road geometry (tools/map_export.lua -> mapexport/roads_*.csv).
 Rasterises every "Road" part (oriented rectangle, any slope) into 4-stud cells and plans on them with A*, with a preference for the
-middle of the road. The Lua planner in src/autodrive.lua does exactly the same thing on the live Workspace.Roads parts, so this file is
+middle of the road. The Lua planner in src/drive/autodrive.lua does exactly the same thing on the live Workspace.Roads parts, so this file is
 the offline test bench for it: python roadnet.py [mapexport folder] -> writes route pictures.
 """
 import csv, glob, math, heapq, os, sys
@@ -181,6 +181,6 @@ if __name__ == "__main__":
             ax.plot([p[0] for p in d], [p[1] for p in d], color=col, lw=1.5)
             ax.plot(*a, "o", color=col); ax.plot(*b, "s", color=col)
     ax.set_aspect("equal")
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roadnet_test.png")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "roadnet_test.png")
     fig.savefig(out, dpi=90)
     print("picture:", out)

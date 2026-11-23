@@ -4,7 +4,7 @@ Input : a drive recording made with tools/drive_record.lua (ScrdsxScript/drivere
 It does:
   1. measures the car (wheelbase, steering limits, acceleration, braking) and how hard the human corners,
   2. turns the good stretches of the recording into routes (the human stayed on the road, so the line is a valid road line),
-  3. simulates the autopilot's controller (same pure pursuit / speed planner as src/autodrive.lua) on those routes with the game's real
+  3. simulates the autopilot's controller (same pure pursuit / speed planner as src/drive/autodrive.lua) on those routes with the game's real
      steering behaviour (wheel moves 1.5/s toward the key, 4.5/s back, steering angle shrinks with speed),
   4. searches the controller settings (kp, kd, look-ahead, cornering grip, speed) that follow the road best and fastest,
   5. writes them into drivetune.json.

@@ -4,7 +4,7 @@
 --   Plan.Route(ax, az, bx, bz, opts) -> list of { x, y, z } about every 10 studs, or nil, reason
 --   opts: minEdge (default 2 = keep 8 studs from the road edge), head = { x, z } direction the car faces (the first stretch behind the car costs extra), blocked = function(x, z) -> bool,
 --         snapRadius (studs, default 220), ay / by = heights (to pick the right level on bridges / tunnels)
-local Data = __import("roaddata")
+local Data = __import("drive/roaddata")
 
 local Plan = { Yield = nil }
 local CELL = 4

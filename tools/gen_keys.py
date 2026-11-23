@@ -1,4 +1,4 @@
-# Generates soft "creamy" keyboard sounds (low thock + tiny click) and embeds them into src/sfx.lua as data.key1..key4 / data.keyspace.
+# Generates soft "creamy" keyboard sounds (low thock + tiny click) and embeds them into src/core/sfx.lua as data.key1..key4 / data.keyspace.
 import numpy as np, wave, subprocess, base64, os, re, tempfile
 SR = 44100
 rng = np.random.default_rng(11)
@@ -27,7 +27,7 @@ for name, x in S.items():
     ogg = os.path.join(tmp, name + ".ogg")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-c:a", "libvorbis", "-q:a", "3", ogg], check=True)
     out[name] = base64.b64encode(open(ogg, "rb").read()).decode()
-p = os.path.join(os.path.dirname(__file__), "..", "src", "sfx.lua")
+p = os.path.join(os.path.dirname(__file__), "..", "src", "core", "sfx.lua")
 s = open(p, encoding="utf-8").read()
 s = re.sub(r'^data\.key\w* = ".*"\n', "", s, flags=re.M)
 lines = "".join('data.%s = "%s"\n' % (k, v) for k, v in out.items())
