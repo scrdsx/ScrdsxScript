@@ -5,7 +5,7 @@
 --   server: origin is clamped to 10 studs from your Head, raycasts 500 studs along the direction (ignores Roads, Drops,
 --           ladders, placeables, tapes, throwables, destroyed objects and every character), takes the first car it hits,
 --           and fines its driver if  DriveSeat speed (studs/s) > speed limit at the car  and  radarGunService:canMeasure(you, them).
---           It then sends you the "Radar Control" notification on mBd["1cd09fc7-..."] (we count fines from that).
+--           It then sends you the "Radar Control" notification (we count fines from that).
 -- So we skip the aiming: for each speeding car in range we find an origin near your head with a clear line to it and fire at it.
 -- Several cars per sweep is fine (one call = one car). The tool has to be the one in your hand (equipped).
 -- UNTESTED in game: canMeasure's rules (cooldown per driver? on duty?) are server side, so the per-driver wait is a guess.
@@ -17,7 +17,6 @@ local lp = Players.LocalPlayer
 local Drive = __import("drive/autodrive")
 
 local MEASURE = "7946e262-f35b-41ea-b37c-fc806ef522e4"
-local NOTIFY = "1cd09fc7-70e3-4b99-8562-7eb21d596844"
 local TOOL_TAG = "Radar Gun Tool"
 local HEAD_TOL = 9.5 -- the server allows 10
 
@@ -28,6 +27,7 @@ local Radar = {
 }
 
 local conn, notifyConn
+local watchFines
 local cooldown = {} -- player -> os.clock() when they may be fined again
 local marks = {}    -- car model -> Highlight
 local params = RaycastParams.new()
@@ -35,10 +35,59 @@ params.FilterType = Enum.RaycastFilterType.Exclude
 params.IgnoreWater = true
 params.RespectCanCollide = true
 
-local function remote(id)
-	local mb = RS:FindFirstChild("mBd")
-	return mb and mb:FindFirstChild(id)
+-- The game renames its remotes folder and re-rolls every remote id on updates (mBd/7946e262 in the dump, neE/665ea796 on
+-- 2026-11-23). So the id is read from the game's own radar code: the GUID string constant in RadarGunTool.onMeasureInput.
+-- Fallbacks: an id learned from you measuring once by hand (namecall hook), then the last known ids.
+local GUID = "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$"
+local KNOWN = { "665ea796-71e1-40ca-ab66-1de4e226345a", MEASURE }
+local measureRemote, learned
+local function byName(id)
+	for _, f in ipairs(RS:GetChildren()) do
+		local r = f:FindFirstChild(id)
+		if r and r:IsA("RemoteEvent") then return r end
+	end
 end
+local function idFromCode()
+	local getc = (debug and debug.getconstants) or getconstants
+	if not getc then return end
+	local ok, mod = pcall(function()
+		return require(RS:WaitForChild("Code", 2).components.tools.radarGunTool)
+	end)
+	local cls = ok and type(mod) == "table" and mod.RadarGunTool
+	local fn = cls and rawget(cls, "onMeasureInput")
+	if type(fn) ~= "function" then return end
+	local okc, consts = pcall(getc, fn)
+	if not okc then return end
+	for _, c in pairs(consts) do
+		if type(c) == "string" and c:match(GUID) and byName(c) then return c end
+	end
+end
+local function getMeasureRemote()
+	if measureRemote and measureRemote.Parent then return measureRemote end
+	local id = idFromCode()
+	measureRemote = id and byName(id) or learned
+	if not measureRemote then
+		for _, k in ipairs(KNOWN) do measureRemote = byName(k); if measureRemote then break end end
+	end
+	return measureRemote
+end
+-- learn it from a real measurement (you click with the radar gun once)
+pcall(function()
+	local old
+	old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+		-- no method calls in here (they would overwrite the namecall method of the call we pass on): properties only
+		local m = getnamecallmethod()
+		if not learned and m == "FireServer" and not checkcaller() then
+			local a = ...
+			if typeof(a) == "Instance" and a.ClassName == "Tool" and typeof(self) == "Instance" and self.ClassName == "RemoteEvent" then
+				local s = a.Name
+				if type(s) == "string" and s:lower():find("radar") then learned = self end
+			end
+		end
+		setnamecallmethod(m)
+		return old(self, ...)
+	end))
+end)
 
 local function findTool()
 	local char = lp.Character
@@ -141,8 +190,9 @@ local function sweep()
 		return
 	end
 
-	local r = remote(MEASURE)
-	if not r then Radar.Info = "radar remote not found"; return end
+	local r = getMeasureRemote()
+	if not r then Radar.Info = "radar remote not found: measure one car by hand once"; return end
+	if not notifyConn then watchFines() end
 
 	-- every car in range with a driver going over the limit
 	local hp = head.Position
@@ -192,23 +242,32 @@ local function sweep()
 	Radar.Info = ("%d cars near  ·  %d speeding  ·  %d fined%s"):format(inRange, #list, Radar.Fines, fired > 0 and ("  ·  radared " .. fired) or "")
 end
 
-local function watchFines()
-	if notifyConn then return end
-	local r = remote(NOTIFY)
-	if not r then return end
-	notifyConn = r.OnClientEvent:Connect(function(...)
-		for _, a in ipairs({ ... }) do
-			if type(a) == "table" and a.title == "Radar Control" then
-				Radar.Fines = Radar.Fines + 1
-				if Radar.OnFine then
-					local who = a.arguments and a.arguments.playerName and a.arguments.playerName.value
-					local over = a.arguments and a.arguments.overSpeeding and a.arguments.overSpeeding.value
-					pcall(Radar.OnFine, who, over)
-				end
-				return
+-- fines: the "Radar Control" notification. Its remote id changes with updates too, so listen on every remote in the folder.
+local notifyConns = {}
+local function onNotify(...)
+	for _, a in ipairs({ ... }) do
+		if type(a) == "table" and a.title == "Radar Control" then
+			Radar.Fines = Radar.Fines + 1
+			if Radar.OnFine then
+				local args = type(a.arguments) == "table" and a.arguments or {}
+				local who = type(args.playerName) == "table" and args.playerName.value
+				local over = type(args.overSpeeding) == "table" and args.overSpeeding.value
+				pcall(Radar.OnFine, who, over)
 			end
+			return
 		end
-	end)
+	end
+end
+watchFines = function()
+	local r = getMeasureRemote()
+	local folder = r and r.Parent
+	if not folder then return end
+	for _, c in ipairs(notifyConns) do pcall(function() c:Disconnect() end) end
+	notifyConns = {}
+	for _, e in ipairs(folder:GetChildren()) do
+		if e:IsA("RemoteEvent") and e ~= r then notifyConns[#notifyConns + 1] = e.OnClientEvent:Connect(onNotify) end
+	end
+	notifyConn = true
 end
 
 function Radar.SetEnabled(v)
@@ -233,7 +292,8 @@ end
 
 function Radar.Destroy()
 	if conn then conn:Disconnect(); conn = nil end
-	if notifyConn then notifyConn:Disconnect(); notifyConn = nil end
+	for _, c in ipairs(notifyConns) do pcall(function() c:Disconnect() end) end
+	notifyConns = {}; notifyConn = nil
 	clearMarks()
 	Radar.Enabled = false
 end

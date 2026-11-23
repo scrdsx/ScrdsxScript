@@ -93,7 +93,7 @@ task.spawn(function()
 end)
 
 -- server -> client: notifications and anything that looks like one
-local mb = RS:FindFirstChild("mBd")
+local mb = RS:FindFirstChild("neE") or RS:FindFirstChild("mBd")
 if mb then
 	for _, r in ipairs(mb:GetChildren()) do
 		if r:IsA("RemoteEvent") then
