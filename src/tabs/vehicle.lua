@@ -34,21 +34,31 @@ return function(ctx)
 	Vehicle.Changed = function() lCar:Set(Vehicle.Info) end
 	safe("vehicle", Vehicle.Start)
 
-	-- Maybach suspension: the body moves up and down smoothly (air suspension), leans into turns, lift on a key
+	-- Maybach suspension: the body rises and drops (instantly or smoothly), rolls, hops, leans into turns, lift on a key
 	local mMay = tVeh:Module({ Name = "Maybach suspension", Default = false, Callback = function(on)
 		Maybach.SetEnabled(on)
 		if on then win:Notify("Maybach suspension on: " .. Maybach.Mode .. " (sit in your car)", 3, "success") end
 	end })
 	local lMay = mMay:Label({ Name = "Status", Value = Maybach.Info })
-	mMay:Choice({ Name = "Mode", Options = Maybach.Modes, Default = Maybach.Mode, Callback = function(v) Maybach.Mode = v end })
+	mMay:Choice({ Name = "Mode", Options = Maybach.Modes, Default = Maybach.Mode, Callback = function(v) Maybach.Mode = v; Maybach.Restart() end })
 	mMay:Slider({ Name = "Lift height", Min = 0.5, Max = 4, Step = 0.1, Default = Maybach.Lift, Suffix = " st", Callback = function(v) Maybach.Lift = v end })
-	mMay:Slider({ Name = "Up and down time", Min = 1.5, Max = 12, Step = 0.5, Default = Maybach.Period, Suffix = " s", Callback = function(v) Maybach.Period = v end })
-	mMay:Slider({ Name = "Smoothness (lower = softer)", Min = 1, Max = 10, Step = 0.5, Default = Maybach.Smooth, Callback = function(v) Maybach.Smooth = v end })
+	mMay:Choice({ Name = "Which corners move (Pulse / Float / Hop / lift key)", Options = Maybach.CornerSets, Default = Maybach.Corners, Callback = function(v) Maybach.Corners = v end })
+	mMay:Choice({ Name = "Three wheel: corner up", Options = Maybach.CornerNames, Default = Maybach.Corner, Callback = function(v) Maybach.Corner = v end })
+	mMay:Section("Timing")
+	mMay:Slider({ Name = "Rise time", Min = 0.1, Max = 4, Step = 0.05, Default = Maybach.Rise, Suffix = " s", Callback = function(v) Maybach.Rise = v end })
+	mMay:Slider({ Name = "Wait at the top", Min = 0, Max = 4, Step = 0.05, Default = Maybach.HoldTop, Suffix = " s", Callback = function(v) Maybach.HoldTop = v end })
+	mMay:Slider({ Name = "Drop time (0 = instant)", Min = 0, Max = 3, Step = 0.05, Default = Maybach.Drop, Suffix = " s", Callback = function(v) Maybach.Drop = v end })
+	mMay:Slider({ Name = "Wait at the bottom", Min = 0, Max = 4, Step = 0.05, Default = Maybach.HoldBottom, Suffix = " s", Callback = function(v) Maybach.HoldBottom = v end })
+	mMay:Section("Ride")
+	mMay:Slider({ Name = "Lowered stance", Min = 0, Max = 1.5, Step = 0.1, Default = Maybach.Stance, Suffix = " st", Callback = function(v) Maybach.Stance = v end })
+	mMay:Toggle({ Name = "Only move when standing still", Default = Maybach.StillOnly, Callback = function(v) Maybach.StillOnly = v end })
+	mMay:Slider({ Name = "Smoothness of lift / lean (lower = softer)", Min = 1, Max = 12, Step = 0.5, Default = Maybach.Smooth, Callback = function(v) Maybach.Smooth = v end })
 	mMay:Section("Magic body")
 	mMay:Toggle({ Name = "Level the body (lean into turns, no nose dive)", Default = Maybach.Level, Callback = function(v) Maybach.Level = v end })
 	mMay:Slider({ Name = "Lean amount", Min = 0.1, Max = 1.5, Step = 0.1, Default = Maybach.LevelAmount, Suffix = " st", Callback = function(v) Maybach.LevelAmount = v end })
 	mMay:Section("Lift")
-	local mayKey = mMay:Keybind({ Name = "Lift key (raise / lower)", Default = Enum.KeyCode.Y })
+	local mayKey = mMay:Keybind({ Name = "Lift key", Default = Enum.KeyCode.Y })
+	local mayHold = mMay:Toggle({ Name = "Hold the key (off = press to toggle)", Default = false })
 	safe("maybach", Maybach.Start)
 	task.spawn(function()
 		while ctx.alive() do
@@ -58,7 +68,11 @@ return function(ctx)
 	end)
 	table.insert(win.conns, UIS.InputBegan:Connect(function(i)
 		if i.UserInputType ~= Enum.UserInputType.Keyboard or UIS:GetFocusedTextBox() or mayKey:IsListening() or not mMay:Get() then return end
-		if mayKey:Get() == i.KeyCode then win:Notify(Maybach.ToggleLift() and "Maybach: lifting" or "Maybach: lowering", 1.5) end
+		if mayKey:Get() ~= i.KeyCode then return end
+		if mayHold:Get() then Maybach.SetLifted(true) else win:Notify(Maybach.ToggleLift() and "Maybach: lifting" or "Maybach: lowering", 1.5) end
+	end))
+	table.insert(win.conns, UIS.InputEnded:Connect(function(i)
+		if mayHold:Get() and mayKey:Get() == i.KeyCode then Maybach.SetLifted(false) end
 	end))
 
 	local mAnti = tVeh:Module({ Name = "Anti Crash Damage", Default = false, Callback = function(on)
