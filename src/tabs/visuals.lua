@@ -3,6 +3,7 @@ local UIS = game:GetService("UserInputService")
 local ESP = __import("visuals/esp")
 local Shops = __import("visuals/shops")
 local LootESP = __import("visuals/lootesp")
+local Route = __import("visuals/route")
 
 return function(ctx)
 	local win, safe, cycle = ctx.win, ctx.safe, ctx.cycle
@@ -45,6 +46,25 @@ return function(ctx)
 	mShops:Toggle({ Name = "Only places that are ready", Default = false, Callback = function(v) Shops.OnlyReady = v end })
 	Shops.PoliceFn = ESP.PolicePositions
 	safe("shops", Shops.Start)
+	-- MONEY ROUTE: a glowing line along the roads to the best robbery that is ready right now
+	local mRoute = tEsp:Module({ Name = "Money route (line to the best ready robbery)", Default = false, Callback = function(on) Route.SetEnabled(on) end })
+	local lRoute = mRoute:Label({ Name = "Going to", Value = "off" })
+	mRoute:Choice({ Name = "Pick", Options = Route.Modes, Default = Route.Mode, Callback = function(v) Route.Mode = v end })
+	mRoute:Toggle({ Name = "Skip high-risk places (police close / alarm)", Default = Route.SkipRisky, Callback = function(v) Route.SkipRisky = v end })
+	mRoute:Section("Look")
+	mRoute:ColorPicker({ Name = "Line colour", Default = Route.Color, Callback = function(c, final) Route.Color = c; if final then Route.Restyle() end end })
+	mRoute:ColorPicker({ Name = "Colour at the target", Default = Route.EndColor, Callback = function(c, final) Route.EndColor = c; if final then Route.Restyle() end end })
+	mRoute:Slider({ Name = "Line width", Min = 0.4, Max = 3, Step = 0.1, Default = Route.Width, Callback = function(v) Route.Width = v; Route.Restyle() end })
+	mRoute:Toggle({ Name = "Light pillar on the target", Default = Route.Pillar, Callback = function(v) Route.Pillar = v end })
+	mRoute:Toggle({ Name = "Target + distance at the top of the screen", Default = Route.Hud, Callback = function(v) Route.Hud = v end })
+	Route.Notify = function(m) win:Notify(m, 3) end
+	safe("route", Route.Start)
+	task.spawn(function()
+		while ctx.alive() do
+			task.wait(1)
+			pcall(function() lRoute:Set(Route.TargetText()) end)
+		end
+	end)
 	local mLoot2 = tEsp:Module({ Name = "Loot ESP (money, items, drops)", Default = false, Callback = function(on) LootESP.SetEnabled(on) end })
 	mLoot2:Label({ Name = "Shows", Value = "what each pile is worth" })
 	mLoot2:Slider({ Name = "Show within", Min = 30, Max = 800, Step = 10, Default = LootESP.MaxDist, Suffix = " st", Callback = function(v) LootESP.MaxDist = v end })

@@ -276,6 +276,24 @@ local function step(dt)
 	Shops.Info = "tracking " .. #targets
 end
 
+-- every robbable place right now: { name, kind, pos, status, ready, risk } (used by the money route; works with the tags off too)
+local lastListScan = -99
+function Shops.Candidates()
+	local now = os.clock()
+	if now - lastListScan > 4 and now - lastScan > 4 then lastListScan = now; pcall(scan) end
+	local police = Shops.PoliceFn and Shops.PoliceFn(false, true) or {}
+	local out = {}
+	for _, t in ipairs(targets) do
+		local pos = posOf(t)
+		if pos then
+			local status, _, ready = statusOf(t)
+			local risk = riskOf(t, pos, police, status == "ALARM" or status == "IN PROGRESS")
+			out[#out + 1] = { name = t.name, kind = t.kind, pos = pos, status = status, ready = ready, risk = risk, key = t.inst }
+		end
+	end
+	return out
+end
+
 function Shops.SetEnabled(v)
 	Shops.Enabled = v
 	Shops.Info = v and "on" or "off"
