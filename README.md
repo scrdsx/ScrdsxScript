@@ -22,10 +22,10 @@ src/ui/             the UI library
   controls.lua        Section, Label, Button, TextBox, Choice (dropdown), Toggle, Slider, Keybind
   module.lua          module cards (two-column grid, settings open inside the card)
   colorpicker.lua     colour picker popup
-src/core/           config files, sounds, logo, icons, loading screen
+src/core/           config files, sounds, logo, icons, loading screen, hud (shared look of every on-screen tag)
 src/combat/         aim (camlock, assist, triggerbot), crosshair
 src/visuals/        esp (players, radar, weak spots), chams (outlines, pointers, markers), skins, shaders, shops (robbery tags), lootesp
-src/vehicle/        vehicle (suspension), fly, speed, anticrash, antiflat, repair
+src/vehicle/        vehicle (suspension), maybach (smooth air suspension), fly, speed, anticrash, antiflat, repair
 src/drive/          autodrive (driving controller), autonpc (Auto Drive modes), roadplan + roaddata (road map / route planning)
 src/player/         player (stamina), world (lighting, zoom, movement), loot (quick loot), hop (server hop)
 src/client/         utility (fov, zoom, info bar, anti-AFK), fps (performance options), prank

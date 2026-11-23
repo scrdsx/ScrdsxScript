@@ -6,6 +6,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CS = game:GetService("CollectionService")
+local Hud = __import("core/hud")
 local lp = Players.LocalPlayer
 
 local Shops = {
@@ -13,7 +14,6 @@ local Shops = {
 }
 
 local GREEN, AMBER, RED, GREY, BLUE = Color3.fromRGB(39, 174, 96), Color3.fromRGB(243, 156, 18), Color3.fromRGB(231, 76, 60), Color3.fromRGB(150, 158, 168), Color3.fromRGB(52, 152, 219)
-local BG = Color3.fromRGB(21, 21, 24)
 
 local function guiParent()
 	local ok, h = pcall(function() return gethui and gethui() end)
@@ -157,38 +157,37 @@ local function riskOf(t, pos, police, alarm)
 	return level, col, n, nearest
 end
 
-local OFF_SEG = Color3.fromRGB(58, 64, 74)
+local OFF_SEG = Hud.OFF
 local function newTag()
-	local f = mk("CanvasGroup", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(196, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = BG,
-		BackgroundTransparency = 0.18, BorderSizePixel = 0, Visible = false, GroupTransparency = 1 }, gui)
-	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, f)
-	local st = mk("UIStroke", { Thickness = 1, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
+	local f = mk("CanvasGroup", { AnchorPoint = Vector2.new(.5, 1), Size = UDim2.fromOffset(200, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, GroupTransparency = 1 }, gui)
+	local st = Hud.Glass(f, 12, true)
 	mk("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, f)
-	-- coloured strip along the top shows the state at a glance
-	local strip = mk("Frame", { Size = UDim2.new(1, 0, 0, 4), BorderSizePixel = 0, LayoutOrder = 0 }, f)
 	local body = mk("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 1 }, f)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11), PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 9) }, body)
-	mk("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, body)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10) }, body)
+	mk("UIListLayout", { Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder }, body)
 
 	local head = mk("Frame", { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = 1 }, body)
-	local title = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(.68, 0, 1, 0), Font = Enum.Font.BuilderSansBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+	-- status light in front of the name shows the state at a glance
+	local strip = mk("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(8, 8), BorderSizePixel = 0 }, head)
+	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, strip)
+	local title = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(15, 0), Size = UDim2.new(.68, -15, 1, 0), Font = Enum.Font.BuilderSansBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Color3.new(1, 1, 1), TextTruncate = Enum.TextTruncate.AtEnd, Text = "" }, head)
 	local dist = mk("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(.32, 0, 1, 0), Font = Enum.Font.BuilderSansMedium,
-		TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = Color3.fromRGB(160, 168, 178), Text = "" }, head)
+		TextSize = 12, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = Hud.SUB, Text = "" }, head)
 
-	local chip = mk("Frame", { Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 0.8, BorderSizePixel = 0, LayoutOrder = 2 }, body)
-	mk("UICorner", { CornerRadius = UDim.new(1, 0) }, chip)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11) }, chip)
-	local chipTxt = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, Font = Enum.Font.BuilderSansBold, TextSize = 13, Text = "" }, chip)
+	local chip = mk("Frame", { Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 0.86, BorderSizePixel = 0, LayoutOrder = 2 }, body)
+	mk("UICorner", { CornerRadius = UDim.new(0, 7) }, chip)
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9) }, chip)
+	local chipTxt = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, Font = Enum.Font.BuilderSansBold, TextSize = 12, Text = "" }, chip)
 
 	local riskRow = mk("Frame", { Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 3 }, body)
 	local segs = {}
 	for i = 1, 3 do
-		segs[i] = mk("Frame", { Position = UDim2.fromOffset((i - 1) * 15, 4), Size = UDim2.fromOffset(12, 6), BackgroundColor3 = OFF_SEG, BorderSizePixel = 0 }, riskRow)
+		segs[i] = mk("Frame", { Position = UDim2.fromOffset((i - 1) * 15, 5), Size = UDim2.fromOffset(12, 4), BackgroundColor3 = OFF_SEG, BorderSizePixel = 0 }, riskRow)
 		mk("UICorner", { CornerRadius = UDim.new(1, 0) }, segs[i])
 	end
 	local risk = mk("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 0), Size = UDim2.new(1, -52, 1, 0), Font = Enum.Font.BuilderSansMedium, TextSize = 11,
-		TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(160, 168, 178), RichText = true, Text = "" }, riskRow)
+		TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Hud.SUB, RichText = true, Text = "" }, riskRow)
 	return { f = f, st = st, strip = strip, title = title, dist = dist, chip = chip, chipTxt = chipTxt, segs = segs, risk = risk, riskRow = riskRow }
 end
 
@@ -246,7 +245,7 @@ local function step(dt)
 				if e.ss ~= sk then
 					e.ss = sk
 					e.chipTxt.Text = t.status; e.chipTxt.TextColor3 = t.col
-					e.chip.BackgroundColor3 = t.col; e.strip.BackgroundColor3 = t.col; e.st.Color = Color3.fromRGB(52, 52, 58)
+					e.chip.BackgroundColor3 = t.col; e.strip.BackgroundColor3 = t.col
 				end
 				if Shops.Risk then
 					e.riskRow.Visible = true

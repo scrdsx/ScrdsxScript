@@ -120,7 +120,7 @@ function M:Choice(o)
 	local opts_ = o.Options
 	local idx = 1
 	for i, v in ipairs(opts_) do if v == o.Default then idx = i end end
-	local btn = new("TextButton", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, compact and -6 or -12, 0, compact and 4 or 9), Size = UDim2.fromOffset(150, 28), BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = f }, { corner(7) })
+	local btn = new("TextButton", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, compact and -6 or -12, 0, compact and 4 or 9), Size = UDim2.fromOffset(150, 28), BorderSizePixel = 0, AutoButtonColor = false, Text = "", Parent = f }, { corner(9) })
 	bind(win, btn, "BackgroundColor3", compact and "hover" or "elem")
 	local bst = mkStroke(win, "stroke", 0); bst.Parent = btn
 	local txt = text(win, "", 12, "text", T.semi); txt.Size = UDim2.new(1, -34, 1, 0); txt.Position = UDim2.fromOffset(10, 0); txt.TextWrapped = false; txt.TextTruncate = Enum.TextTruncate.AtEnd; txt.Parent = btn
@@ -150,7 +150,7 @@ function M:Choice(o)
 		local y = ap.Y + as.Y + 4
 		if y + hgt > vs.Y - 8 then y = ap.Y - hgt - 4 end
 		local list = new("ScrollingFrame", { Position = UDim2.fromOffset(math.clamp(ap.X + as.X - wdt, 8, vs.X - wdt - 8), y), Size = UDim2.fromOffset(wdt, hgt), BorderSizePixel = 0,
-			BackgroundColor3 = T.panel, ScrollBarImageColor3 = T.off, ScrollBarThickness = 2, CanvasSize = UDim2.fromOffset(0, #opts_ * itemH + 8), ZIndex = 51, Parent = ov }, { corner(8), pad(4, 4, 4, 4) })
+			BackgroundColor3 = T.panel, ScrollBarImageColor3 = T.off, ScrollBarThickness = 2, CanvasSize = UDim2.fromOffset(0, #opts_ * itemH + 8), ZIndex = 51, Parent = ov }, { corner(10), pad(4, 4, 4, 4) })
 		new("UIStroke", { Color = T.stroke, Thickness = 1, Parent = list })
 		new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Parent = list })
 		for i, v in ipairs(opts_) do
@@ -220,17 +220,18 @@ function M:Slider(o)
 	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 1, Parent = f })
 	local n = text(win, o.Name, 13, compact and "sub" or "text"); n.Size = UDim2.new(1, -74, 0, 0); n.AutomaticSize = Enum.AutomaticSize.Y; n.Parent = head
 	new("UISizeConstraint", { MinSize = Vector2.new(0, 18), Parent = n })
-	local valBg = new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, BorderSizePixel = 0, Parent = head }, { corner(5), pad(6, 6, 0, 0) })
-	bind(win, valBg, "BackgroundColor3", compact and "hover" or "elem")
-	local val = text(win, "", 12, "text", T.semi, Enum.TextXAlignment.Center); val.Size = UDim2.fromOffset(0, 18); val.AutomaticSize = Enum.AutomaticSize.X; val.TextWrapped = false; val.Parent = valBg
-	local zone = new("Frame", { Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 2, Parent = f })
-	local track = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.new(1, 0, 0, 4), BorderSizePixel = 0, Parent = zone }, { corner(2) })
+	local valBg = new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, BorderSizePixel = 0, Parent = head }, { corner(9), pad(8, 8, 0, 0) })
+	bind(win, valBg, "BackgroundColor3", "accentDim")
+	local val = text(win, "", 12, "chip", T.bold, Enum.TextXAlignment.Center); val.Size = UDim2.fromOffset(0, 18); val.AutomaticSize = Enum.AutomaticSize.X; val.TextWrapped = false; val.Parent = valBg
+	local zone = new("Frame", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, LayoutOrder = 2, Parent = f })
+	local track = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.new(1, 0, 0, 6), BorderSizePixel = 0, Parent = zone }, { corner(3) })
 	bind(win, track, "BackgroundColor3", "off")
-	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BorderSizePixel = 0, Parent = track }, { corner(2) })
-	bind(win, fill, "BackgroundColor3", "accent")
-	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 2, Parent = track }, { corner(6) })
-	local kst = new("UIStroke", { Thickness = 2, Parent = knob })
-	bind(win, kst, "Color", "accent")
+	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), BorderSizePixel = 0, BackgroundColor3 = WHITE, Parent = track }, { corner(3) })
+	local fgrad = new("UIGradient", { Parent = fill })
+	bind(win, fgrad, "Color", function() return ColorSequence.new(T.gradA, T.gradB) end)
+	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.fromScale(0, .5), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 2, Parent = track }, { corner(7) })
+	local kst = new("UIStroke", { Thickness = 3, Transparency = 0.55, Parent = knob })
+	bind(win, kst, "Color", "bg")
 	local min, max, step = o.Min, o.Max, o.Step or 1
 	local value
 	local obj = {}
@@ -259,7 +260,7 @@ function M:Slider(o)
 	local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 10), Position = UDim2.fromOffset(0, -5), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = zone })
 	hit.InputBegan:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-			dragging = true; tween(knob, .1, { Size = UDim2.fromOffset(15, 15) }); fromInput(i)
+			dragging = true; tween(knob, .1, { Size = UDim2.fromOffset(17, 17) }); fromInput(i)
 		end
 	end)
 	table.insert(win.conns, UIS.InputChanged:Connect(function(i)
@@ -267,7 +268,7 @@ function M:Slider(o)
 	end))
 	table.insert(win.conns, UIS.InputEnded:Connect(function(i)
 		if dragging and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
-			dragging = false; tween(knob, .1, { Size = UDim2.fromOffset(12, 12) }); Sfx.Play("click", .35)
+			dragging = false; tween(knob, .1, { Size = UDim2.fromOffset(14, 14) }); Sfx.Play("click", .35)
 		end
 	end))
 	set(o.Default or min, true)

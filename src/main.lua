@@ -46,7 +46,7 @@ local configs = __import("tabs/configs")(ctx)
 
 -- every feature module, for unload (each one puts back what it changed)
 local FEATURES = {
-	"vehicle/vehicle", "vehicle/fly", "vehicle/anticrash", "vehicle/antiflat", "vehicle/speed", "vehicle/repair",
+	"vehicle/vehicle", "vehicle/maybach", "vehicle/fly", "vehicle/anticrash", "vehicle/antiflat", "vehicle/speed", "vehicle/repair",
 	"drive/autonpc", "player/player", "player/world", "player/loot", "player/hop",
 	"visuals/esp", "visuals/shops", "visuals/route", "visuals/lootesp", "visuals/chams", "visuals/skins", "visuals/shaders",
 	"combat/aim", "combat/crosshair", "client/utility", "client/fps",

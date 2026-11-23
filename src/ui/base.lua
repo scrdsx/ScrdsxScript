@@ -52,20 +52,25 @@ local function text(win, str, size, key, font, align)
 	return l
 end
 
--- small switch: off = dark track + grey knob, on = accent track + white knob
+-- switch (v5): off = hollow dark track + grey knob, on = lit accent track (soft top highlight) + dark knob
 local function makeSwitch(win, parent, anchor, pos, getState)
-	local sw = new("Frame", { AnchorPoint = anchor, Position = pos, Size = UDim2.fromOffset(34, 18), BorderSizePixel = 0, Parent = parent }, { corner(9) })
-	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(12, 12), BorderSizePixel = 0, Parent = sw }, { corner(6) })
-	local function trackColor() return getState() and T.accent or T.off end
-	local function knobColor() return getState() and WHITE or Color3.fromRGB(150, 152, 162) end
+	local sw = new("Frame", { AnchorPoint = anchor, Position = pos, Size = UDim2.fromOffset(38, 20), BorderSizePixel = 0, Parent = parent }, { corner(10) })
+	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(205, 205, 205)), Parent = sw })
+	local st = new("UIStroke", { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = sw })
+	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(14, 14), BorderSizePixel = 0, Parent = sw }, { corner(7) })
+	local function trackColor() return getState() and T.accent or T.elem end
+	local function strokeColor() return getState() and T.accent or T.off end
+	local function knobColor() return getState() and T.bg or T.sub end
 	bind(win, sw, "BackgroundColor3", trackColor)
+	bind(win, st, "Color", strokeColor)
 	bind(win, knob, "BackgroundColor3", knobColor)
 	local function set(v, animate)
-		local p = UDim2.new(0, v and 19 or 3, .5, 0)
+		local p = UDim2.new(0, v and 21 or 3, .5, 0)
 		if animate then
-			tween(sw, .16, { BackgroundColor3 = trackColor() }); tween(knob, .18, { BackgroundColor3 = knobColor(), Position = p })
+			tween(sw, .16, { BackgroundColor3 = trackColor() }); tween(st, .16, { Color = strokeColor() })
+			tween(knob, .22, { BackgroundColor3 = knobColor(), Position = p }, Enum.EasingStyle.Back)
 		else
-			sw.BackgroundColor3 = trackColor(); knob.BackgroundColor3 = knobColor(); knob.Position = p
+			sw.BackgroundColor3 = trackColor(); st.Color = strokeColor(); knob.BackgroundColor3 = knobColor(); knob.Position = p
 		end
 	end
 	return sw, set
@@ -104,7 +109,7 @@ local function row(tab, name, minH, fixed)
 		return f, nil, true
 	end
 	tab.grid = nil
-	f = new("Frame", { Size = UDim2.new(1, 0, 0, minH or 46), AutomaticSize = fixed and Enum.AutomaticSize.None or Enum.AutomaticSize.Y, BorderSizePixel = 0, Parent = tab.page }, { corner(10) })
+	f = new("Frame", { Size = UDim2.new(1, 0, 0, minH or 46), AutomaticSize = fixed and Enum.AutomaticSize.None or Enum.AutomaticSize.Y, BorderSizePixel = 0, Parent = tab.page }, { corner(12) })
 	bind(win, f, "BackgroundColor3", "panel")
 	local st = mkStroke(win, "stroke", 0); st.Parent = f
 	f.MouseEnter:Connect(function() tween(f, .12, { BackgroundColor3 = T.elem }) end)

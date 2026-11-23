@@ -25,7 +25,8 @@ local COL = {
 }
 local RED = Color3.fromRGB(255, 72, 72)
 local TAG = { Police = "POLICE", FireDepartment = "FIRE", Prisoner = "PRISONER" }
-local BG, STROKE = Color3.fromRGB(15, 15, 19), Color3.fromRGB(38, 38, 46)
+local Hud = __import("core/hud")
+local BG, STROKE = Hud.BG, Color3.fromRGB(44, 47, 56)
 local BLACK = Color3.new(0, 0, 0)
 local HP_LO, HP_MID, HP_HI = Color3.fromRGB(240, 70, 60), Color3.fromRGB(245, 200, 60), Color3.fromRGB(70, 215, 120)
 
@@ -251,17 +252,16 @@ end
 
 local function buildGui()
 	gui = mk("ScreenGui", { Name = tostring(math.random(1e6, 9e6)), ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 4, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, guiParent())
-	hover = mk("Frame", { BackgroundColor3 = BG, BackgroundTransparency = 0.06, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Visible = false, ZIndex = 8 }, gui)
+	hover = mk("Frame", { Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Visible = false, ZIndex = 8 }, gui)
 	mk("UISizeConstraint", { MinSize = Vector2.new(200, 0) }, hover)
-	mk("UICorner", { CornerRadius = UDim.new(0, 10) }, hover)
-	mk("UIStroke", { Color = STROKE, Thickness = 1 }, hover)
+	Hud.Glass(hover, 12)
 	mk("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10) }, hover)
 	hoverLabel = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY, Font = Enum.Font.BuilderSansMedium, TextSize = 13,
 		TextColor3 = Color3.fromRGB(196, 199, 209), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, RichText = true, LineHeight = 1.15, ZIndex = 9 }, hover)
-	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = BG, BackgroundTransparency = 0.08, BorderSizePixel = 0, Visible = false }, gui)
-	mk("UICorner", { CornerRadius = UDim.new(0, 9) }, radar)
-	mk("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 14) }, radar)
-	radarStroke = mk("UIStroke", { Color = COL.Police, Thickness = 1.2, Transparency = 0.2 }, radar)
+	radar = mk("Frame", { AnchorPoint = Vector2.new(.5, 0), Position = UDim2.new(.5, 0, 0, 74), Size = UDim2.fromOffset(0, 34), AutomaticSize = Enum.AutomaticSize.X, Visible = false }, gui)
+	radarStroke = Hud.Glass(radar)
+	radarStroke.Thickness = 1.2; radarStroke.Transparency = 0.35
+	mk("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 16) }, radar)
 	mk("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8) }, radar)
 	radarArrow = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 20), Text = "▲", TextSize = 15, Font = Enum.Font.BuilderSansBold, TextColor3 = COL.Police }, radar)
 	radarText = mk("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Text = "", TextSize = 13, Font = Enum.Font.BuilderSansBold,

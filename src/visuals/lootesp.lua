@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CS = game:GetService("CollectionService")
+local Hud = __import("core/hud")
 local lp = Players.LocalPlayer
 
 local LootESP = {
@@ -37,16 +38,14 @@ end
 
 local function newPill()
 	local f = Instance.new("Frame")
-	f.AnchorPoint = Vector2.new(.5, 1); f.Size = UDim2.fromOffset(0, 22); f.AutomaticSize = Enum.AutomaticSize.X
-	f.BackgroundColor3 = Color3.fromRGB(21, 21, 24); f.BackgroundTransparency = .12; f.BorderSizePixel = 0; f.Visible = false; f.Parent = gui
-	Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
-	local st = Instance.new("UIStroke"); st.Thickness = 1; st.Transparency = .45; st.Parent = f
-	local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0, 8); pad.PaddingRight = UDim.new(0, 10); pad.Parent = f
+	f.AnchorPoint = Vector2.new(.5, 1); f.Size = UDim2.fromOffset(0, 24); f.AutomaticSize = Enum.AutomaticSize.X; f.Visible = false; f.Parent = gui
+	local st = Hud.Glass(f)
+	local pad = Instance.new("UIPadding"); pad.PaddingLeft = UDim.new(0, 9); pad.PaddingRight = UDim.new(0, 11); pad.Parent = f
 	local dot = Instance.new("Frame")
 	dot.AnchorPoint = Vector2.new(0, .5); dot.Position = UDim2.new(0, 0, .5, 0); dot.Size = UDim2.fromOffset(7, 7); dot.BorderSizePixel = 0; dot.Parent = f
 	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 	local t = Instance.new("TextLabel")
-	t.BackgroundTransparency = 1; t.Position = UDim2.fromOffset(13, 0); t.Size = UDim2.fromOffset(0, 22); t.AutomaticSize = Enum.AutomaticSize.X
+	t.BackgroundTransparency = 1; t.Position = UDim2.fromOffset(14, 0); t.Size = UDim2.fromOffset(0, 24); t.AutomaticSize = Enum.AutomaticSize.X
 	t.Font = Enum.Font.BuilderSansBold; t.TextSize = 13; t.TextColor3 = Color3.new(1, 1, 1); t.Text = ""; t.Parent = f
 	return { f = f, st = st, dot = dot, t = t }
 end
@@ -119,7 +118,7 @@ local function step()
 				local col = COL[it.kind]
 				local txt = it.text .. "  " .. math.floor(it.d) .. " st"
 				if p.txt ~= txt then p.txt = txt; p.t.Text = txt end
-				if p.col ~= col then p.col = col; p.dot.BackgroundColor3 = col; p.st.Color = Color3.fromRGB(52, 52, 58) end
+				if p.col ~= col then p.col = col; p.dot.BackgroundColor3 = col end
 				p.f.Position = UDim2.fromOffset(sp.X, sp.Y)
 				p.f.Visible = true
 			end

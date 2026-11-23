@@ -19,8 +19,11 @@ local function currentCar()
 	if not s then return nil end
 	local m = s:FindFirstAncestorOfClass("Model")
 	while m and m.Parent and m.Parent:IsA("Model") do m = m.Parent end
-	return m
+	return m, s
 end
+Vehicle.CurrentCar = currentCar
+-- the spring's real (untouched) lengths if this module raised it, so Maybach mode starts from the car's own values
+function Vehicle.SavedFree(sp) return saved[sp] end
 
 local function restore()
 	for sp, o in pairs(saved) do
@@ -50,13 +53,14 @@ local function apply()
 	elseif attrOrig ~= nil then
 		m:SetAttribute("suspensionHeight", attrOrig); attrOrig = nil
 	end
-	if not Vehicle.UseSprings and next(saved) ~= nil then -- toggled off: put the springs back
+	local useSprings = Vehicle.UseSprings and not Vehicle.SpringsBusy -- Maybach mode owns the springs while it is on
+	if not useSprings and next(saved) ~= nil and not Vehicle.SpringsBusy then -- toggled off: put the springs back
 		for sp, o in pairs(saved) do
 			if sp.Parent then pcall(function() sp.MinLength = o[2]; sp.MaxLength = o[3]; sp.FreeLength = o[1] end) end
 		end
 		saved = {}
 	end
-	for _, d in ipairs(Vehicle.UseSprings and m:GetDescendants() or {}) do
+	for _, d in ipairs(useSprings and m:GetDescendants() or {}) do
 		if d:IsA("SpringConstraint") then
 			n += 1
 			local o = saved[d]

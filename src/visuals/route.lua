@@ -8,6 +8,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Shops = __import("visuals/shops")
+local Hud = __import("core/hud")
 local Plan = __import("drive/roadplan")
 local lp = Players.LocalPlayer
 
@@ -195,13 +196,15 @@ local function buildHud()
 	gui.Parent = guiParent()
 	pill = Instance.new("Frame")
 	pill.AnchorPoint = Vector2.new(.5, 0); pill.Position = UDim2.new(.5, 0, 0, 114); pill.Size = UDim2.fromOffset(0, 32); pill.AutomaticSize = Enum.AutomaticSize.X
-	pill.BackgroundColor3 = Color3.fromRGB(15, 15, 19); pill.BackgroundTransparency = 0.08; pill.BorderSizePixel = 0; pill.Visible = false; pill.Parent = gui
-	Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 9)
-	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(38, 38, 46); st.Parent = pill
-	local pd = Instance.new("UIPadding"); pd.PaddingLeft = UDim.new(0, 14); pd.PaddingRight = UDim.new(0, 14); pd.Parent = pill
+	pill.Size = UDim2.fromOffset(0, 34); pill.Visible = false; pill.Parent = gui
+	Hud.Glass(pill)
+	local pd = Instance.new("UIPadding"); pd.PaddingLeft = UDim.new(0, 12); pd.PaddingRight = UDim.new(0, 16); pd.Parent = pill
+	local lay = Instance.new("UIListLayout"); lay.FillDirection = Enum.FillDirection.Horizontal; lay.VerticalAlignment = Enum.VerticalAlignment.Center; lay.Padding = UDim.new(0, 9); lay.Parent = pill
+	local dot = Instance.new("Frame"); dot.Size = UDim2.fromOffset(8, 8); dot.BorderSizePixel = 0; dot.BackgroundColor3 = Hud.Accent(); dot.Parent = pill
+	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 	pillText = Instance.new("TextLabel")
-	pillText.BackgroundTransparency = 1; pillText.Size = UDim2.fromOffset(0, 32); pillText.AutomaticSize = Enum.AutomaticSize.X
-	pillText.RichText = true; pillText.Font = Enum.Font.BuilderSansMedium; pillText.TextSize = 13; pillText.TextColor3 = Color3.fromRGB(200, 203, 212)
+	pillText.BackgroundTransparency = 1; pillText.Size = UDim2.fromOffset(0, 34); pillText.AutomaticSize = Enum.AutomaticSize.X
+	pillText.RichText = true; pillText.Font = Hud.FONT; pillText.TextSize = 13; pillText.TextColor3 = Hud.SUB
 	pillText.Text = ""; pillText.Parent = pill
 end
 

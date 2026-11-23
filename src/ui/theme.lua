@@ -3,22 +3,23 @@
 local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
 local function pickFont(n, fb) local ok, f = pcall(function() return Enum.Font[n] end); return (ok and f) or fb end
 local T = {
-	bg = Color3.fromRGB(12, 12, 15),
-	side = Color3.fromRGB(15, 15, 19),
-	panel = Color3.fromRGB(19, 19, 24),
-	elem = Color3.fromRGB(27, 27, 33),
-	hover = Color3.fromRGB(34, 34, 41),
-	stroke = Color3.fromRGB(33, 33, 41),
-	text = Color3.fromRGB(236, 237, 242),
-	sub = Color3.fromRGB(138, 141, 153),
-	dim = Color3.fromRGB(92, 95, 107),
-	accent = Color3.fromRGB(124, 131, 255),
-	accentDim = Color3.fromRGB(30, 31, 52),
-	off = Color3.fromRGB(52, 52, 62),
-	chip = Color3.fromRGB(176, 181, 255),
-	gradA = Color3.fromRGB(99, 105, 204),
-	gradB = Color3.fromRGB(157, 162, 255),
-	strokeOn = Color3.fromRGB(68, 72, 135),
+	-- v5 "Frost": graphite surfaces with a cool mint-aqua accent
+	bg = Color3.fromRGB(10, 11, 13),
+	side = Color3.fromRGB(15, 16, 19),
+	panel = Color3.fromRGB(18, 19, 23),
+	elem = Color3.fromRGB(26, 28, 33),
+	hover = Color3.fromRGB(33, 35, 41),
+	stroke = Color3.fromRGB(30, 32, 38),
+	text = Color3.fromRGB(241, 243, 247),
+	sub = Color3.fromRGB(148, 153, 166),
+	dim = Color3.fromRGB(96, 101, 114),
+	accent = Color3.fromRGB(72, 220, 196),
+	accentDim = Color3.fromRGB(19, 45, 44),
+	off = Color3.fromRGB(46, 49, 57),
+	chip = Color3.fromRGB(160, 240, 226),
+	gradA = Color3.fromRGB(52, 176, 210),
+	gradB = Color3.fromRGB(110, 236, 190),
+	strokeOn = Color3.fromRGB(36, 104, 96),
 	font = pickFont("BuilderSansMedium", Enum.Font.Gotham),
 	bold = pickFont("BuilderSansBold", Enum.Font.GothamBold),
 	semi = pickFont("BuilderSansBold", Enum.Font.GothamBold),
@@ -37,8 +38,8 @@ function Theme.Palette(accent, bg)
 	if not accent and not bg then return DEFAULT_P end
 	accent, bg = accent or DEFAULT_P.accent, bg or DEFAULT_P.bg
 	return {
-		accent = accent, accentDim = bg:Lerp(accent, .18), chip = accent:Lerp(WHITE, .4), gradA = accent:Lerp(BLACK, .2),
-		gradB = accent:Lerp(WHITE, .25), strokeOn = bg:Lerp(accent, .45),
+		accent = accent, accentDim = bg:Lerp(accent, .16), chip = accent:Lerp(WHITE, .45), gradA = accent:Lerp(BLACK, .15),
+		gradB = accent:Lerp(WHITE, .3), strokeOn = bg:Lerp(accent, .42),
 		bg = bg, side = lift(bg, 3), panel = lift(bg, 7), elem = lift(bg, 15), hover = lift(bg, 22), stroke = lift(bg, 21), off = lift(bg, 40), dim = lift(bg, 80),
 	}
 end
