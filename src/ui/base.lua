@@ -52,9 +52,8 @@ local function text(win, str, size, key, font, align)
 	return l
 end
 
--- switch (v6 "creamy"): soft pill track, a cream knob with a faint shadow that glides across (eases out, stretches a little
--- while it moves), colours cross-fade. No overshoot / bounce: one smooth motion.
-local CREAM = Color3.fromRGB(250, 247, 240)
+-- switch (v6 "Mocha"): soft pill track (cream when on), a round knob with a faint shadow that glides across (eases out, stretches a
+-- little while it moves), colours cross-fade. No overshoot / bounce: one smooth motion. The sound is the creamy thock.
 local KNOB = 16
 local function makeSwitch(win, parent, anchor, pos, getState)
 	local sw = new("Frame", { AnchorPoint = anchor, Position = pos, Size = UDim2.fromOffset(40, 22), BorderSizePixel = 0, Parent = parent }, { corner(11) })
@@ -64,8 +63,8 @@ local function makeSwitch(win, parent, anchor, pos, getState)
 	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(0, 11, .5, 0), Size = UDim2.fromOffset(KNOB, KNOB), BorderSizePixel = 0, Parent = sw }, { corner(KNOB) })
 	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(232, 228, 220)), Parent = knob })
 	local function trackColor() return getState() and T.accent or T.elem end
-	local function strokeColor() return getState() and T.accent:Lerp(WHITE, .15) or T.off end
-	local function knobColor() return getState() and CREAM or T.sub:Lerp(CREAM, .35) end
+	local function strokeColor() return getState() and T.accent or T.off end
+	local function knobColor() return getState() and T.bg or T.sub end
 	bind(win, sw, "BackgroundColor3", trackColor)
 	bind(win, st, "Color", strokeColor)
 	bind(win, knob, "BackgroundColor3", knobColor)

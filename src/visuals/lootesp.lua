@@ -81,7 +81,10 @@ end
 
 local function step()
 	if not (gui and LootESP.Enabled) then
-		for _, p in ipairs(pool) do p.f.Visible = false end
+		if LootESP.Count ~= 0 then -- hide once, then do nothing while off
+			for _, p in ipairs(pool) do p.f.Visible = false; p.vis = false end
+			LootESP.Count = 0
+		end
 		return
 	end
 	local cam = workspace.CurrentCamera
@@ -119,12 +122,13 @@ local function step()
 				local txt = it.text .. "  " .. math.floor(it.d) .. " st"
 				if p.txt ~= txt then p.txt = txt; p.t.Text = txt end
 				if p.col ~= col then p.col = col; p.dot.BackgroundColor3 = col end
-				p.f.Position = UDim2.fromOffset(sp.X, sp.Y)
-				p.f.Visible = true
+				local px, py = math.floor(sp.X + .5), math.floor(sp.Y + .5)
+				if p.px ~= px or p.py ~= py then p.px, p.py = px, py; p.f.Position = UDim2.fromOffset(px, py) end
+				if not p.vis then p.vis = true; p.f.Visible = true end
 			end
 		end
 	end
-	for i = used + 1, #pool do pool[i].f.Visible = false end
+	for i = used + 1, #pool do local q = pool[i]; if q.vis ~= false then q.vis = false; q.f.Visible = false end end
 	LootESP.Count = used
 end
 

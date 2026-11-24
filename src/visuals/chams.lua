@@ -123,11 +123,15 @@ local function chamStep()
 		local col, _, wanted = colourOf(e.plr, { TeamColors = C.TeamColors, Color = C.Fill })
 		local fillA = C.FillAlpha
 		if wanted and C.Pulse then fillA = math.clamp(C.FillAlpha - 0.25 + 0.25 * math.sin(t * 6), 0, 1) end
-		h.FillColor = col
-		h.FillTransparency = fillA
-		h.OutlineColor = C.TeamColors and col:Lerp(Color3.new(1, 1, 1), 0.55) or C.Outline
-		h.OutlineTransparency = C.OutlineAlpha
-		h.DepthMode = C.AlwaysOnTop and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+		-- a Highlight re-renders on every property write, so only write what changed
+		local oc = C.TeamColors and col:Lerp(Color3.new(1, 1, 1), 0.55) or C.Outline
+		fillA = math.floor(fillA * 50 + .5) / 50
+		if h.FillColor ~= col then h.FillColor = col end
+		if h.FillTransparency ~= fillA then h.FillTransparency = fillA end
+		if h.OutlineColor ~= oc then h.OutlineColor = oc end
+		if h.OutlineTransparency ~= C.OutlineAlpha then h.OutlineTransparency = C.OutlineAlpha end
+		local dm = C.AlwaysOnTop and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+		if h.DepthMode ~= dm then h.DepthMode = dm end
 	end
 	for plr in pairs(chamState) do
 		if not keep[plr] then dropCham(plr) end
@@ -184,10 +188,11 @@ local function frameStep()
 	local cam = workspace.CurrentCamera
 	if not (gui and cam) then return end
 	if not (P.Enabled or M.Enabled) then
-		hideAll(pool.pointers); hideAll(pool.markers)
+		if not Visuals._idle then hideAll(pool.pointers); hideAll(pool.markers); Visuals._idle = true end -- hide once, then nothing while off
 		P.Count, M.Count = 0, 0
 		return
 	end
+	Visuals._idle = false
 	local vs = cam.ViewportSize
 	local center = Vector2.new(vs.X / 2, vs.Y / 2)
 	local me = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")

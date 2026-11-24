@@ -1,4 +1,6 @@
--- Loading screen: short and quiet. Flat dark backdrop, logo pops in, title, one thin progress bar driven by real readiness checks (about 1.5 s when the game is ready).
+-- Loading screen (v6 "Mocha"): no black screen. The game stays visible behind a light dim; a small espresso card rises in the middle with
+-- the logo, the name + version, what it is waiting for, and a cream progress bar with a percentage. Driven by real readiness checks
+-- (about 1.2 s when the game is ready), then the card sinks away.
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local Logo = __import("core/logo")
@@ -29,7 +31,19 @@ local function waitFor(cond, timeout)
 	return true
 end
 
-local BG, TEXT, SUB, TRACK, ACC = Color3.fromRGB(12, 12, 15), Color3.fromRGB(236, 237, 242), Color3.fromRGB(138, 141, 153), Color3.fromRGB(33, 33, 41), Color3.fromRGB(124, 131, 255)
+local C = {
+	dim = Color3.fromRGB(8, 7, 6), card = Color3.fromRGB(22, 19, 17), stroke = Color3.fromRGB(46, 41, 36),
+	text = Color3.fromRGB(245, 239, 229), sub = Color3.fromRGB(150, 141, 130), track = Color3.fromRGB(40, 36, 32),
+	a = Color3.fromRGB(214, 176, 128), b = Color3.fromRGB(247, 230, 202),
+}
+
+local function label(parent, props)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1; l.TextXAlignment = Enum.TextXAlignment.Left
+	for k, v in pairs(props) do l[k] = v end
+	l.Parent = parent
+	return l
+end
 
 function Loading.run(title, subtitle, extraSteps)
 	local gui = Instance.new("ScreenGui")
@@ -37,44 +51,47 @@ function Loading.run(title, subtitle, extraSteps)
 	gui.DisplayOrder = 1000; gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	gui.Parent = guiParent()
 
-	local bg = Instance.new("Frame")
-	bg.Size = UDim2.fromScale(1, 1); bg.BackgroundColor3 = BG; bg.BackgroundTransparency = 1; bg.BorderSizePixel = 0; bg.Parent = gui
-	tween(bg, .25, { BackgroundTransparency = 0 })
+	local dim = Instance.new("Frame")
+	dim.Size = UDim2.fromScale(1, 1); dim.BackgroundColor3 = C.dim; dim.BackgroundTransparency = 1; dim.BorderSizePixel = 0; dim.Parent = gui
+	tween(dim, .3, { BackgroundTransparency = .45 })
 
-	-- everything sits in one centred column so it scales as a block
-	local col = Instance.new("Frame")
-	col.AnchorPoint = Vector2.new(.5, .5); col.Position = UDim2.fromScale(.5, .5); col.Size = UDim2.fromOffset(300, 190); col.BackgroundTransparency = 1; col.Parent = bg
-	local sc = Instance.new("UIScale"); sc.Scale = .9; sc.Parent = col
-	tween(sc, .5, { Scale = 1 }, Enum.EasingStyle.Back)
+	local card = Instance.new("CanvasGroup")
+	card.AnchorPoint = Vector2.new(.5, .5); card.Position = UDim2.new(.5, 0, .5, 18); card.Size = UDim2.fromOffset(360, 112)
+	card.BackgroundColor3 = C.card; card.BorderSizePixel = 0; card.GroupTransparency = 1; card.Parent = gui
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 18)
+	local st = Instance.new("UIStroke"); st.Color = C.stroke; st.Thickness = 1; st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; st.Parent = card
+	local cam = workspace.CurrentCamera
+	local sc = Instance.new("UIScale"); sc.Scale = math.clamp((cam and cam.ViewportSize.Y or 800) / 840, .85, 1.35); sc.Parent = card
+	tween(card, .45, { Position = UDim2.fromScale(.5, .5), GroupTransparency = 0 }, Enum.EasingStyle.Quart)
 
-	local logo = Logo.Make(col, 56, UDim2.new(.5, -28, 0, 0))
-	if logo:IsA("ImageLabel") then logo.ImageTransparency = 1; tween(logo, .35, { ImageTransparency = 0 })
-	else logo.BackgroundTransparency = 1; tween(logo, .35, { BackgroundTransparency = 0 }) end
-
-	local ttl = Instance.new("TextLabel")
-	ttl.BackgroundTransparency = 1; ttl.AnchorPoint = Vector2.new(.5, 0); ttl.Position = UDim2.new(.5, 0, 0, 74); ttl.Size = UDim2.fromOffset(300, 34)
-	ttl.Text = title; ttl.Font = Enum.Font.BuilderSansBold; ttl.TextSize = 28; ttl.TextColor3 = TEXT; ttl.TextTransparency = 1; ttl.Parent = col
-	tween(ttl, .4, { TextTransparency = 0 })
-
-	local sub = Instance.new("TextLabel")
-	sub.BackgroundTransparency = 1; sub.AnchorPoint = Vector2.new(.5, 0); sub.Position = UDim2.new(.5, 0, 0, 108); sub.Size = UDim2.fromOffset(300, 16)
-	sub.Text = subtitle or ""; sub.Font = Enum.Font.BuilderSansMedium; sub.TextSize = 12; sub.TextColor3 = SUB; sub.TextTransparency = 1; sub.Parent = col
-	tween(sub, .5, { TextTransparency = 0 })
+	Logo.Make(card, 44, UDim2.fromOffset(22, 22))
+	label(card, { Position = UDim2.fromOffset(80, 22), Size = UDim2.fromOffset(170, 22), Text = title, Font = Enum.Font.BuilderSansBold, TextSize = 20, TextColor3 = C.text })
+	label(card, { Position = UDim2.fromOffset(80, 45), Size = UDim2.fromOffset(250, 16), Text = subtitle or "", Font = Enum.Font.BuilderSansMedium, TextSize = 12, TextColor3 = C.sub })
+	local pct = label(card, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 24), Size = UDim2.fromOffset(60, 18), Text = "0%",
+		Font = Enum.Font.BuilderSansBold, TextSize = 14, TextColor3 = C.b, TextXAlignment = Enum.TextXAlignment.Right })
 
 	local track = Instance.new("Frame")
-	track.AnchorPoint = Vector2.new(.5, 0); track.Position = UDim2.new(.5, 0, 0, 142); track.Size = UDim2.fromOffset(220, 3)
-	track.BackgroundColor3 = TRACK; track.BorderSizePixel = 0; track.Parent = col
+	track.Position = UDim2.fromOffset(22, 80); track.Size = UDim2.new(1, -44, 0, 4); track.BackgroundColor3 = C.track; track.BorderSizePixel = 0; track.Parent = card
 	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 	local fill = Instance.new("Frame")
-	fill.Size = UDim2.fromScale(0, 1); fill.BackgroundColor3 = ACC; fill.BorderSizePixel = 0; fill.Parent = track
+	fill.Size = UDim2.fromScale(0, 1); fill.BackgroundColor3 = Color3.new(1, 1, 1); fill.BorderSizePixel = 0; fill.Parent = track
 	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+	local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(C.a, C.b); g.Parent = fill
+	local status = label(card, { Position = UDim2.fromOffset(22, 90), Size = UDim2.new(1, -44, 0, 14), Text = "", Font = Enum.Font.BuilderSansMedium, TextSize = 11, TextColor3 = C.sub })
 
-	local status = Instance.new("TextLabel")
-	status.BackgroundTransparency = 1; status.AnchorPoint = Vector2.new(.5, 0); status.Position = UDim2.new(.5, 0, 0, 156); status.Size = UDim2.fromOffset(300, 14)
-	status.Text = ""; status.Font = Enum.Font.BuilderSansMedium; status.TextSize = 11; status.TextColor3 = SUB; status.Parent = col
+	local shown, target = 0, 0
+	task.spawn(function() -- the % counts up smoothly instead of jumping
+		while gui.Parent do
+			if shown < target then shown = math.min(target, shown + 3); pct.Text = shown .. "%" end
+			task.wait(.015)
+		end
+	end)
+	local function progress(f)
+		tween(fill, .22, { Size = UDim2.fromScale(f, 1) }, Enum.EasingStyle.Quart)
+		target = math.floor(f * 100 + .5)
+	end
 
-	task.wait(.35) -- just enough for the pop-in
-
+	task.wait(.3)
 	local lp = Players.LocalPlayer
 	local steps = {
 		{ "Waiting for the game", function() return game:IsLoaded() end, 15 },
@@ -85,21 +102,16 @@ function Loading.run(title, subtitle, extraSteps)
 	for i, s in ipairs(steps) do
 		status.Text = s[1]
 		waitFor(s[2], s[3])
-		tween(fill, .18, { Size = UDim2.fromScale(i / (#steps + 1), 1) })
-		task.wait(.06)
+		progress(i / (#steps + 1))
+		task.wait(.05)
 	end
 	status.Text = "Ready"
-	tween(fill, .2, { Size = UDim2.fromScale(1, 1) })
-	task.wait(.3)
+	progress(1)
+	task.wait(.4)
 
-	-- one clean fade out
-	tween(sc, .35, { Scale = 1.04 })
-	for _, o in ipairs({ ttl, sub, status }) do tween(o, .3, { TextTransparency = 1 }) end
-	if logo:IsA("ImageLabel") then tween(logo, .3, { ImageTransparency = 1 }) else tween(logo, .3, { BackgroundTransparency = 1 }) end
-	tween(fill, .3, { BackgroundTransparency = 1 }); tween(track, .3, { BackgroundTransparency = 1 })
-	task.wait(.2)
-	tween(bg, .3, { BackgroundTransparency = 1 })
-	task.delay(.35, function() gui:Destroy() end)
+	tween(card, .3, { Position = UDim2.new(.5, 0, .5, 14), GroupTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	tween(dim, .35, { BackgroundTransparency = 1 })
+	task.delay(.4, function() gui:Destroy() end)
 end
 
 return Loading

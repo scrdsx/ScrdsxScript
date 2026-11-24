@@ -131,6 +131,7 @@ local function triggerStep(cam, origin)
 	if click() then Aim.Shots = Aim.Shots + 1 end
 end
 
+local fc = {} -- what the FOV circle shows now
 local function step(dt)
 	if not gui then return end
 	local cam = workspace.CurrentCamera
@@ -141,16 +142,22 @@ local function step(dt)
 	origin = origin and origin.Position or cam.CFrame.Position
 
 	-- field of view circle (colour, thickness, optional fill)
-	circle.Visible = (Aim.Enabled or Aim.AssistEnabled) and Aim.ShowFOV
-	if circle.Visible then
+	-- every property is only written when it changed (writes are what costs frames)
+	local show = (Aim.Enabled or Aim.AssistEnabled) and Aim.ShowFOV
+	if circle.Visible ~= show then circle.Visible = show end
+	if show then
 		local fov = (Aim.Enabled and Aim.FOV) or Aim.AssistFOV
-		circle.Size = UDim2.fromOffset(fov * 2, fov * 2)
-		circle.Position = UDim2.fromOffset(center.X, center.Y)
-		circle.BackgroundTransparency = Aim.FovFilled and 0.9 or 1
-		circle.BackgroundColor3 = Aim.FovColor
-		circleStroke.Thickness = Aim.FovThick
-		circleStroke.Color = Aim.Active and Color3.fromRGB(243, 156, 18) or Aim.FovColor
-		circleStroke.Transparency = Aim.Active and 0.1 or 0.5
+		local cx, cy = math.floor(center.X + .5), math.floor(center.Y + .5)
+		local key = fov .. ":" .. cx .. ":" .. cy
+		if fc.key ~= key then fc.key = key; circle.Size = UDim2.fromOffset(fov * 2, fov * 2); circle.Position = UDim2.fromOffset(cx, cy) end
+		local bt = Aim.FovFilled and 0.9 or 1
+		if fc.bt ~= bt then fc.bt = bt; circle.BackgroundTransparency = bt end
+		if fc.bc ~= Aim.FovColor then fc.bc = Aim.FovColor; circle.BackgroundColor3 = Aim.FovColor end
+		if fc.th ~= Aim.FovThick then fc.th = Aim.FovThick; circleStroke.Thickness = Aim.FovThick end
+		local sc = Aim.Active and Color3.fromRGB(236, 190, 120) or Aim.FovColor
+		if fc.sc ~= sc then fc.sc = sc; circleStroke.Color = sc end
+		local st = Aim.Active and 0.1 or 0.5
+		if fc.st ~= st then fc.st = st; circleStroke.Transparency = st end
 	end
 	-- mouse lock: while aiming the cursor sits in the screen centre (like shift lock); let go again afterwards
 	if Aim.Enabled and Aim.Active and Aim.MouseLock then

@@ -27,7 +27,7 @@ return function(ctx)
 	tSet:Toggle({ Name = "Unlock the FPS limit", Default = false, Callback = function(v) FPS.SetUnlock(v) end })
 	tSet:Slider({ Name = "FPS limit", Min = 30, Max = 360, Step = 10, Default = FPS.CapValue, Suffix = " fps", Callback = function(v) FPS.SetCap(v) end })
 	-- theme: accent + background as hex, applied to the window, remembered between sessions
-	local THEME_FILE = "ScrdsxScript/theme.json"
+	local THEME_FILE = "ScrdsxScript/theme_v6.json"
 	local theme = { accent = "", bg = "" }
 	local function parseHex(t)
 		t = tostring(t or ""):gsub("[#%s]", "")

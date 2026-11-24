@@ -1,29 +1,28 @@
--- HUD style (v5 "Frost"): one look for every on-screen tag and pill outside the menu (route pill, robbery tags, loot tags,
--- ESP radar / hover card). Graphite glass, a hairline light edge, a faint top-lit gradient, the menu's accent.
+-- HUD style (v6 "Mocha"): one look for every on-screen tag and pill outside the menu (route pill, robbery tags, loot tags,
+-- ESP radar / hover card). Flat espresso, a faint cream hairline, cream text. No gradients (cheaper to draw, cleaner to read).
 local Theme = __import("ui/theme")
 
 local Hud = {
-	BG = Color3.fromRGB(12, 13, 16),
-	BG_T = 0.12,
-	TEXT = Color3.fromRGB(241, 243, 247),
-	SUB = Color3.fromRGB(150, 156, 170),
-	OFF = Color3.fromRGB(52, 56, 66),
+	BG = Color3.fromRGB(20, 17, 15),
+	BG_T = 0.1,
+	TEXT = Color3.fromRGB(245, 239, 229),
+	SUB = Color3.fromRGB(165, 155, 143),
+	OFF = Color3.fromRGB(62, 56, 50),
+	EDGE = Color3.fromRGB(236, 211, 172),
 	FONT = Enum.Font.BuilderSansMedium,
 	BOLD = Enum.Font.BuilderSansBold,
 }
 
 function Hud.Accent() return Theme.T.accent end
 
--- makes a frame a glass card: corner, light hairline edge, top-lit gradient. Returns the UIStroke (tint it for state).
-function Hud.Glass(f, radius, noGradient)
+-- makes a frame a HUD card: corner (pill when no radius), a faint cream hairline. Returns the UIStroke (tint it for state).
+-- noGradient is kept for old callers; there is no gradient any more.
+function Hud.Glass(f, radius, _noGradient)
 	f.BackgroundColor3 = Hud.BG
 	f.BackgroundTransparency = Hud.BG_T
 	f.BorderSizePixel = 0
 	local c = Instance.new("UICorner"); c.CornerRadius = radius and UDim.new(0, radius) or UDim.new(1, 0); c.Parent = f
-	local st = Instance.new("UIStroke"); st.Color = Color3.new(1, 1, 1); st.Transparency = 0.9; st.Thickness = 1; st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; st.Parent = f
-	if not noGradient then
-		local g = Instance.new("UIGradient"); g.Rotation = 90; g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(196, 198, 204)); g.Parent = f
-	end
+	local st = Instance.new("UIStroke"); st.Color = Hud.EDGE; st.Transparency = 0.84; st.Thickness = 1; st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; st.Parent = f
 	return st
 end
 

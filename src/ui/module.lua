@@ -1,4 +1,4 @@
--- UI module card: a card in a two-column grid with name, status line, expand arrow and switch; its settings open inside the card.
+-- UI module card (v6): a card in a two-column grid: name, status line, a cream edge bar when on, expand arrow and switch; settings open inside.
 local Sfx = __import("core/sfx")
 local B = __import("ui/base")
 local T = B.T
@@ -36,7 +36,7 @@ return function(M)
 		local col = cols[1].n <= cols[2].n and cols[1] or cols[2]
 		col.n = col.n + 1
 
-		local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 0, LayoutOrder = col.n, Parent = col.frame }, { corner(13) })
+		local card = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 0, LayoutOrder = col.n, Parent = col.frame }, { corner(12) })
 		local cstroke = new("UIStroke", { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = card })
 		new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Parent = card })
 
@@ -45,17 +45,14 @@ return function(M)
 		bind(win, card, "BackgroundColor3", "panel")
 		bind(win, cstroke, "Color", function() return state and T.strokeOn or T.stroke end)
 
-		local head = new("Frame", { Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 1, LayoutOrder = 1, Parent = card })
-		-- on: a soft accent wash fades in from the left of the head (no glow, just a tint)
-		local wash = new("Frame", { Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, BackgroundTransparency = 1, ZIndex = 0, Parent = head }, { corner(13) })
-		bind(win, wash, "BackgroundColor3", "accent")
-		new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, .86), NumberSequenceKeypoint.new(.6, .97), NumberSequenceKeypoint.new(1, 1) }), Parent = wash })
-		-- status light left of the name
-		local led = new("Frame", { Position = UDim2.fromOffset(16, 17), Size = UDim2.fromOffset(8, 8), BorderSizePixel = 0, Parent = head }, { corner(4) })
-		bind(win, led, "BackgroundColor3", function() return state and T.accent or T.off end)
-		local nameL = text(win, o.Name, 14, "text", T.semi); nameL.Position = UDim2.fromOffset(32, 12); nameL.Size = UDim2.new(1, -122, 0, 18); nameL.TextWrapped = false; nameL.TextTruncate = Enum.TextTruncate.AtEnd; nameL.Parent = head
-		local statL = text(win, "", 12, "dim"); statL.Position = UDim2.fromOffset(32, 31); statL.Size = UDim2.new(1, -122, 0, 15); statL.TextWrapped = false; statL.TextTruncate = Enum.TextTruncate.AtEnd; statL.RichText = true; statL.Parent = head
-		bind(win, statL, "TextColor3", function() return state and T.chip or T.dim end)
+		local head = new("Frame", { Size = UDim2.new(1, 0, 0, 56), BackgroundTransparency = 1, LayoutOrder = 1, Parent = card })
+		-- on: a short cream bar grows on the left edge (v6: no glow, no wash)
+		local edge = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 0, .5, 0), Size = UDim2.fromOffset(3, 0), BorderSizePixel = 0, Parent = head }, { corner(2) })
+		bind(win, edge, "BackgroundColor3", "accent")
+		local nameL = text(win, o.Name, 14, "text", T.semi); nameL.Position = UDim2.fromOffset(18, 11); nameL.Size = UDim2.new(1, -116, 0, 18); nameL.TextWrapped = false; nameL.TextTruncate = Enum.TextTruncate.AtEnd; nameL.Parent = head
+		bind(win, nameL, "TextColor3", function() return state and T.text or T.sub end)
+		local statL = text(win, "", 12, "dim"); statL.Position = UDim2.fromOffset(18, 30); statL.Size = UDim2.new(1, -116, 0, 15); statL.TextWrapped = false; statL.TextTruncate = Enum.TextTruncate.AtEnd; statL.Parent = head
+		bind(win, statL, "TextColor3", function() return state and T.accent or T.dim end)
 		local sw, setSwitch = makeSwitch(win, head, Vector2.new(1, .5), UDim2.new(1, -16, .5, 0), function() return state end)
 
 		local body = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, LayoutOrder = 2, Parent = card })
@@ -65,17 +62,18 @@ return function(M)
 		new("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, Parent = inner })
 
 		local function status()
-			local s = state and "Active" or "Off"
-			if count > 0 then s = s .. "  ·  " .. count .. (count == 1 and " option" or " options") end
+			local s = state and "On" or "Off"
+			if count > 0 then s = s .. "  ·  " .. count .. (count == 1 and " setting" or " settings") end
 			statL.Text = s
 		end
 		local function paint(animate)
 			local c = state and T.strokeOn or T.stroke
+			local eh = UDim2.fromOffset(3, state and 26 or 0)
 			if animate then
-				tween(cstroke, .15, { Color = c }); tween(wash, .25, { BackgroundTransparency = state and 0 or 1 }); tween(led, .2, { BackgroundColor3 = state and T.accent or T.off })
-				tween(statL, .2, { TextColor3 = state and T.chip or T.dim })
+				tween(cstroke, .2, { Color = c }); tween(edge, .3, { Size = eh }, Enum.EasingStyle.Quart)
+				tween(nameL, .2, { TextColor3 = state and T.text or T.sub }); tween(statL, .2, { TextColor3 = state and T.accent or T.dim })
 			else
-				cstroke.Color = c; wash.BackgroundTransparency = state and 0 or 1; led.BackgroundColor3 = state and T.accent or T.off; statL.TextColor3 = state and T.chip or T.dim
+				cstroke.Color = c; edge.Size = eh; nameL.TextColor3 = state and T.text or T.sub; statL.TextColor3 = state and T.accent or T.dim
 			end
 		end
 		local function apply(v, silent)
@@ -97,7 +95,7 @@ return function(M)
 		obj.frame = card
 
 		-- expand arrow, left of the switch (only when the module has settings)
-		local exp = new("TextButton", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -62, .5, 0), Size = UDim2.fromOffset(28, 28), BorderSizePixel = 0, AutoButtonColor = false, Text = "", Visible = false, ZIndex = 3, Parent = head }, { corner(8) })
+		local exp = new("TextButton", { AnchorPoint = Vector2.new(1, .5), Position = UDim2.new(1, -64, .5, 0), Size = UDim2.fromOffset(28, 28), BorderSizePixel = 0, AutoButtonColor = false, Text = "", Visible = false, ZIndex = 3, Parent = head }, { corner(14) })
 		bind(win, exp, "BackgroundColor3", "elem")
 		local chev = text(win, "▾", 13, "sub", T.bold, Enum.TextXAlignment.Center); chev.Size = UDim2.fromScale(1, 1); chev.TextWrapped = false; chev.ZIndex = 4; chev.Parent = exp
 		local function setOpen(v)

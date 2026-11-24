@@ -202,6 +202,7 @@ local function step(dt)
 	if not gui then return end
 	local cam = workspace.CurrentCamera
 	if not cam then return end
+	if not Shops.Enabled and not Shops.anyShown then return end -- off and nothing fading out: no work at all
 	local now = os.clock()
 	if Shops.Enabled and now - lastScan > 4 then lastScan = now; pcall(scan) end
 	local me = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
@@ -223,6 +224,7 @@ local function step(dt)
 
 	local k = 1 - math.exp(-dt * 14) -- fade speed, independent of the frame rate
 	local kp = 1 - math.exp(-dt * 60) -- position follows almost instantly (just enough to take the jitter out)
+	local anyShown = false
 	for _, t in ipairs(targets) do
 		local show, sx, sy = false, 0, 0
 		if Shops.Enabled and t.pos and t.status and (t.pos - origin).Magnitude <= Shops.MaxDist and (not Shops.OnlyReady or t.ready) then
@@ -233,14 +235,15 @@ local function step(dt)
 		local e = t.tag
 		if show and not e then
 			e = freeTag(); e.owner = t; t.tag = e; t.a = 1; t.sx, t.sy = sx, sy
-			e.f.Visible = true; e.tt, e.ss, e.rs = nil, nil, nil
+			e.f.Visible = true; e.tt, e.ss, e.rs, e.px, e.aq = nil, nil, nil, nil, nil
 		end
 		if e then
 			if show then
 				t.sx = t.sx + (sx - t.sx) * kp; t.sy = t.sy + (sy - t.sy) * kp
 				t.a = t.a + (0 - t.a) * k
+				if t.a < 0.01 then t.a = 0 end
 				local d = math.floor((t.pos - origin).Magnitude)
-				if e.tt ~= t.name .. d then e.tt = t.name .. d; e.title.Text = t.name; e.dist.Text = d .. " st" end
+				if e.tt ~= d then e.tt = d; e.title.Text = t.name; e.dist.Text = d .. " st" end
 				local sk = t.status .. hex(t.col)
 				if e.ss ~= sk then
 					e.ss = sk
@@ -267,11 +270,16 @@ local function step(dt)
 				end
 			end
 			if e then
-				e.f.Position = UDim2.fromOffset(t.sx, t.sy)
-				e.f.GroupTransparency = t.a
+				anyShown = true
+				-- only write what changed: a CanvasGroup redraws its whole content whenever GroupTransparency is set
+				local px, py = math.floor(t.sx + .5), math.floor(t.sy + .5)
+				if e.px ~= px or e.py ~= py then e.px, e.py = px, py; e.f.Position = UDim2.fromOffset(px, py) end
+				local aq = math.floor(t.a * 40 + .5) / 40
+				if e.aq ~= aq then e.aq = aq; e.f.GroupTransparency = aq end
 			end
 		end
 	end
+	Shops.anyShown = anyShown
 	Shops.Info = "tracking " .. #targets
 end
 
