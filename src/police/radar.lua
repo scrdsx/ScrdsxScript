@@ -51,7 +51,7 @@ local function idFromCode()
 	local getc = (debug and debug.getconstants) or getconstants
 	if not getc then return end
 	local ok, mod = pcall(function()
-		return require(RS:WaitForChild("Code", 2).components.tools.radarGunTool)
+		return require(RS.Code.components.tools.radarGunTool)
 	end)
 	local cls = ok and type(mod) == "table" and mod.RadarGunTool
 	local fn = cls and rawget(cls, "onMeasureInput")
@@ -62,32 +62,59 @@ local function idFromCode()
 		if type(c) == "string" and c:match(GUID) and byName(c) then return c end
 	end
 end
+-- learn it from a real measurement (you click with the radar gun once). Installed only while Radar Farm is on and the id
+-- could not be read from the code, and removed again once learned / on unload: a namecall hook slows every method call in the game.
+local hookOld, hookFn, hookLive = nil, nil, false
+local function unhook()
+	hookLive = false -- from now on the hook (if it stays) only passes calls through
+	if not hookOld then return end
+	-- put the old one back only if ours is still the outermost hook (another module may have hooked on top of it since)
+	local ok, top = pcall(function() return getrawmetatable(game).__namecall end)
+	if ok and top == hookFn then
+		pcall(function() hookmetamethod(game, "__namecall", hookOld) end)
+		hookOld, hookFn = nil, nil
+	end
+end
+local function installLearnHook()
+	if learned or not (hookmetamethod and getnamecallmethod and newcclosure) then return end
+	hookLive = true
+	if hookOld then return end
+	pcall(function()
+		local old
+		hookFn = newcclosure(function(self, ...)
+			if not hookLive then return old(self, ...) end
+			-- no method calls in here (they would overwrite the namecall method of the call we pass on): properties only
+			local m = getnamecallmethod()
+			if m == "FireServer" and not learned then
+				local a = ...
+				if typeof(a) == "Instance" and a.ClassName == "Tool" and typeof(self) == "Instance" and self.ClassName == "RemoteEvent" then
+					local n = a.Name
+					if type(n) == "string" and n:lower():find("radar") then learned = self end
+				end
+			end
+			setnamecallmethod(m)
+			return old(self, ...)
+		end)
+		old = hookmetamethod(game, "__namecall", hookFn)
+		hookOld = old
+	end)
+end
+
+local nextLookup = 0
 local function getMeasureRemote()
 	if measureRemote and measureRemote.Parent then return measureRemote end
+	if learned and learned.Parent then measureRemote = learned; unhook(); return learned end
+	local now = os.clock()
+	if now < nextLookup then return nil end -- reading the game's code is not free: at most every 10 s
+	nextLookup = now + 10
 	local id = idFromCode()
-	measureRemote = id and byName(id) or learned
+	measureRemote = id and byName(id)
 	if not measureRemote then
 		for _, k in ipairs(KNOWN) do measureRemote = byName(k); if measureRemote then break end end
 	end
+	if measureRemote then unhook() else installLearnHook() end
 	return measureRemote
 end
--- learn it from a real measurement (you click with the radar gun once)
-pcall(function()
-	local old
-	old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-		-- no method calls in here (they would overwrite the namecall method of the call we pass on): properties only
-		local m = getnamecallmethod()
-		if not learned and m == "FireServer" and not checkcaller() then
-			local a = ...
-			if typeof(a) == "Instance" and a.ClassName == "Tool" and typeof(self) == "Instance" and self.ClassName == "RemoteEvent" then
-				local s = a.Name
-				if type(s) == "string" and s:lower():find("radar") then learned = self end
-			end
-		end
-		setnamecallmethod(m)
-		return old(self, ...)
-	end))
-end)
 
 local function findTool()
 	local char = lp.Character
@@ -275,6 +302,7 @@ function Radar.SetEnabled(v)
 	if v then
 		watchFines()
 	else
+		unhook()
 		clearMarks()
 		Radar.Info = "off"
 	end
@@ -291,6 +319,7 @@ function Radar.Start()
 end
 
 function Radar.Destroy()
+	unhook()
 	if conn then conn:Disconnect(); conn = nil end
 	for _, c in ipairs(notifyConns) do pcall(function() c:Disconnect() end) end
 	notifyConns = {}; notifyConn = nil

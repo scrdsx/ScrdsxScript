@@ -52,25 +52,46 @@ local function text(win, str, size, key, font, align)
 	return l
 end
 
--- switch (v5): off = hollow dark track + grey knob, on = lit accent track (soft top highlight) + dark knob
+-- switch (v6 "creamy"): soft pill track, a cream knob with a faint shadow that glides across (eases out, stretches a little
+-- while it moves), colours cross-fade. No overshoot / bounce: one smooth motion.
+local CREAM = Color3.fromRGB(250, 247, 240)
+local KNOB = 16
 local function makeSwitch(win, parent, anchor, pos, getState)
-	local sw = new("Frame", { AnchorPoint = anchor, Position = pos, Size = UDim2.fromOffset(38, 20), BorderSizePixel = 0, Parent = parent }, { corner(10) })
-	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(205, 205, 205)), Parent = sw })
+	local sw = new("Frame", { AnchorPoint = anchor, Position = pos, Size = UDim2.fromOffset(40, 22), BorderSizePixel = 0, Parent = parent }, { corner(11) })
+	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(222, 222, 222)), Parent = sw })
 	local st = new("UIStroke", { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = sw })
-	local knob = new("Frame", { AnchorPoint = Vector2.new(0, .5), Position = UDim2.new(0, 3, .5, 0), Size = UDim2.fromOffset(14, 14), BorderSizePixel = 0, Parent = sw }, { corner(7) })
+	local shadow = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(0, 11, .5, 1), Size = UDim2.fromOffset(KNOB + 2, KNOB + 2), BackgroundColor3 = BLACK, BackgroundTransparency = .72, BorderSizePixel = 0, Parent = sw }, { corner(KNOB) })
+	local knob = new("Frame", { AnchorPoint = Vector2.new(.5, .5), Position = UDim2.new(0, 11, .5, 0), Size = UDim2.fromOffset(KNOB, KNOB), BorderSizePixel = 0, Parent = sw }, { corner(KNOB) })
+	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(232, 228, 220)), Parent = knob })
 	local function trackColor() return getState() and T.accent or T.elem end
-	local function strokeColor() return getState() and T.accent or T.off end
-	local function knobColor() return getState() and T.bg or T.sub end
+	local function strokeColor() return getState() and T.accent:Lerp(WHITE, .15) or T.off end
+	local function knobColor() return getState() and CREAM or T.sub:Lerp(CREAM, .35) end
 	bind(win, sw, "BackgroundColor3", trackColor)
 	bind(win, st, "Color", strokeColor)
 	bind(win, knob, "BackgroundColor3", knobColor)
+	local token = 0
 	local function set(v, animate)
-		local p = UDim2.new(0, v and 21 or 3, .5, 0)
+		local x = v and 29 or 11
 		if animate then
-			tween(sw, .16, { BackgroundColor3 = trackColor() }); tween(st, .16, { Color = strokeColor() })
-			tween(knob, .22, { BackgroundColor3 = knobColor(), Position = p }, Enum.EasingStyle.Back)
+			token = token + 1
+			local my = token
+			local glide = Enum.EasingStyle.Quart
+			tween(sw, .28, { BackgroundColor3 = trackColor() }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+			tween(st, .28, { Color = strokeColor() }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+			tween(knob, .3, { BackgroundColor3 = knobColor(), Position = UDim2.new(0, x, .5, 0) }, glide)
+			tween(shadow, .3, { Position = UDim2.new(0, x, .5, 1) }, glide)
+			-- the knob stretches while it travels, then settles back round
+			tween(knob, .1, { Size = UDim2.fromOffset(KNOB + 6, KNOB) }, Enum.EasingStyle.Quad)
+			tween(shadow, .1, { Size = UDim2.fromOffset(KNOB + 8, KNOB + 2) }, Enum.EasingStyle.Quad)
+			task.delay(.1, function()
+				if token ~= my then return end
+				tween(knob, .22, { Size = UDim2.fromOffset(KNOB, KNOB) }, glide)
+				tween(shadow, .22, { Size = UDim2.fromOffset(KNOB + 2, KNOB + 2) }, glide)
+			end)
 		else
-			sw.BackgroundColor3 = trackColor(); st.Color = strokeColor(); knob.BackgroundColor3 = knobColor(); knob.Position = p
+			sw.BackgroundColor3 = trackColor(); st.Color = strokeColor(); knob.BackgroundColor3 = knobColor()
+			knob.Position = UDim2.new(0, x, .5, 0); shadow.Position = UDim2.new(0, x, .5, 1)
+			knob.Size = UDim2.fromOffset(KNOB, KNOB); shadow.Size = UDim2.fromOffset(KNOB + 2, KNOB + 2)
 		end
 	end
 	return sw, set
